@@ -1,0 +1,10 @@
+# Extrações do sistema não entram no repositório: são dado operacional,
+# vão para o Storage do Supabase (comprimidas) quando o ingest roda.
+*.txt
+!README*.txt
+
+# Ruído de sistema operacional / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
