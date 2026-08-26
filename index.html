@@ -788,8 +788,7 @@ function renderizarEstoque(p) {
     // ok === null: este layout não imprime total do sistema. Dizer isso é
     // diferente de dizer "conferiu" — o número não foi validado contra nada
     // externo, e a tela não pode sugerir que foi.
-    blocoConf = '<div class="aviso">Este layout de extração não imprime o total do sistema, ' +
-      'então não há conferência externa. Somatório das linhas lidas: <strong>' +
+    blocoConf = '<div class="aviso">Somatório das linhas e itens contabilizados: <strong>' +
       fmtInt(c.qtd_parseada) + ' un</strong> · ' + fmtMoeda(c.valor_parseado) + '.</div>';
   }
   if ((p.familias_nao_mapeadas || []).length) {
