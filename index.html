@@ -666,12 +666,10 @@ async function carregarEstoque() {
    é reprocessada no navegador.
    ============================================================ */
 const COMBINACOES = ['VS', 'VN', 'IS', 'IN'];
-const ROTULO_STATUS = {
-  VS: 'Válido · em linha',
-  VN: 'Válido · fora de linha',
-  IS: 'Inválido · em linha',
-  IN: 'Inválido · fora de linha',
-};
+/* ROTULO_STATUS já vem declarado por ingest.js (carregado antes deste
+   script, linha ~443) — não redeclarar aqui, senão o navegador lança
+   "Identifier 'ROTULO_STATUS' has already been declared" e a página
+   inteira para de renderizar. */
 
 /* null = sem filtro nesse eixo. */
 let filtroValido = null;    // true = só válidos | false = só inválidos
