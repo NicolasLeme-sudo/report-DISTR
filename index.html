@@ -104,29 +104,21 @@ body {
 }
 #telaLogin.ativo { display: flex; }
 .login-box {
-  width: 340px; background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: 8px; padding: 28px; box-shadow: var(--shadow);
+  width: 320px; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 36px 32px; text-align: center; box-shadow: var(--shadow);
 }
-.login-box h1 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
-.login-box .kicker {
-  font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
-  color: var(--amber); font-weight: 600;
+.login-logo { width: 52px; height: 52px; object-fit: contain; margin-bottom: 14px; }
+.login-box h1 { font-size: 18px; margin: 0 0 2px; color: var(--text); }
+.login-sub { font-size: 12px; color: var(--text-muted); margin: 0 0 22px; }
+.login-box input {
+  width: 100%; padding: 10px 12px; margin-bottom: 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg-input); color: var(--text);
+  font-size: 13px; box-sizing: border-box; font-family: inherit;
 }
-.login-box .linha-ouro { height: 1px; background: var(--amber); margin: 12px 0 20px; opacity: .7; }
-.campo { margin-bottom: 12px; }
-.campo label {
-  display: block; font-size: 11px; color: var(--text-label);
-  margin-bottom: 4px; text-transform: uppercase; letter-spacing: .06em;
-}
-.campo input {
-  width: 100%; padding: 9px 10px; background: var(--bg-input); color: var(--text);
-  border: 1px solid var(--border); border-radius: 5px; font-size: 13px;
-  font-family: inherit;
-}
-.campo input:focus { outline: none; border-color: var(--accent); }
+.login-box input:focus { outline: none; border-color: var(--accent); }
 .btn {
-  width: 100%; padding: 10px; background: var(--accent); color: #fff;
-  border: none; border-radius: 5px; font-size: 13px; font-weight: 600;
+  width: 100%; padding: 10px 12px; border-radius: 8px; border: none;
+  background: var(--accent); color: #fff; font-weight: 700; font-size: 13px;
   cursor: pointer; font-family: inherit;
 }
 .btn:hover { filter: brightness(1.1); }
@@ -374,18 +366,12 @@ tr.total > th, tr.total > td {
 <!-- ======================= LOGIN ======================= -->
 <div id="telaLogin">
   <div class="login-box">
-    <div class="kicker">Vulcabras · Distribuidora</div>
-    <h1>Report de Estoque</h1>
-    <div class="linha-ouro"></div>
+    <img src="favicon.png" alt="Logo" class="login-logo">
+    <h1>Report Distribuidora</h1>
+    <p class="login-sub">Vulcabras · Extrema</p>
     <form id="formLogin">
-      <div class="campo">
-        <label for="inEmail">E-mail</label>
-        <input id="inEmail" type="email" autocomplete="username" required>
-      </div>
-      <div class="campo">
-        <label for="inSenha">Senha</label>
-        <input id="inSenha" type="password" autocomplete="current-password" required>
-      </div>
+      <input id="inEmail" type="email" placeholder="E-mail" autocomplete="username" required>
+      <input id="inSenha" type="password" placeholder="Senha" autocomplete="current-password" required>
       <button class="btn" id="btnEntrar" type="submit">Entrar</button>
       <div class="erro" id="loginErro"></div>
     </form>
