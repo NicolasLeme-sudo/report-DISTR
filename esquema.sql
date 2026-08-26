@@ -104,7 +104,17 @@ insert into dim_familias (codigo, nome, categoria, segmento, marca) values
   ('106', 'CHINELOS MIZUNO FB BR',     'CHINELO MIZUNO',     'CHINELO',                       'MIZUNO'),
   ('107', 'CHUTEIRA MIZUNO FB BRASIL', 'CHUTEIRA MIZUNO',    'CHUTEIRA MIZUNO',               'MIZUNO'),
   ('108', 'CHUTEIRA MIZUNO IMPORTADA', 'CHUTEIRA MIZUNO',    'CHUTEIRA MIZUNO',               'MIZUNO'),
-  ('109', 'VEST.MIZUNO CLUBE COMPRAD', 'BOTAFOGO MIZUNO',    'TÊXTIL/ACESSÓRIOS MIZUNO',      'MIZUNO')
+  ('109', 'VEST.MIZUNO CLUBE COMPRAD', 'BOTAFOGO MIZUNO',    'TÊXTIL/ACESSÓRIOS MIZUNO',      'MIZUNO'),
+
+  -- Códigos de família não-numéricos: não são artigo de venda de nenhuma
+  -- marca, são insumo/consumível da operação (etiquetas de personalização,
+  -- caixas de expedição, uniforme interno, químico de limpeza — confirmado
+  -- olhando as descrições reais no ARMC1, "Armazém de Materiais de Consumo").
+  -- Marca própria 'INSUMOS' pra não poluir o total de nenhuma marca esportiva.
+  ('MIP', 'MIP', 'Material de Insumo e Produção', 'Insumos Operacionais', 'INSUMOS'),
+  ('DIV', 'DIV', 'Consumo Diverso',               'Insumos Operacionais', 'INSUMOS'),
+  ('EMB', 'EMB', 'Embalagens',                    'Insumos Operacionais', 'INSUMOS'),
+  ('QUI', 'QUI', 'Produtos Químicos',             'Insumos Operacionais', 'INSUMOS')
 on conflict (codigo) do update
   set nome = excluded.nome, categoria = excluded.categoria,
       segmento = excluded.segmento, marca = excluded.marca;
