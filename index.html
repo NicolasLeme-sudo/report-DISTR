@@ -318,6 +318,31 @@ tr.total > th, tr.total > td {
 .badge.bloq  { background: var(--red-soft);   color: var(--red); }
 .badge.anal  { background: var(--amber-soft); color: var(--amber); }
 .badge.namap { background: var(--amber-soft); color: var(--laranja); }
+
+/* Badge de categoria do armazém editável (só admin — ver perfilAtual em
+   linhaArvore). Mesmo padrão do Inventário: clicar abre um menu ancorado
+   embaixo, com as 3 opções + bolinha colorida. Aqui não existe "cálculo
+   automático" pra reverter (a categoria já é 100% manual), então não tem
+   opção de voltar ao automático como no Inventário. */
+.status-cell { position: relative; display: inline-block; }
+.status-toggle { cursor: pointer; user-select: none; }
+.status-toggle:hover { filter: brightness(1.15); }
+.status-caret { font-size: 8px; opacity: .85; margin-left: 2px; }
+.status-dropdown {
+  /* fixed, não absolute: escapa de contêineres com overflow (a tabela
+     rola horizontalmente) que cortariam o menu. Posição calculada em JS. */
+  display: none; position: fixed; z-index: 500;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: var(--shadow); padding: 4px; min-width: 150px;
+}
+.status-dropdown.aberto { display: block; }
+.status-opt {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px;
+  border: none; background: transparent; border-radius: 6px; cursor: pointer;
+  font-family: inherit; font-size: 12px; color: var(--text); text-align: left;
+}
+.status-opt:hover { background: var(--row-hover); }
+.status-opt .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .cod { color: var(--text-muted); font-size: 10.5px; margin-right: 6px; font-weight: 400; }
 .seg {
   color: var(--text-muted); font-size: 10px; margin-left: 8px; opacity: .75;
@@ -635,8 +660,71 @@ async function carregarEstoque() {
   document.getElementById('metaAtualizacao').innerHTML =
     'Atualizado em<br><strong>' + formatarDataHora(data[0].gerado_em) + '</strong>';
   window._snapshot = data[0].payload;
-  renderizarEstoque(data[0].payload);
+  await aplicarCategoriasArmazemVivas(window._snapshot);
+  renderizarEstoque(window._snapshot);
 }
+
+/* ============================================================
+   CATEGORIA DO ARMAZÉM — editável, sempre lida ao vivo
+   ------------------------------------------------------------
+   A categoria (DISPONÍVEL/EM ANÁLISE/BLOQUEADO) fica gravada dentro do
+   snapshot no momento do upload, igual todo o resto do relatório. Mas
+   diferente dos números do estoque (que são cálculo e não podem mudar
+   sem reprocessar), a categoria do armazém é só um rótulo manual — dado
+   puro do gabarito dim_armazens. Por isso, só pra esse campo, buscamos
+   a tabela ao vivo (7 linhas, custo irrelevante) e sobrepomos o que
+   veio no snapshot, pra uma edição feita agora aparecer na hora, sem
+   precisar reprocessar o arquivo.
+   ============================================================ */
+async function aplicarCategoriasArmazemVivas(snapshot) {
+  if (!snapshot || !snapshot.armazens) return;
+  try {
+    const { data, error } = await supabaseClient.from('dim_armazens').select('codigo, categoria');
+    if (error || !data) return;
+    const viva = {};
+    data.forEach(function (r) { viva[r.codigo] = r.categoria; });
+    snapshot.armazens.forEach(function (a) {
+      if (viva[a.codigo]) a.categoria = viva[a.codigo];
+    });
+  } catch (e) {
+    console.warn('Não foi possível buscar a categoria ao vivo dos armazéns:', e);
+  }
+}
+
+async function alterarCategoriaArmazem(codigo, categoria) {
+  document.querySelectorAll('.status-dropdown.aberto').forEach(function (d) { d.classList.remove('aberto'); });
+  if (perfilAtual !== 'admin') return;
+  try {
+    const { error } = await supabaseClient.from('dim_armazens').update({ categoria: categoria }).eq('codigo', codigo);
+    if (error) throw error;
+    (window._snapshot.armazens || []).forEach(function (a) { if (a.codigo === codigo) a.categoria = categoria; });
+    renderizarEstoque(window._snapshot);
+  } catch (e) {
+    alert('Não foi possível salvar a categoria: ' + e.message);
+  }
+}
+
+function alternarMenuCategoria(pill) {
+  const dropdown = pill.nextElementSibling;
+  const jaAberto = dropdown.classList.contains('aberto');
+  document.querySelectorAll('.status-dropdown.aberto').forEach(function (d) { d.classList.remove('aberto'); });
+  if (jaAberto) return;
+  const r = pill.getBoundingClientRect();
+  dropdown.classList.add('aberto'); // precisa estar visível pra medir altura/largura reais
+  const dw = dropdown.offsetWidth, dh = dropdown.offsetHeight;
+  let top = r.bottom + 4, left = r.left;
+  if (top + dh > window.innerHeight) top = r.top - dh - 4;
+  if (left + dw > window.innerWidth) left = Math.max(4, window.innerWidth - dw - 4);
+  dropdown.style.top = top + 'px';
+  dropdown.style.left = left + 'px';
+}
+document.addEventListener('click', function (e) {
+  if (e.target.closest('.status-cell')) return;
+  document.querySelectorAll('.status-dropdown.aberto').forEach(function (d) { d.classList.remove('aberto'); });
+});
+window.addEventListener('scroll', function () {
+  document.querySelectorAll('.status-dropdown.aberto').forEach(function (d) { d.classList.remove('aberto'); });
+}, true);
 
 /* ============================================================
    FILTROS DE STATUS — dois eixos independentes
@@ -893,11 +981,26 @@ function renderizarEstoque(p) {
                : a.categoria === 'ANALISE' || a.categoria === 'NAO_MAPEADO'
                  ? '<span class="flag anal" title="Estoque não disponível para venda">&#9873;</span>' : '';
 
+    // Badge editável só pro admin (é quem tem permissão de escrita em
+    // dim_armazens pela RLS) — gestor/operador veem só a leitura, igual antes.
+    const opcoesCategoria = ['DISPONIVEL', 'ANALISE', 'BLOQUEADO'].map(function (cat) {
+      const bOpt = BADGE_CATEGORIA[cat];
+      return '<button class="status-opt" onclick="alterarCategoriaArmazem(\'' + a.codigo + '\',\'' + cat + '\')">' +
+        '<i class="dot" style="background:var(' + COR_CATEGORIA[cat] + ')"></i>' + bOpt[1] + '</button>';
+    }).join('');
+    const badgeArmazem = perfilAtual === 'admin'
+      ? '<span class="status-cell">' +
+          '<span class="badge ' + bc[0] + ' status-toggle" onclick="alternarMenuCategoria(this)">' +
+            bc[1] + '<span class="status-caret">▼</span></span>' +
+          '<div class="status-dropdown">' + opcoesCategoria + '</div>' +
+        '</span>'
+      : '<span class="badge ' + bc[0] + '">' + bc[1] + '</span>';
+
     const chaveA = 'A|' + a.codigo;
     linhas += linhaArvore({
       classe: 'n1', chave: chaveA, temFilhos: (a.marcas || []).length > 0,
       rotulo: '<strong>' + escapar(a.codigo) + '</strong>' +
-              '<span class="badge ' + bc[0] + '">' + bc[1] + '</span>' +
+              badgeArmazem +
               '<span class="cod" style="margin-left:10px">' + escapar(a.nome) + '</span>',
       kpi: flag, qtd: vA.qtd, pctQtd: totais.qtd ? vA.qtd / totais.qtd * 100 : 0,
       skus: vA.skus, valor: vA.valor, pctValor: totais.valor ? vA.valor / totais.valor * 100 : 0,

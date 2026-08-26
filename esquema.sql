@@ -295,6 +295,13 @@ drop policy if exists gravar_snapshots on dashboard_snapshots;
 create policy gravar_snapshots on dashboard_snapshots
   for all to authenticated using (meu_papel() = 'admin') with check (meu_papel() = 'admin');
 
+-- Categoria do armazém (DISPONÍVEL/EM ANÁLISE/BLOQUEADO) editável direto no
+-- dashboard (badge com dropdown). Só update — leitura já é liberada a todo
+-- autenticado pela policy ler_dim_armazens, mais acima.
+drop policy if exists gravar_dim_armazens on dim_armazens;
+create policy gravar_dim_armazens on dim_armazens
+  for update to authenticated using (meu_papel() = 'admin') with check (meu_papel() = 'admin');
+
 -- ============================================================================
 -- 8) DEPOIS DE RODAR ESTE ARQUIVO
 -- ============================================================================
