@@ -181,6 +181,7 @@ body {
   padding: 0 22px; z-index: 15;
 }
 .topbar-titulo { font-size: 14px; font-weight: 700; flex: none; }
+.topbar-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 /* Escondido por padrão — só fica visível (classe .ativa, alternada em
    mostrarSecao()) na seção Fluxo de Processos. O <input> em si é criado UMA
    vez (DistrFluxo, na primeira visita à seção) e nunca destruído: só
@@ -899,7 +900,10 @@ tr.total > th, tr.total > td {
   </nav>
 
   <header class="topbar">
-    <div class="topbar-titulo" id="tituloSecao">Balanço e Detalhamento de Estoque</div>
+    <div>
+      <div class="topbar-titulo" id="tituloSecao">Balanço e Detalhamento de Estoque</div>
+      <div class="topbar-sub" id="topbarSub"></div>
+    </div>
     <div class="topbar-busca" id="topbarBusca"></div>
     <div class="topbar-dir">
       <div class="topbar-meta" id="metaAtualizacao">—</div>
@@ -1198,6 +1202,8 @@ async function carregarEstoque() {
 
   document.getElementById('metaAtualizacao').innerHTML =
     'Atualizado em<br><strong>' + formatarDataHora(data[0].gerado_em) + '</strong>';
+  document.getElementById('topbarSub').textContent =
+    'Última atualização: ' + formatarDataHora(data[0].gerado_em);
   window._snapshot = data[0].payload;
   await aplicarCategoriasArmazemVivas(window._snapshot);
   renderizarEstoque(window._snapshot);
