@@ -907,7 +907,6 @@ tr.total > th, tr.total > td {
     </div>
     <div class="topbar-busca" id="topbarBusca"></div>
     <div class="topbar-dir">
-      <div class="topbar-meta" id="metaAtualizacao">—</div>
       <div class="topbar-meta" id="topbarPerfil"></div>
       <button class="btn-mini" onclick="alternarTema()">Tema</button>
       <button class="btn-mini" onclick="sair()">Sair</button>
@@ -1201,8 +1200,6 @@ async function carregarEstoque() {
     return;
   }
 
-  document.getElementById('metaAtualizacao').innerHTML =
-    'Atualizado em<br><strong>' + formatarDataHora(data[0].gerado_em) + '</strong>';
   document.getElementById('topbarSub').textContent =
     'Última atualização: ' + formatarDataHora(data[0].gerado_em);
   window._snapshot = data[0].payload;
