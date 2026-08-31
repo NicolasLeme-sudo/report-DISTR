@@ -50,8 +50,10 @@ que mantém a tela rápida com base grande.
 | Arquivo | O que é |
 |---|---|
 | `index.html` | O dashboard. Single-file, sem build step. |
-| `ingest.js` | Parse, agregação e gravação. |
+| `ingest.js` | Parse, agregação e gravação (página Estoque). |
+| `distr-fluxo.js` | Renderizador + editor da página **Fluxo de Processos** (ver seção 10). |
 | `esquema.sql` | Todo o banco: tabelas, gabaritos, RLS. Já aplicado. |
+| `seed_distr_fluxo.sql` | Semente da primeira versão do Fluxo de Processos (ver seção 10). |
 | `vercel.json` | Diz ao Vercel que é estático puro, sem build. |
 | `favicon.png` | Ícone da aba e marca no menu. |
 
@@ -377,3 +379,111 @@ marca.
   `dim_familias` e no snapshot, falta só o seletor de hierarquia na tela.
 - Novas páginas (romaneio, faturamento, transportadora) como novas linhas em
   `dashboard_snapshots`, sem mudança de schema.
+
+---
+
+## 10. Fluxo de Processos — DISTR
+
+Fluxograma do processo operacional do CD (Recebimento → Armazenagem →
+Expedição, mais o fluxo à parte de Reversa), no menu **Processos → Fluxo de
+Processos - DISTR**, visível a todos os perfis — é material de treinamento,
+não só de gestão. Quem tem perfil **admin** também edita, ao vivo, no
+navegador.
+
+### Arquitetura
+
+Segue a mesma separação do restante do app — só que aqui não existe
+`ingest.js` porque não há arquivo externo pra processar: o próprio Admin *é*
+quem gera o dado, editando na tela.
+
+```
+   distr-fluxo.js         Lê e desenha o fluxograma (retângulo=etapa,
+   (renderiza e,           losango=decisão, pílula=início/fim). Para admin,
+    p/ admin, edita)       também liga o editor por cima: clicar numa seta
+        │                  insere etapa/quebra/B.O.; clicar numa etapa ou
+        │ lê/grava          losango abre o painel de edição.
+        ▼
+   dashboard_snapshots     pagina='distr_fluxo' — mesma tabela e mesmo
+   (Postgres)               padrão "uma versão = uma linha nova" do resto
+                            do app (seção 1). "Salvar" nunca dá UPDATE, então
+                            toda versão anterior continua no banco — é o
+                            histórico/undo de graça.
+```
+
+**RLS: nenhuma policy nova foi criada.** A leitura (`ler_snapshots`) já libera
+qualquer `pagina` pra todo autenticado, e a escrita (`gravar_snapshots`) já é
+só-admin — exatamente a regra que essa página precisa. O botão "Editar fluxo"
+na tela é conveniência de interface; a proteção de verdade é essa RLS.
+
+### Modelo de dados (dentro do `payload` jsonb)
+
+```jsonc
+{
+  "versao_schema": 1,
+  "setores": ["Comercial", "Coleta", ...],       // autocomplete do campo Responsável
+  "lanes": [
+    { "id": "principal", "titulo": "...", "sub": "...",
+      "fases": [
+        { "id": "receb", "titulo": "Recebimento",
+          "blocos": [ ["step","1"], ["step","2"],
+            ["guard","A quantidade bateu na conferência?", ["4.1","4.2"],
+              {"exc":"Não","ok":"Sim","rejoin":true}], ... ] },
+        ...
+      ] },
+    { "id": "reversa", "titulo": "Reversa", "fases": [ ... ] }
+  ],
+  "nos": { "receb:1": { "nome":"...", "resumo":"...", "original":"...",
+                        "resp":"...", "orig":"—", "dest":"AC190", ... } }
+}
+```
+
+`blocos` é a topologia de cada fase — `step`/`gate` (retângulo), `guard`
+(losango com um ramo lateral de desvio) ou `fork` (losango com duas colunas,
+ambas legítimas). `nos` guarda o detalhe de cada etapa, indexado por
+`"fase:número"`. Ícones (o conjunto de 37 SVGs de linha) vivem só no
+JavaScript, não no payload — é gabarito fixo, não dado editável.
+
+### Editando (admin)
+
+Botão **✏️ Editar fluxo** liga o modo edição (começa desligado, mesmo pra
+admin — ninguém edita sem querer só por ter a permissão):
+
+- **Clique numa seta** entre dois blocos → menu com as opções cabíveis ali:
+  numa cadeia de desvio de um losango (guard), "Nova etapa padrão / Nova
+  quebra / Novo B.O."; no tronco ou num ramo de bifurcação (fork), só "Nova
+  etapa padrão" — bifurcação são dois caminhos igualmente corretos, não um
+  desvio.
+- **Clique numa etapa** → painel com todos os campos (nome, resumo, texto
+  original, responsável(is) — aceita composto "A/B/C" — armazém
+  origem/destino, tipo, ícone, observações). Inclui excluir.
+- **Clique num losango** → edita a pergunta e o comportamento (qual resposta
+  leva ao desvio, se a cadeia volta ao tronco). Itens da cadeia se editam
+  pelas próprias etapas/setas dela, não por aqui.
+- **Setores**: cadastro simples que alimenta o autocomplete do Responsável —
+  o campo continua aceitando texto livre mesmo sem estar cadastrado.
+- **+ Nova fase**: anexa uma fase nova ao final de uma lane já existente.
+- **Salvar alterações**: grava tudo como uma linha nova em
+  `dashboard_snapshots`. Enquanto não salva, nada é permanente — **Descartar**
+  volta pra última versão publicada.
+
+**Numeração** (`1`, `6.1`, `6.1.2`, `5A`...) é recalculada sozinha a cada
+inserção/exclusão, com raio de ação **limitado ao que a edição realmente
+afeta** — nunca renumera nada fora dali. O número sugerido sempre aparece
+num campo editável, então dá pra ajustar à mão quando o padrão automático não
+for exatamente o que se quer.
+
+**Fora do escopo desta versão** (registrado, não esquecido): criar uma lane
+inteiramente nova (só fase nova dentro de lane existente); reordenar
+fases/etapas do tronco (inserir sim, reordenar não); criar um losango do zero
+a partir de uma seta (editar um já existente, sim); uma tela de "versões
+anteriores" (cada save já vira linha nova no banco, recuperável por SQL).
+
+### Publicar a primeira versão
+
+A tabela nasce vazia — sem uma primeira linha, a tela mostra "Nenhuma versão
+do fluxo publicada ainda". Rode `seed_distr_fluxo.sql` inteiro no **SQL
+Editor** do Supabase (mesmo projeto de `esquema.sql`) uma vez: ele insere a
+versão validada com a operação (66 etapas, 4 fases + Reversa) como a primeira
+linha de `dashboard_snapshots` para `pagina='distr_fluxo'`. Depois disso, é
+editor na tela — não precisa rodar esse arquivo de novo (e se rodar, só cria
+mais uma versão igual, não quebra nada).
