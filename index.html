@@ -517,17 +517,17 @@ tr.total > th, tr.total > td {
    linha fina + selo dourado — pra virada de setor ficar tão sinalizada
    quanto virada de fase. */
 #dfRoot .df-lane-h {position:relative;display:flex;align-items:center;justify-content:center;
- margin:0 0 6px}
-#dfRoot .df-lane-h::before {content:'';position:absolute;left:calc(-1 * var(--df-pad));right:calc(-1 * var(--df-pad));top:50%;height:1px;background:var(--df-bd)}
+ margin:0 0 6px;overflow:visible}
+#dfRoot .df-lane-h::before {content:'';display:block;position:absolute;left:-9999px;right:-9999px;top:50%;height:1px;background:var(--gelo)}
 #dfRoot .df-lane-h span {position:relative;background:var(--df-bg);padding:8px 22px;
- border:1.5px solid var(--df-gold);border-radius:999px;font-size:15px;font-weight:700;color:var(--df-tx)}
+ border:1.5px solid var(--df-gold);border-radius:999px;font-size:15px;font-weight:700;color:var(--df-gold)}
 #dfRoot .df-lane-sub {color:var(--df-tx2);font-size:13.5px;margin-top:12px;max-width:70ch;text-align:center}
 /* Área do diagrama: ocupa a largura inteira da janela (sai da coluna de texto de
    1180px) e é reduzida por JS até caber — por isso não existe barra de rolagem aqui.
    --df-vw é escrito pelo JS com a largura real da janela (sem contar a barra da página),
    evitando o 100vw, que causaria rolagem horizontal na página inteira. */
 #dfRoot .df-lane-fit {--df-pad:24px;width:var(--df-vw,100%);margin-left:calc(50% - var(--df-vw,100%)/2);
- padding:0 var(--df-pad);margin-top:26px;
+ padding:0 var(--df-pad);margin-top:26px;text-align:center;
  overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;
  scrollbar-width:none;-webkit-overflow-scrolling:touch}
 #dfRoot .df-lane-fit::-webkit-scrollbar {display:none}
@@ -573,8 +573,8 @@ tr.total > th, tr.total > td {
 
 /* divisor entre fases dentro da mesma lane */
 #dfRoot .df-phase-div {position:relative;width:100%;display:flex;align-items:center;justify-content:center;
- min-height:1px}
-#dfRoot .df-phase-div::before {content:'';position:absolute;left:calc(-1 * var(--df-pad));right:calc(-1 * var(--df-pad));top:50%;height:1px;background:var(--df-bd)}
+ min-height:1px;overflow:visible}
+#dfRoot .df-phase-div::before {content:'';display:block;position:absolute;left:-9999px;right:-9999px;top:50%;height:1px;background:var(--gelo)}
 #dfRoot .df-phase-div span {position:relative;background:var(--df-bg);padding:7px 20px;border:1.5px solid var(--df-gold);
  border-radius:999px;color:var(--df-gold);font-weight:700;font-size:11.5px;text-transform:uppercase;
  letter-spacing:.06em;white-space:nowrap}
