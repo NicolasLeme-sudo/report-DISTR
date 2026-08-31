@@ -60,7 +60,11 @@ const TIPO_LBL = {
   principal: "Etapa principal", seq: "Subetapa sequencial", desvio: "Desvio / B.O.",
   bifurcacao: "Bifurcação", gate: "Regra do sistema",
 };
-const TIPO_CLS = { principal: "t-n", seq: "t-n", desvio: "t-d", bifurcacao: "t-b", gate: "t-g" };
+// Prefixo "df-" é obrigatório: o CSS espera ".df-step.df-t-d" etc (regra
+// #dfRoot .df-step.df-t-d { border-color: var(--df-red) }...). Sem o prefixo,
+// a classe não batia com nada e toda caixa saía sem cor por tipo — mesma
+// causa raiz do bug corrigido no PEND_MAP (commit d5f33ee).
+const TIPO_CLS = { principal: "df-t-n", seq: "df-t-n", desvio: "df-t-d", bifurcacao: "df-t-b", gate: "df-t-g" };
 
 function rect(fase, n, kind) {
   const e = DADOS.nos[nodeKey(fase, n)];
@@ -143,7 +147,7 @@ function renderSection(faseId, blocos, out, prev, prevLabel, prevSem) {
         pendingRejoin.push([sidePrev, "exc", metaFim]);
         out.push("</div></div>");
       } else {
-        const fim = pillHtml("Fim deste caminho", "end df-pill-sub"), eid = fim[0];
+        const fim = pillHtml("Fim deste caminho", "df-end df-pill-sub"), eid = fim[0];
         edge(sidePrev, eid, "straight", "", "exc", metaFim);
         out.push(fim[1] + "</div></div>");
       }
@@ -181,13 +185,13 @@ function renderSection(faseId, blocos, out, prev, prevLabel, prevSem) {
    Fim único, e um divisor visível entre cada fase. Porta render_multi(). */
 function renderMulti(lane) {
   const out = [
-    '<section class="df-lane-wrap"><h2 class="df-lane-h">' + esc(lane.titulo) + "</h2>" +
+    '<section class="df-lane-wrap"><h2 class="df-lane-h"><span>' + esc(lane.titulo) + "</span></h2>" +
     '<p class="df-lane-sub">' + esc(lane.sub || "") + "</p>" +
     '<p class="df-drag-hint"><svg viewBox="0 0 24 24"><path d="M8 5l-5 7 5 7M16 5l5 7-5 7"/></svg>' +
     "Arraste para o lado para ver os desvios</p>" +
     '<div class="df-lane-fit"><div class="df-lane" id="df-lane-' + esc(lane.id) + '" data-lane="' + esc(lane.id) + '">',
   ];
-  const inicio = pillHtml("Início", "start"), sid = inicio[0];
+  const inicio = pillHtml("Início", "df-start"), sid = inicio[0];
   out.push(inicio[1]);
   let prev = sid, prevLabel = "", prevSem = "normal", trailingRejoin = [], prevFaseId = null, prevBlocoFim = 0;
   lane.fases.forEach(function (fase, i) {
@@ -202,7 +206,7 @@ function renderMulti(lane) {
     prev = r.prev; prevLabel = r.prevLabel; prevSem = r.prevSem; trailingRejoin = r.pendingRejoin;
     prevFaseId = fase.id; prevBlocoFim = r.blocoIdxFim;
   });
-  const fim = pillHtml("Fim", "end"), eid = fim[0];
+  const fim = pillHtml("Fim", "df-end"), eid = fim[0];
   out.push(fim[1]);
   edge(prev, eid, "straight", prevLabel, prevSem, { kind: "trunk", fase: prevFaseId, blocoIdx: prevBlocoFim });
   trailingRejoin.forEach(function (r) { edge(r[0], eid, "straight", "", r[1], r[2]); });
@@ -350,8 +354,8 @@ function drawLane(lane) {
     svg.appendChild(p);
     if (ed.label) {
       const lb = document.createElement("span");
-      lb.className = "df-wire-label" + (ed.sem === "exc" ? " wl-exc" : ed.sem === "fork" ? " wl-fork"
-        : ed.sem === "ok" ? " wl-ok" : "");
+      lb.className = "df-wire-label" + (ed.sem === "exc" ? " df-wl-exc" : ed.sem === "fork" ? " df-wl-fork"
+        : ed.sem === "ok" ? " df-wl-ok" : "");
       lb.textContent = ed.label;
       lb.style.left = mid.x + "px";
       lb.style.top = mid.y + "px";
@@ -424,6 +428,7 @@ function setEditMode(v) {
   const bar = document.getElementById("df-editbar");
   if (bar) bar.hidden = !EDIT_MODE;
   ROOT.classList.toggle("df-editando", EDIT_MODE);
+  atualizarEdicaoArmazens();
   scheduleDraw();
 }
 
@@ -1114,47 +1119,95 @@ function atualizarCabecalho() {
    escrito uma vez no mount e depois só recebendo o conteúdo dinâmico das
    lanes via renderTudo()).
    ============================================================ */
-const STAT_ARM = { ativo: ["Ativo", "s-on"], ativar: ["Existe, falta parametrizar", "s-warn"], criar: ["A criar", "s-new"] };
+// Vocabulário de status pedido pelo usuário (troca completa do que existia
+// antes: ativo/ativar/criar). Reaproveita as classes .badge.disp/.bloq/.anal
+// já usadas na tela de Estoque, mesmas cores; .pend é novo (ver CSS).
+const STAT_ARM = {
+  ativo: ["ATIVO", "disp"], bloqueado: ["BLOQUEADO", "bloq"],
+  analise: ["EM ANÁLISE", "anal"], pendente: ["PENDENTE", "pend"],
+};
+// Migração dos valores antigos (dado gravado antes desta mudança de
+// vocabulário) pro conjunto novo, só pra exibição — o próximo "Salvar
+// alterações" já grava com as chaves novas.
+const STAT_ARM_MIGRA = { ativo: "ativo", ativar: "pendente", criar: "pendente" };
+function chaveStatusArmazem(a) {
+  return STAT_ARM[a.status] ? a.status : (STAT_ARM_MIGRA[a.status] || "pendente");
+}
 function armazensTableHtml() {
-  const rows = (DADOS.armazens || []).map(function (a) {
-    const st = STAT_ARM[a.status] || STAT_ARM.criar;
-    return "<tr><td class=\"df-ac\"><code>" + esc(a.cod) + "</code></td><td>" + esc(a.uso) + "</td>" +
-      "<td>" + esc(a.resp) + "</td><td>" + esc(a.dono) + "</td>" +
-      "<td>" + (a.tt ? "T+ / T−" : "—") + "</td>" +
-      '<td><span class="df-st ' + st[1] + '">' + st[0] + "</span></td></tr>";
+  const campos = ["cod", "uso", "resp", "dono"];
+  const rows = (DADOS.armazens || []).map(function (a, i) {
+    const stKey = chaveStatusArmazem(a);
+    const st = STAT_ARM[stKey];
+    const inputs = campos.map(function (c) {
+      return '<td><input class="df-armz-input" data-i="' + i + '" data-campo="' + c + '" ' +
+        'value="' + esc(a[c] || "") + '" readonly></td>';
+    }).join("");
+    const corPontinho = { disp: "--olive", bloq: "--red", anal: "--amber", pend: "--text-muted" };
+    // Sem onclick inline aqui de propósito: funções deste arquivo vivem dentro
+    // da IIFE (function(global){...})(window) e um onclick="..." executa no
+    // escopo global, não a enxergaria. data-i/data-status + delegação de
+    // clique em wireArmazensEdicao() (mesmo padrão do resto do arquivo).
+    // "alternarMenuCategoria" na pill, logo abaixo, é diferente: essa função
+    // É global de verdade (vive no index.html, fora da IIFE), por isso pode
+    // ser chamada por onclick normalmente.
+    const opts = Object.keys(STAT_ARM).map(function (k) {
+      const bOpt = STAT_ARM[k];
+      return '<button type="button" class="status-opt" data-i="' + i + '" data-status="' + k + '">' +
+        '<i class="dot" style="background:var(' + corPontinho[bOpt[1]] + ')"></i>' + bOpt[0] + "</button>";
+    }).join("");
+    const checkAttrs = (a.tt ? "checked " : "") + "disabled";
+    return "<tr>" + inputs +
+      '<td><label class="df-armz-check"><input type="checkbox" class="df-armz-check-input" data-i="' +
+        i + '" ' + checkAttrs + "> T+ / T−</label></td>" +
+      '<td><span class="status-cell"><span class="badge ' + st[1] + ' status-toggle" onclick="alternarMenuCategoria(this)">' +
+        st[0] + '<span class="status-caret">▼</span></span><div class="status-dropdown">' + opts + "</div></span></td>" +
+      "</tr>";
   }).join("");
   return '<div class="df-tw"><table><thead><tr><th>Código</th><th>Utilização</th><th>Responsável</th>' +
     "<th>Dono</th><th>Transf.</th><th>Status</th></tr></thead><tbody>" + rows + "</tbody></table></div>";
 }
-// Nomes de classe corrigidos: eram "pd-ok"/"pd-open" sem o prefixo "df-",
-// então a regra de CSS ".df-pd.df-pd-ok" (que reduz opacidade e troca a cor
-// do item resolvido) nunca batia — todo item, resolvido ou não, aparecia com
-// o mesmo destaque cheio. Era esse o motivo de a tela de Pendências parecer
-// "poluída": nada de errado no conteúdo, só o item resolvido não ficava
-// visualmente discreto como devia.
-const PEND_MAP = { resolvido: ["RESOLVIDO", "df-pd-ok"], aberto: ["AINDA ABERTO", "df-pd-open"] };
-function itemPendenciaHtml(p) {
-  const pm = PEND_MAP[p.status] || PEND_MAP.aberto;
-  return '<li class="df-pd ' + pm[1] + '"><span class="df-pd-n">' + p.id + "</span><div>" +
-    '<span class="df-pd-c">' + esc(p.cat) + " · " + pm[0] + "</span><p>" + p.txt + "</p>" +
-    '<span class="df-pd-r">Etapas: ' + esc(p.ref) + "</span></div></li>";
+function selecionarStatusArmazem(i, statusKey) {
+  document.querySelectorAll(".status-dropdown.aberto").forEach(function (d) { d.classList.remove("aberto"); });
+  if (!EDIT_MODE || !DADOS.armazens || !DADOS.armazens[i]) return;
+  DADOS.armazens[i].status = statusKey;
+  marcarEditado();
+  const bloco = document.getElementById("df-armazens-bloco");
+  if (bloco) bloco.innerHTML = armazensTableHtml();
+  atualizarEdicaoArmazens();
 }
-function pendenciasHtml() {
-  const todas = DADOS.pendencias || [];
-  const abertas = todas.filter(function (p) { return p.status !== "resolvido"; });
-  const resolvidas = todas.filter(function (p) { return p.status === "resolvido"; });
-  if (!todas.length) return '<li class="df-pd-vazio">Nenhuma pendência registrada.</li>';
-  let html = abertas.map(itemPendenciaHtml).join("");
-  // Itens já resolvidos são histórico de revisão, não trabalho pendente — não
-  // fazem sentido ocupando espaço de destaque numa tela operacional. Ficam
-  // recolhidos atrás de um <details>, sem apagar a informação.
-  if (resolvidas.length) {
-    html += '<li class="df-pd-hist"><details><summary>Histórico de revisão — ' +
-      resolvidas.length + (resolvidas.length === 1 ? " item já resolvido" : " itens já resolvidos") +
-      '</summary><ol class="df-pds">' + resolvidas.map(itemPendenciaHtml).join("") + "</ol></details></li>";
-  }
-  return html;
+function wireArmazensEdicao() {
+  ROOT.addEventListener("input", function (e) {
+    const el = e.target.closest(".df-armz-input");
+    if (!el || el.readOnly) return;
+    const i = parseInt(el.dataset.i, 10), campo = el.dataset.campo;
+    if (!DADOS.armazens || !DADOS.armazens[i]) return;
+    DADOS.armazens[i][campo] = el.value;
+    marcarEditado();
+  });
+  ROOT.addEventListener("change", function (e) {
+    const el = e.target.closest(".df-armz-check-input");
+    if (!el || el.disabled) return;
+    const i = parseInt(el.dataset.i, 10);
+    if (!DADOS.armazens || !DADOS.armazens[i]) return;
+    DADOS.armazens[i].tt = el.checked;
+    marcarEditado();
+  });
+  ROOT.addEventListener("click", function (e) {
+    const opt = e.target.closest(".status-opt[data-status]");
+    if (!opt) return;
+    selecionarStatusArmazem(parseInt(opt.dataset.i, 10), opt.dataset.status);
+  });
 }
+// Chamada por setEditMode(): liga/desliga a edição da tabela de Armazéns
+// junto com o resto da página (nenhum campo edita fora do modo edição).
+function atualizarEdicaoArmazens() {
+  ROOT.querySelectorAll(".df-armz-input").forEach(function (el) { el.readOnly = !EDIT_MODE; });
+  ROOT.querySelectorAll(".df-armz-check-input").forEach(function (el) { el.disabled = !EDIT_MODE; });
+}
+// Seção "Pendências" removida da tela a pedido do usuário (desnecessária no
+// cenário atual — eram só notas de revisão/QA, sem valor operacional). O
+// campo DADOS.pendencias continua sendo salvo no payload (linha ~1280) por
+// segurança, só deixou de ser renderizado.
 function montarShell(root) {
   ROOT = root;
   ROOT.className = "df-shell";
@@ -1175,9 +1228,9 @@ function montarShell(root) {
     '<div class="df-stats">' +
     '<div class="df-stat"><b id="df-stat-total">0</b><span>Etapas no fluxo</span></div>' +
     '<div class="df-stat"><b id="df-stat-fases">0</b><span>Fases / processos</span></div>' +
-    '<div class="df-stat a"><b id="df-stat-normal">0</b><span>Caminho normal</span></div>' +
-    '<div class="df-stat b"><b id="df-stat-desvio">0</b><span>Desvios / B.O.</span></div>' +
-    '<div class="df-stat c"><b id="df-stat-bif">0</b><span>Bifurcações</span></div>' +
+    '<div class="df-stat df-a"><b id="df-stat-normal">0</b><span>Caminho normal</span></div>' +
+    '<div class="df-stat df-b"><b id="df-stat-desvio">0</b><span>Desvios / B.O.</span></div>' +
+    '<div class="df-stat df-c"><b id="df-stat-bif">0</b><span>Bifurcações</span></div>' +
     '<div class="df-stat"><b id="df-stat-novos">0</b><span>Etapas novas</span></div>' +
     "</div></header>" +
     '<div class="df-wrap">' +
@@ -1197,22 +1250,23 @@ function montarShell(root) {
     '<div><b>5A, 5B</b><p>Bifurcação legítima — dois caminhos igualmente corretos, não um erro.</p></div>' +
     '<div><b>Cada fase recomeça do 1</b><p>Cada fase do fluxo é tratada como um processo separado.</p></div>' +
     "</div></section>" +
+    /* Prefixo "df-" nas classes modificadoras (df-sw-step, df-ln-n, ...) é
+       obrigatório — o CSS só reconhece a forma composta ".df-sw.df-sw-dev"
+       etc. Sem ele (como estava) a legenda inteira aparecia sem nenhuma cor,
+       mesma causa raiz do bug de TIPO_CLS acima. */
     '<section class="df-blk legend-blk"><div class="df-legs">' +
-    '<div class="df-lg"><span class="df-sw sw-step"></span><div><b>Etapa</b><p>Passo do processo.</p></div></div>' +
-    '<div class="df-lg"><span class="df-sw sw-dev"></span><div><b>Desvio / B.O.</b><p>Só acontece fora do padrão.</p></div></div>' +
-    '<div class="df-lg"><span class="df-sw sw-bif"></span><div><b>Bifurcação</b><p>Um dos caminhos possíveis.</p></div></div>' +
-    '<div class="df-lg"><span class="df-sw sw-gate"></span><div><b>Regra do sistema</b><p>Bloqueio automático.</p></div></div>' +
-    '<div class="df-lg"><span class="df-sw sw-dia"></span><div><b>Decisão</b><p>Losango — pergunta que define o caminho.</p></div></div>' +
-    '<div class="df-lg"><span class="df-ln ln-n"></span><div><b>Fluxo normal</b><p>Linha sólida cinza.</p></div></div>' +
-    '<div class="df-lg"><span class="df-ln ln-ok"></span><div><b>Saída correta</b><p>Linha verde.</p></div></div>' +
-    '<div class="df-lg"><span class="df-ln ln-e"></span><div><b>Exceção</b><p>Linha tracejada vermelha.</p></div></div>' +
-    '<div class="df-lg"><span class="df-ln ln-f"></span><div><b>Bifurcação</b><p>Linha dourada.</p></div></div>' +
+    '<div class="df-lg"><span class="df-sw df-sw-step"></span><div><b>Etapa</b><p>Passo do processo.</p></div></div>' +
+    '<div class="df-lg"><span class="df-sw df-sw-dev"></span><div><b>Desvio / B.O.</b><p>Só acontece fora do padrão.</p></div></div>' +
+    '<div class="df-lg"><span class="df-sw df-sw-bif"></span><div><b>Bifurcação</b><p>Um dos caminhos possíveis.</p></div></div>' +
+    '<div class="df-lg"><span class="df-sw df-sw-gate"></span><div><b>Regra do sistema</b><p>Bloqueio automático.</p></div></div>' +
+    '<div class="df-lg"><span class="df-sw df-sw-dia"></span><div><b>Decisão</b><p>Losango — pergunta que define o caminho.</p></div></div>' +
+    '<div class="df-lg"><span class="df-ln df-ln-n"></span><div><b>Fluxo normal</b><p>Linha sólida cinza.</p></div></div>' +
+    '<div class="df-lg"><span class="df-ln df-ln-ok"></span><div><b>Saída correta</b><p>Linha verde.</p></div></div>' +
+    '<div class="df-lg"><span class="df-ln df-ln-e"></span><div><b>Exceção</b><p>Linha tracejada vermelha.</p></div></div>' +
+    '<div class="df-lg"><span class="df-ln df-ln-f"></span><div><b>Bifurcação</b><p>Linha dourada.</p></div></div>' +
     "</div></section>" +
-    '<div class="df-bar"><input type="search" id="df-q" placeholder="Buscar por número, etapa ou área…" ' +
-    'aria-label="Buscar etapa"><span class="df-qhint" id="df-qhint"></span></div>' +
     laneHolders +
-    '<section class="df-blk"><h2>Armazéns</h2>' + armazensTableHtml() + "</section>" +
-    '<section class="df-blk"><h2>Pendências</h2><ol class="df-pds">' + pendenciasHtml() + "</ol></section>" +
+    '<section class="df-blk"><h2>Armazéns</h2><div id="df-armazens-bloco">' + armazensTableHtml() + "</div></section>" +
     '<footer id="df-footer">Clique numa etapa para o detalhe completo — o texto original validado por cada ' +
     "área está preservado na íntegra ali dentro.</footer>" +
     "</div>" +
@@ -1240,6 +1294,20 @@ function montarShell(root) {
   document.getElementById("df-dlg").addEventListener("click", function (e) {
     if (e.target.id === "df-dlg") document.getElementById("df-dlg").close();
   });
+  montarBuscaNaTopbar();
+}
+/* A busca vive na topbar do app (fora de #dfRoot), não mais numa barra
+   própria rolando junto do conteúdo — evita o conflito visual de duas
+   barras "grudentas" (sticky) competindo no topo da tela ao rolar a página
+   (a topbar do app já é position:fixed). Criado só na primeira montagem
+   (não existe ainda) — index.html (mostrarSecao) só alterna a classe
+   .ativa pra mostrar/esconder o slot ao trocar de seção; o elemento nunca
+   é destruído, senão o listener de wireSearch() se perderia. */
+function montarBuscaNaTopbar() {
+  const slot = document.getElementById("topbarBusca");
+  if (!slot || slot.querySelector("#df-q")) return;
+  slot.innerHTML = '<input type="search" id="df-q" placeholder="Buscar por número, etapa ou área…" ' +
+    'aria-label="Buscar etapa"><span class="df-qhint" id="df-qhint"></span>';
 }
 
 /* ============================================================
@@ -1318,6 +1386,8 @@ async function iniciar(rootId, supabaseClient, perfilAtual) {
   wireTune();
   wireEditToggle();
   wireCliquesDelegados();
+  wireArmazensEdicao();
+  atualizarEdicaoArmazens();
   renderTudo();
 }
 

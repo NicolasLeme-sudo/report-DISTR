@@ -158,8 +158,23 @@ body {
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 22px; z-index: 15;
 }
-.topbar-titulo { font-size: 14px; font-weight: 700; }
-.topbar-dir { display: flex; align-items: center; gap: 14px; }
+.topbar-titulo { font-size: 14px; font-weight: 700; flex: none; }
+/* Escondido por padrão — só fica visível (classe .ativa, alternada em
+   mostrarSecao()) na seção Fluxo de Processos. O <input> em si é criado UMA
+   vez (DistrFluxo, na primeira visita à seção) e nunca destruído: só
+   escondido/mostrado, senão o listener de busca (wireSearch) se perderia a
+   cada troca de seção. Fica FORA de #dfRoot de propósito: assim a busca é
+   sticky de verdade dentro da topbar (position:fixed), sem repetir o bug de
+   sticky isolado dentro do conteúdo rolável (ver commit d5f33ee). */
+.topbar-busca { display: none; flex: 1 1 auto; justify-content: center; min-width: 0; }
+.topbar-busca.ativa { display: flex; align-items: center; gap: 10px; }
+.topbar-busca input[type=search] {
+  flex: 1 1 240px; max-width: 420px; background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font: inherit; font-size: 13px; padding: 7px 11px;
+}
+.topbar-busca input::placeholder { color: var(--text-muted); }
+.topbar-busca .df-qhint { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
+.topbar-dir { display: flex; align-items: center; gap: 14px; flex: none; }
 .topbar-meta { font-size: 11px; color: var(--text-muted); text-align: right; }
 .btn-mini {
   padding: 5px 11px; background: var(--bg-input); color: var(--text);
@@ -460,18 +475,21 @@ tr.total > th, tr.total > td {
 #dfRoot .df-ln-e {border-color:var(--df-red);border-top-style:dashed}
 #dfRoot .df-ln-f {border-color:var(--df-gold);border-top-style:dashed}
 
-/* search */
-#dfRoot .df-bar {position:sticky;top:0;z-index:30;background:var(--df-bg);border-bottom:1px solid var(--df-bd);
- padding:12px 0;margin-top:30px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-#dfRoot .df-bar input[type=search] {flex:1 1 240px;max-width:420px;background:var(--df-card);border:1px solid var(--df-bd);
- border-radius:var(--df-r);color:var(--df-tx);font:inherit;font-size:14px;padding:8px 12px}
-#dfRoot .df-bar input::placeholder {color:var(--df-tx2)}
-#dfRoot .df-qhint {font-size:12.5px;color:var(--df-tx2)}
+/* search: a barra em si mora agora na topbar do app (.topbar-busca, fora de
+   #dfRoot) — ver comentário em montarBuscaNaTopbar() no distr-fluxo.js. */
 
 /* lanes */
 #dfRoot .df-lane-wrap {margin-top:44px}
-#dfRoot .df-lane-h {font-size:17px;font-weight:700}
-#dfRoot .df-lane-sub {color:var(--df-tx2);font-size:13.5px;margin-top:5px;max-width:70ch}
+/* Cabeçalho da lane (Fluxo principal / Fluxo de Reversa) com o mesmo
+   tratamento visual dos divisores de fase dentro da lane (.df-phase-div):
+   linha fina + selo dourado — pra virada de setor ficar tão sinalizada
+   quanto virada de fase. */
+#dfRoot .df-lane-h {position:relative;display:flex;align-items:center;justify-content:center;
+ margin:0 0 6px}
+#dfRoot .df-lane-h::before {content:'';position:absolute;left:0;right:0;top:50%;height:1px;background:var(--df-bd)}
+#dfRoot .df-lane-h span {position:relative;background:var(--df-bg);padding:8px 22px;
+ border:1.5px solid var(--df-gold);border-radius:999px;font-size:15px;font-weight:700;color:var(--df-tx)}
+#dfRoot .df-lane-sub {color:var(--df-tx2);font-size:13.5px;margin-top:12px;max-width:70ch;text-align:center}
 /* Área do diagrama: ocupa a largura inteira da janela (sai da coluna de texto de
    1180px) e é reduzida por JS até caber — por isso não existe barra de rolagem aqui.
    --df-vw é escrito pelo JS com a largura real da janela (sem contar a barra da página),
@@ -613,37 +631,30 @@ tr.total > th, tr.total > td {
  text-transform:uppercase;color:var(--df-tx2);border-bottom:1px solid var(--df-bd);white-space:nowrap}
 #dfRoot td {padding:10px 13px;border-bottom:1px solid var(--df-bd);vertical-align:top}
 #dfRoot tr:last-child td {border-bottom:0}
-#dfRoot .df-ac code {color:var(--df-gold);font-weight:700}
-#dfRoot .df-st {font-size:11px;font-weight:700;padding:2.5px 8px;border-radius:99px;white-space:nowrap}
-#dfRoot .df-s-on {color:var(--df-green);box-shadow:inset 0 0 0 1px var(--df-green)}
-#dfRoot .df-s-warn {color:var(--df-gold);box-shadow:inset 0 0 0 1px var(--df-gold)}
-#dfRoot .df-s-new {color:var(--df-red);box-shadow:inset 0 0 0 1px var(--df-red)}
+/* Status do armazém reaproveita as classes .badge/.status-cell/.status-toggle/
+   .status-dropdown/.status-opt já usadas na tela de Estoque (definidas mais
+   acima neste arquivo, fora de #dfRoot — funcionam aqui igual, CSS não é
+   isolado por aninhamento). Só falta a variante PENDENTE, que a tela de
+   Estoque não tem. */
+.badge.pend { background: var(--bg-input); color: var(--text-muted); }
 
-#dfRoot .df-pds {list-style:none;margin:0;padding:0;display:grid;gap:10px}
-#dfRoot .df-pd {display:flex;gap:13px;background:var(--df-card);border:1px solid var(--df-bd);border-radius:var(--df-r);padding:14px}
-#dfRoot .df-pd-n {flex:none;width:25px;height:25px;border-radius:50%;background:var(--df-gold);color:#142032;
- font-size:12.5px;font-weight:700;display:grid;place-items:center;font-variant-numeric:tabular-nums}
-#dfRoot .df-pd-c {font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--df-gold);font-weight:700}
-#dfRoot .df-pd p {font-size:14px;margin:4px 0 6px}
-#dfRoot .df-pd-r {font-size:12px;color:var(--df-tx2);font-variant-numeric:tabular-nums}
-#dfRoot .df-pd.df-pd-ok {opacity:.62}
-#dfRoot .df-pd.df-pd-ok .df-pd-n {background:var(--df-green);color:#0a2a10}
-#dfRoot .df-pd.df-pd-ok .df-pd-c {color:var(--df-green)}
-#dfRoot .df-pd.df-pd-open .df-pd-n {background:var(--df-tx2);color:var(--df-bg)}
-#dfRoot .df-pd.df-pd-open .df-pd-c {color:var(--df-tx2)}
-#dfRoot .df-pd-vazio {color:var(--df-tx2);font-size:13px;list-style:none}
-/* Histórico de revisão (itens já resolvidos) — recolhido por padrão, pra não
-   competir visualmente com pendência de verdade (ver pendenciasHtml() em
-   distr-fluxo.js). */
-#dfRoot li.df-pd-hist {list-style:none}
-#dfRoot .df-pd-hist > details > summary {
-  cursor:pointer; font-size:12.5px; color:var(--df-tx2); padding:10px 14px;
-  border:1px dashed var(--df-bd); border-radius:var(--df-r); user-select:none;
+/* Campos editáveis da tabela de Armazéns — texto puro (sem borda) fora do
+   modo edição; vira input de verdade só com #dfRoot.df-editando (mesma trava
+   visual do resto da página: ninguém edita sem ligar "Editar fluxo"). */
+#dfRoot .df-armz-input {
+  width: 100%; background: transparent; border: 1px solid transparent; border-radius: 5px;
+  color: var(--df-tx); font: inherit; font-size: 13.5px; padding: 3px 5px; margin: -3px -5px;
 }
-#dfRoot .df-pd-hist > details > summary:hover {color:var(--df-tx); border-color:var(--df-gold)}
-#dfRoot .df-pd-hist > details[open] > summary {border-radius:var(--df-r) var(--df-r) 0 0; border-bottom:none}
-#dfRoot .df-pd-hist > details > .df-pds {margin-top:0; border:1px dashed var(--df-bd); border-top:none;
-  border-radius:0 0 var(--df-r) var(--df-r); padding:10px}
+#dfRoot .df-armz-input[data-campo="cod"] { color: var(--df-gold); font-weight: 700; }
+#dfRoot.df-editando .df-armz-input:not([readonly]) {
+  background: var(--df-card-2); border-color: var(--df-bd); cursor: text;
+}
+#dfRoot.df-editando .df-armz-input:not([readonly]):focus { outline: none; border-color: var(--df-gold); }
+#dfRoot .df-armz-check { display: flex; align-items: center; gap: 6px; cursor: default; white-space: nowrap; }
+#dfRoot.df-editando .df-armz-check { cursor: pointer; }
+
+/* Seção "Pendências" removida da tela — CSS de .df-pd*/.df-pds junto (nada
+   mais a renderiza; ver comentário em distr-fluxo.js perto de montarShell). */
 
 #dfRoot footer {margin-top:52px;padding-top:18px;border-top:1px solid var(--df-bd);color:var(--df-tx2);font-size:12.5px}
 
@@ -834,6 +845,7 @@ tr.total > th, tr.total > td {
 
   <header class="topbar">
     <div class="topbar-titulo" id="tituloSecao">Balanço e Detalhamento de Estoque</div>
+    <div class="topbar-busca" id="topbarBusca"></div>
     <div class="topbar-dir">
       <div class="topbar-meta" id="metaAtualizacao">—</div>
       <button class="btn-mini" onclick="alternarTema()">Tema</button>
@@ -987,6 +999,7 @@ function mostrarSecao(secao) {
   const item = { estoque: 'menuEstoque', distr: 'menuDistrFluxo', atualizar: 'menuAtualizar' }[secao];
   if (item) document.getElementById(item).classList.add('ativo');
   document.getElementById('tituloSecao').textContent = TITULOS[secao] || '';
+  document.getElementById('topbarBusca').classList.toggle('ativa', secao === 'distr');
 
   if (secao === 'distr' && !distrFluxoCarregado) {
     distrFluxoCarregado = true;
