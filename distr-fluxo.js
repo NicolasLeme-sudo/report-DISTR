@@ -364,6 +364,15 @@ function drawAll() {
   // em telas do app que não são o Fluxo de Processos — se a seção nunca foi
   // aberta (ROOT ainda não montado), não há nada pra desenhar.
   if (!ROOT) return;
+  // --df-vw precisa ser atualizado ANTES de desenhar as linhas: ele controla
+  // a largura "full bleed" do diagrama (regra .df-lane-fit), que recentraliza
+  // as colunas. Atualizado depois (como estava, dentro de fitAll), as linhas
+  // eram desenhadas contra a centralização ANTIGA e só a centralização em si
+  // mudava na sequência — caixas e linhas ficavam uma centralização inteira
+  // desalinhadas entre si. É o bug de "linhas saem do lugar" ao mudar o zoom
+  // do navegador ou redimensionar a janela (inclusive ao abrir um painel de
+  // detalhe, que pode mudar a presença da barra de rolagem).
+  ROOT.style.setProperty("--df-vw", document.documentElement.clientWidth + "px");
   zoomOff(); Array.prototype.slice.call(ROOT.querySelectorAll(".df-lane")).forEach(drawLane); fitAll();
 }
 let _raf = null;
@@ -378,7 +387,8 @@ function zoomOff() { ROOT.querySelectorAll(".df-lane").forEach(function (l) { l.
 function fitAll() {
   const lanes = Array.prototype.slice.call(ROOT.querySelectorAll(".df-lane"));
   if (!lanes.length) return;
-  ROOT.style.setProperty("--df-vw", document.documentElement.clientWidth + "px");
+  // --df-vw já foi atualizado em drawAll(), antes do desenho das linhas —
+  // não repetir aqui (ver comentário em drawAll).
   zoomOff();
   const host = lanes[0].parentNode, cs = getComputedStyle(host);
   const avail = host.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
@@ -1116,14 +1126,34 @@ function armazensTableHtml() {
   return '<div class="df-tw"><table><thead><tr><th>Código</th><th>Utilização</th><th>Responsável</th>' +
     "<th>Dono</th><th>Transf.</th><th>Status</th></tr></thead><tbody>" + rows + "</tbody></table></div>";
 }
-const PEND_MAP = { resolvido: ["RESOLVIDO", "pd-ok"], aberto: ["AINDA ABERTO", "pd-open"] };
+// Nomes de classe corrigidos: eram "pd-ok"/"pd-open" sem o prefixo "df-",
+// então a regra de CSS ".df-pd.df-pd-ok" (que reduz opacidade e troca a cor
+// do item resolvido) nunca batia — todo item, resolvido ou não, aparecia com
+// o mesmo destaque cheio. Era esse o motivo de a tela de Pendências parecer
+// "poluída": nada de errado no conteúdo, só o item resolvido não ficava
+// visualmente discreto como devia.
+const PEND_MAP = { resolvido: ["RESOLVIDO", "df-pd-ok"], aberto: ["AINDA ABERTO", "df-pd-open"] };
+function itemPendenciaHtml(p) {
+  const pm = PEND_MAP[p.status] || PEND_MAP.aberto;
+  return '<li class="df-pd ' + pm[1] + '"><span class="df-pd-n">' + p.id + "</span><div>" +
+    '<span class="df-pd-c">' + esc(p.cat) + " · " + pm[0] + "</span><p>" + p.txt + "</p>" +
+    '<span class="df-pd-r">Etapas: ' + esc(p.ref) + "</span></div></li>";
+}
 function pendenciasHtml() {
-  return (DADOS.pendencias || []).map(function (p) {
-    const pm = PEND_MAP[p.status] || PEND_MAP.aberto;
-    return '<li class="df-pd ' + pm[1] + '"><span class="df-pd-n">' + p.id + "</span><div>" +
-      '<span class="df-pd-c">' + esc(p.cat) + " · " + pm[0] + "</span><p>" + p.txt + "</p>" +
-      '<span class="df-pd-r">Etapas: ' + esc(p.ref) + "</span></div></li>";
-  }).join("");
+  const todas = DADOS.pendencias || [];
+  const abertas = todas.filter(function (p) { return p.status !== "resolvido"; });
+  const resolvidas = todas.filter(function (p) { return p.status === "resolvido"; });
+  if (!todas.length) return '<li class="df-pd-vazio">Nenhuma pendência registrada.</li>';
+  let html = abertas.map(itemPendenciaHtml).join("");
+  // Itens já resolvidos são histórico de revisão, não trabalho pendente — não
+  // fazem sentido ocupando espaço de destaque numa tela operacional. Ficam
+  // recolhidos atrás de um <details>, sem apagar a informação.
+  if (resolvidas.length) {
+    html += '<li class="df-pd-hist"><details><summary>Histórico de revisão — ' +
+      resolvidas.length + (resolvidas.length === 1 ? " item já resolvido" : " itens já resolvidos") +
+      '</summary><ol class="df-pds">' + resolvidas.map(itemPendenciaHtml).join("") + "</ol></details></li>";
+  }
+  return html;
 }
 function montarShell(root) {
   ROOT = root;

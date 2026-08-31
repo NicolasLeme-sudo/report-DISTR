@@ -631,6 +631,19 @@ tr.total > th, tr.total > td {
 #dfRoot .df-pd.df-pd-ok .df-pd-c {color:var(--df-green)}
 #dfRoot .df-pd.df-pd-open .df-pd-n {background:var(--df-tx2);color:var(--df-bg)}
 #dfRoot .df-pd.df-pd-open .df-pd-c {color:var(--df-tx2)}
+#dfRoot .df-pd-vazio {color:var(--df-tx2);font-size:13px;list-style:none}
+/* Histórico de revisão (itens já resolvidos) — recolhido por padrão, pra não
+   competir visualmente com pendência de verdade (ver pendenciasHtml() em
+   distr-fluxo.js). */
+#dfRoot li.df-pd-hist {list-style:none}
+#dfRoot .df-pd-hist > details > summary {
+  cursor:pointer; font-size:12.5px; color:var(--df-tx2); padding:10px 14px;
+  border:1px dashed var(--df-bd); border-radius:var(--df-r); user-select:none;
+}
+#dfRoot .df-pd-hist > details > summary:hover {color:var(--df-tx); border-color:var(--df-gold)}
+#dfRoot .df-pd-hist > details[open] > summary {border-radius:var(--df-r) var(--df-r) 0 0; border-bottom:none}
+#dfRoot .df-pd-hist > details > .df-pds {margin-top:0; border:1px dashed var(--df-bd); border-top:none;
+  border-radius:0 0 var(--df-r) var(--df-r); padding:10px}
 
 #dfRoot footer {margin-top:52px;padding-top:18px;border-top:1px solid var(--df-bd);color:var(--df-tx2);font-size:12.5px}
 
