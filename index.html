@@ -518,7 +518,7 @@ tr.total > th, tr.total > td {
    quanto virada de fase. */
 #dfRoot .df-lane-h {position:relative;display:flex;align-items:center;justify-content:center;
  margin:0 0 6px}
-#dfRoot .df-lane-h::before {content:'';position:absolute;left:0;right:0;top:50%;height:1px;background:var(--df-bd)}
+#dfRoot .df-lane-h::before {content:'';position:absolute;left:calc(-1 * var(--df-pad));right:calc(-1 * var(--df-pad));top:50%;height:1px;background:var(--df-bd)}
 #dfRoot .df-lane-h span {position:relative;background:var(--df-bg);padding:8px 22px;
  border:1.5px solid var(--df-gold);border-radius:999px;font-size:15px;font-weight:700;color:var(--df-tx)}
 #dfRoot .df-lane-sub {color:var(--df-tx2);font-size:13.5px;margin-top:12px;max-width:70ch;text-align:center}
@@ -574,7 +574,7 @@ tr.total > th, tr.total > td {
 /* divisor entre fases dentro da mesma lane */
 #dfRoot .df-phase-div {position:relative;width:100%;display:flex;align-items:center;justify-content:center;
  min-height:1px}
-#dfRoot .df-phase-div::before {content:'';position:absolute;left:0;right:0;top:50%;height:1px;background:var(--df-bd)}
+#dfRoot .df-phase-div::before {content:'';position:absolute;left:calc(-1 * var(--df-pad));right:calc(-1 * var(--df-pad));top:50%;height:1px;background:var(--df-bd)}
 #dfRoot .df-phase-div span {position:relative;background:var(--df-bg);padding:7px 20px;border:1.5px solid var(--df-gold);
  border-radius:999px;color:var(--df-gold);font-weight:700;font-size:11.5px;text-transform:uppercase;
  letter-spacing:.06em;white-space:nowrap}
@@ -774,7 +774,7 @@ tr.total > th, tr.total > td {
 
 /* botão "Editar fluxo" (admin) — flutuante para permanecer visível ao scrollar */
 #dfRoot .df-editbtn { position: fixed; right: 22px; top: 70px; z-index: 100;
- background: transparent; border: 1px solid var(--df-gold);
+ background: var(--df-card-2); border: 1px solid var(--df-gold);
  color: var(--df-gold); border-radius: 999px; padding: 8px 16px; font: inherit; font-size: 12.5px; font-weight: 700;
  cursor: pointer; }
 #dfRoot .df-editbtn:hover { background: var(--df-gold); color: #142032; }
