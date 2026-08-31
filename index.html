@@ -88,7 +88,8 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-  font-family: "Segoe UI", "Segoe UI Semibold", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Mesma pilha de fonte do Report E-commerce (idêntico, não só parecido). */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
   background: var(--bg); color: var(--text);
   font-size: 13px; line-height: 1.45;
   -webkit-font-smoothing: antialiased;
@@ -131,25 +132,46 @@ body {
 #app { display: none; }
 #app.ativo { display: block; }
 
+/* Sidebar — estrutura e nomes de classe IDÊNTICOS ao Report E-commerce
+   (.sidebar-brand/.menu-item/.icone/.badge-*), de propósito: as duas bases
+   ficam copiáveis uma da outra sem precisar traduzir nada. */
 .sidebar {
   position: fixed; left: 0; top: 0; bottom: 0; width: 210px;
   background: var(--bg-sidebar); border-right: 1px solid var(--border);
-  padding: 18px 0; overflow-y: auto; z-index: 20;
+  display: flex; flex-direction: column; padding: 0; overflow-y: auto; z-index: 20;
 }
-.sidebar-logo { padding: 0 18px 16px; }
-.sidebar-logo img { height: 26px; display: block; }
+.sidebar-brand {
+  padding: 20px 18px 16px; border-bottom: 1px solid rgba(255,255,255,.07);
+  display: flex; align-items: center; gap: 12px;
+}
+.sidebar-brand .mark {
+  width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
+  background: #132043; display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 14px; color: #132043;
+}
+.sidebar-brand .nome { font-size: 13px; font-weight: 700; color: #fff; line-height: 1.3; }
+.sidebar-brand .sub  { font-size: 10.5px; color: #7C9AB8; margin-top: 2px; }
 .sidebar-section-label {
-  font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
-  color: #7C8BA8; padding: 14px 18px 6px; font-weight: 600;
+  font-size: 9.5px; font-weight: 700; letter-spacing: .8px;
+  text-transform: uppercase; color: #4A6080; padding: 16px 18px 6px;
 }
-.sidebar-item {
-  display: block; padding: 8px 18px; color: #C3CEDD; font-size: 13px;
-  cursor: pointer; border-left: 3px solid transparent; user-select: none;
+.menu-item {
+  display: flex; align-items: center; gap: 10px; padding: 9px 18px; cursor: pointer;
+  font-size: 13px; font-weight: 500; color: #9BAAC4; border-left: 3px solid transparent;
+  transition: background .15s, color .15s; text-decoration: none; user-select: none;
 }
-.sidebar-item:hover { background: rgba(255,255,255,.05); }
-.sidebar-item.ativo {
-  background: rgba(41,122,223,.15); border-left-color: var(--accent); color: #fff;
-  font-weight: 600;
+.menu-item:hover { background: rgba(255,255,255,.05); color: #fff; }
+.menu-item.ativo {
+  background: rgba(41,122,223,.12); color: #fff; border-left-color: var(--accent); font-weight: 600;
+}
+.menu-item .icone { font-size: 15px; flex-shrink: 0; opacity: .8; }
+.menu-item .badge-em-construcao {
+  margin-left: auto; font-size: 9px; font-weight: 700;
+  background: rgba(201,143,29,.2); color: var(--amber); padding: 2px 6px; border-radius: 10px; letter-spacing: .3px;
+}
+.menu-item .badge-admin {
+  margin-left: auto; font-size: 9px; font-weight: 700;
+  background: rgba(178,58,46,.2); color: var(--red); padding: 2px 6px; border-radius: 10px;
 }
 
 .topbar {
@@ -186,6 +208,15 @@ body {
 .conteudo { margin-left: 210px; padding: 70px 22px 40px; }
 .secao { display: none; }
 .secao.ativa { display: block; }
+
+/* Placeholder (seções em construção) — mesmo padrão do Report E-commerce. */
+.placeholder {
+  background: var(--bg-card); border: 1px dashed var(--border);
+  border-radius: 12px; padding: 60px 40px; text-align: center; color: var(--text-muted);
+}
+.placeholder .icone-grande { font-size: 48px; margin-bottom: 16px; display: block; }
+.placeholder h3 { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+.placeholder p  { font-size: 13.5px; line-height: 1.6; max-width: 360px; margin: 0 auto; }
 
 /* ============================================================
    4) COMPONENTES — cards, títulos, KPIs
@@ -831,16 +862,40 @@ tr.total > th, tr.total > td {
 <!-- ======================= APP ======================= -->
 <div id="app">
   <nav class="sidebar">
-    <div class="sidebar-logo"><img src="favicon.png" alt="Vulcabras"></div>
+    <div class="sidebar-brand">
+      <div class="mark"><img src="favicon.png" alt="Logo" style="width:100%;height:100%;object-fit:contain;border-radius:inherit"></div>
+      <div>
+        <div class="nome">Report Distribuidora</div>
+        <div class="sub">Vulcabras · Extrema</div>
+      </div>
+    </div>
 
     <div class="sidebar-section-label">Operação</div>
-    <div class="sidebar-item ativo" id="menuEstoque" onclick="mostrarSecao('estoque')">Estoque</div>
+    <div class="menu-item" id="menuStart" onclick="mostrarSecao('start')">
+      <span class="icone">🏠</span> Start Inicial
+      <span class="badge-em-construcao">Em construção</span>
+    </div>
+    <div class="menu-item" id="menuRessuprimento" onclick="mostrarSecao('ressuprimento')">
+      <span class="icone">🔄</span> Ressuprimento - Estoque
+      <span class="badge-em-construcao">Em construção</span>
+    </div>
+
+    <div class="sidebar-section-label">Gestão</div>
+    <div class="menu-item ativo" id="menuEstoque" onclick="mostrarSecao('estoque')">
+      <span class="icone">⚖️</span> Balanço de Estoque
+      <span class="badge-admin">Gestão</span>
+    </div>
 
     <div class="sidebar-section-label">Processos</div>
-    <div class="sidebar-item" id="menuDistrFluxo" onclick="mostrarSecao('distr')">Fluxo de Processos - DISTR</div>
+    <div class="menu-item" id="menuDistrFluxo" onclick="mostrarSecao('distr')">
+      <span class="icone">🔀</span> Fluxo de Processos
+    </div>
 
     <div class="sidebar-section-label">Admin</div>
-    <div class="sidebar-item" id="menuAtualizar" onclick="mostrarSecao('atualizar')">Atualizar dados</div>
+    <div class="menu-item" id="menuAtualizar" onclick="mostrarSecao('atualizar')">
+      <span class="icone">⚙️</span> Abastecimento
+      <span class="badge-admin">Admin</span>
+    </div>
   </nav>
 
   <header class="topbar">
@@ -848,12 +903,31 @@ tr.total > th, tr.total > td {
     <div class="topbar-busca" id="topbarBusca"></div>
     <div class="topbar-dir">
       <div class="topbar-meta" id="metaAtualizacao">—</div>
+      <div class="topbar-meta" id="topbarPerfil"></div>
       <button class="btn-mini" onclick="alternarTema()">Tema</button>
       <button class="btn-mini" onclick="sair()">Sair</button>
     </div>
   </header>
 
   <main class="conteudo">
+    <section class="secao" id="secao-start">
+      <div class="placeholder">
+        <span class="icone-grande">🏠</span>
+        <h3>Start Inicial</h3>
+        <p>Painel inicial do report — indicadores que precisam de atenção
+          e a porta de entrada da operação. Em desenvolvimento.</p>
+      </div>
+    </section>
+
+    <section class="secao" id="secao-ressuprimento">
+      <div class="placeholder">
+        <span class="icone-grande">🔄</span>
+        <h3>Ressuprimento - Estoque</h3>
+        <p>Produtividade do ressuprimento e ocupação/capacidade do
+          estoque de PICKING. Em desenvolvimento.</p>
+      </div>
+    </section>
+
     <section class="secao ativa" id="secao-estoque">
       <div id="estoque-conteudo"><div class="loading-msg">Carregando snapshot…</div></div>
     </section>
@@ -978,9 +1052,11 @@ function corDoTema(nome) {
    NAVEGAÇÃO
    ============================================================ */
 const TITULOS = {
+  start: 'Start Inicial',
+  ressuprimento: 'Ressuprimento - Estoque',
   estoque: 'Balanço e Detalhamento de Estoque',
-  distr: 'Fluxo de Processos - DISTR',
-  atualizar: 'Atualizar dados',
+  distr: 'Fluxo de Processos',
+  atualizar: 'Abastecimento',
 };
 
 // Fluxo de Processos carrega uma vez só, na primeira vez que a seção abre —
@@ -989,14 +1065,19 @@ let distrFluxoCarregado = false;
 
 function mostrarSecao(secao) {
   // Trava de rota: esconder o item do menu não basta, porque a navegação
-  // pode ser forçada pelo console. Quem não é admin não entra na tela de
-  // ingestão nem manualmente. (A proteção do DADO é a RLS, no banco.)
+  // pode ser forçada pelo console. Quem não tem o papel certo não entra na
+  // seção manualmente. (A proteção do DADO é a RLS, no banco — ver
+  // esquema.sql, política ler_snapshots/ler_extracoes/ler_posicoes.)
   if (secao === 'atualizar' && perfilAtual !== 'admin') return;
+  if (secao === 'estoque' && perfilAtual !== 'gestor' && perfilAtual !== 'admin') return;
 
   document.querySelectorAll('.secao').forEach(function (s) { s.classList.remove('ativa'); });
   document.getElementById('secao-' + secao).classList.add('ativa');
-  document.querySelectorAll('.sidebar-item').forEach(function (i) { i.classList.remove('ativo'); });
-  const item = { estoque: 'menuEstoque', distr: 'menuDistrFluxo', atualizar: 'menuAtualizar' }[secao];
+  document.querySelectorAll('.menu-item').forEach(function (i) { i.classList.remove('ativo'); });
+  const item = {
+    start: 'menuStart', ressuprimento: 'menuRessuprimento', estoque: 'menuEstoque',
+    distr: 'menuDistrFluxo', atualizar: 'menuAtualizar',
+  }[secao];
   if (item) document.getElementById(item).classList.add('ativo');
   document.getElementById('tituloSecao').textContent = TITULOS[secao] || '';
   document.getElementById('topbarBusca').classList.toggle('ativa', secao === 'distr');
@@ -1008,10 +1089,14 @@ function mostrarSecao(secao) {
 }
 
 function aplicarVisibilidadeMenu() {
+  // Mesmo padrão do Report E-commerce: esconde o GRUPO inteiro (label +
+  // itens até o próximo label) por papel. "Gestão" abre pra gestor e admin;
+  // "Admin" só pra admin. "Operação" e "Processos" ficam sempre visíveis.
   document.querySelectorAll('.sidebar-section-label').forEach(function (label) {
     const nome = label.textContent.trim();
     let visivel = true;
-    if (nome === 'Admin') visivel = (perfilAtual === 'admin');
+    if (nome === 'Gestão') visivel = (perfilAtual === 'gestor' || perfilAtual === 'admin');
+    if (nome === 'Admin')  visivel = (perfilAtual === 'admin');
     label.style.display = visivel ? '' : 'none';
     let irmao = label.nextElementSibling;
     while (irmao && !irmao.classList.contains('sidebar-section-label')) {
@@ -1052,8 +1137,17 @@ async function aplicarSessao(session) {
   perfilAtual = perfil.role;
   document.getElementById('telaLogin').classList.remove('ativo');
   document.getElementById('app').classList.add('ativo');
+  document.getElementById('topbarPerfil').textContent =
+    perfilAtual === 'admin' ? '👑 Admin' : perfilAtual === 'gestor' ? '📊 Gestor' : '🛠️ Operador';
   aplicarVisibilidadeMenu();
-  await carregarEstoque();
+  // Balanço de Estoque virou exclusivo de gestor/admin (RLS já bloqueia o
+  // dado; isto só evita operador cair numa tela vazia/quebrada por padrão).
+  // Operador entra em Start Inicial — única página do grupo Operação hoje.
+  if (perfilAtual === 'gestor' || perfilAtual === 'admin') {
+    await carregarEstoque();
+  } else {
+    mostrarSecao('start');
+  }
 }
 
 document.getElementById('formLogin').addEventListener('submit', async function (ev) {
