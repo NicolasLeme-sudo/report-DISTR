@@ -1183,9 +1183,20 @@ function armazensTableHtml() {
   const rows = (DADOS.armazens || []).map(function (a, i) {
     const stKey = chaveStatusArmazem(a);
     const st = STAT_ARM[stKey];
+    // Fora do modo edição, cada campo era um <input> readonly — mas <input>
+    // não tem como quebrar linha: texto mais longo que a coluna simplesmente
+    // é cortado no meio, sem "..." nem nada indicando que falta texto
+    // (relatado: "Utilização" cortando "Vendável — armazém de mate|"). Em
+    // leitura vira <span> comum, que quebra linha normal dentro da célula;
+    // o <input> real só aparece em modo edição, onde uma linha só é aceitável
+    // porque é exatamente o que está sendo digitado ali na hora.
     const inputs = campos.map(function (c) {
-      return '<td><input class="df-armz-input" data-i="' + i + '" data-campo="' + c + '" ' +
-        'value="' + esc(a[c] || "") + '" readonly></td>';
+      const valor = a[c] || "";
+      const classeCod = c === "cod" ? " df-armz-cod" : "";
+      return EDIT_MODE
+        ? '<td><input class="df-armz-input' + classeCod + '" data-i="' + i + '" data-campo="' + c + '" ' +
+          'value="' + esc(valor) + '"></td>'
+        : '<td><span class="df-armz-texto' + classeCod + '">' + esc(valor) + '</span></td>';
     }).join("");
     const corPontinho = { disp: "--olive", bloq: "--red", anal: "--amber", pend: "--text-muted" };
     // Sem onclick inline aqui de propósito: funções deste arquivo vivem dentro
@@ -1237,7 +1248,10 @@ function selecionarStatusArmazem(i, statusKey) {
 function wireArmazensEdicao() {
   ROOT.addEventListener("input", function (e) {
     const el = e.target.closest(".df-armz-input");
-    if (!el || el.readOnly) return;
+    // .df-armz-input só existe no DOM em modo edição agora (fora dele a
+    // célula é <span>) — a checagem de EDIT_MODE aqui é defensiva, não o
+    // caminho normal.
+    if (!el || !EDIT_MODE) return;
     const i = parseInt(el.dataset.i, 10), campo = el.dataset.campo;
     if (!DADOS.armazens || !DADOS.armazens[i]) return;
     DADOS.armazens[i][campo] = el.value;
@@ -1259,15 +1273,15 @@ function wireArmazensEdicao() {
 }
 // Chamada por setEditMode(): liga/desliga a edição da tabela de Armazéns
 // junto com o resto da página (nenhum campo edita fora do modo edição).
-// Redesenha o bloco inteiro (e não só troca readOnly como antes) porque as
-// colunas Transf. e Status agora mudam de FORMA entre leitura e edição —
-// badge x checkbox, pílula estática x pílula com dropdown. Só é chamada no
-// clique do "Editar fluxo" e na troca de status, nunca durante digitação,
-// então não existe risco de roubar o foco de quem está preenchendo um campo.
+// Redesenha o bloco inteiro (não só troca readOnly como antes) porque TODAS
+// as colunas mudam de FORMA entre leitura e edição agora — Código/Utilização/
+// Responsável/Dono viram <span> x <input>, Transf. vira badge x checkbox,
+// Status vira pílula estática x pílula com dropdown. Só é chamada no clique
+// do "Editar fluxo" e na troca de status, nunca durante digitação, então não
+// existe risco de roubar o foco de quem está preenchendo um campo.
 function atualizarEdicaoArmazens() {
   const bloco = document.getElementById("df-armazens-bloco");
   if (bloco) bloco.innerHTML = armazensTableHtml();
-  ROOT.querySelectorAll(".df-armz-input").forEach(function (el) { el.readOnly = !EDIT_MODE; });
 }
 // Seção "Pendências" removida da tela a pedido do usuário (desnecessária no
 // cenário atual — eram só notas de revisão/QA, sem valor operacional). O

@@ -696,7 +696,12 @@ tr.total > th, tr.total > td {
   width: 100%; background: transparent; border: 1px solid transparent; border-radius: 5px;
   color: var(--df-tx); font: inherit; font-size: 13.5px; padding: 3px 5px; margin: -3px -5px;
 }
-#dfRoot .df-armz-input[data-campo="cod"] { color: var(--df-gold); font-weight: 700; }
+/* Fora do modo edição a célula é texto solto (.df-armz-texto), que quebra
+   linha normalmente dentro da <td> — diferente do <input> que ela substitui
+   ali, que não tem como quebrar e cortava texto mais longo que a coluna
+   ("Vendável — armazém de mate|" sem nem reticências, ver commit). */
+#dfRoot .df-armz-texto { display: block; white-space: normal; overflow-wrap: break-word; }
+#dfRoot .df-armz-cod { color: var(--df-gold); font-weight: 700; }
 #dfRoot.df-editando .df-armz-input:not([readonly]) {
   background: var(--df-card-2); border-color: var(--df-bd); cursor: text;
 }
