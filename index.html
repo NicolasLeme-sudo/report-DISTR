@@ -273,6 +273,10 @@ html { overflow-x: hidden; }
 .kpi .val.forte { font-weight: 700; font-size: 19px; }
 .kpi .sub { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
 
+/* Card de ocupação com rosca — Ressuprimento (Picking × Pulmão). */
+.kpi-ocup { display: flex; align-items: center; gap: 12px; }
+.donut-ocup text { fill: var(--text); font-size: 11px; font-weight: 700; font-family: inherit; }
+
 /* ============================================================
    5) FILTRO DE STATUS
    ============================================================ */
@@ -317,6 +321,8 @@ html { overflow-x: hidden; }
 .bar-item .trilho { background: var(--bg-input); border-radius: 3px; height: 16px; overflow: hidden; }
 .bar-item .preench { height: 100%; border-radius: 3px; }
 .bar-item .num { font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
+.bar-item.on .nome { color: var(--accent); }
+.bar-item.on .trilho { box-shadow: 0 0 0 1px var(--accent) inset; }
 
 /* ============================================================
    7) ÁRVORE ABRE/FECHA (Armazém › Marca › Família)
@@ -1088,6 +1094,10 @@ function fmtPct(v) {
   const n = Number(v) || 0;
   return n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
 }
+function fmtDec1(v) {
+  const n = Number(v) || 0;
+  return n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
 /* escapar() é pra TEXTO dentro do HTML. Este aqui é pra quando o valor cai
    DENTRO de um literal de string JS num atributo onclick="fn('valor')" — caso
    das duas linhas em linhaArvore() e no badge de categoria do armazém, que
@@ -1797,10 +1807,13 @@ function exportarCSV() {
    Só ITENS (qtd/%/SKUs) — nada de valor/custo aqui, isso já mora no Balanço
    de Estoque (README, "cada dado mora só num lugar"). O payload vem pronto
    do ingest-ressuprimento.js (pagina='ressuprimento' em dashboard_snapshots):
-   ocupação por zona, árvore Marca›Segmento por filtro, cruzamento de
-   ressuprimento por segmento e a lista de material em validação (FIFO).
+   ocupação por zona, árvore Marca›Segmento›Família por filtro (Picking/
+   Pulmão/Todos), a visão macro por segmento (cruza marcas), estatísticas de
+   SKU/endereço, cruzamento de ressuprimento por segmento e a lista de
+   material em validação (FIFO).
    ============================================================ */
-let filtroRessuprimento = 'picking';    // 'picking' | 'pulmao' — só afeta árvore/gráficos/export
+let filtroRessuprimento = 'picking';        // 'picking' | 'pulmao' | 'todos'
+let filtroSegmentoRessuprimento = null;     // null = Todos | um segmento_macro (ex. "TÊNIS")
 const abertosRessuprimento = new Set();
 let dataSnapshotRessuprimento = null;
 
@@ -1830,6 +1843,12 @@ async function carregarRessuprimento() {
 
 function alternarFiltroRessuprimento(f) {
   filtroRessuprimento = f;
+  filtroSegmentoRessuprimento = null; // trocar de arquivo reinicia o recorte por segmento
+  abertosRessuprimento.clear();
+  renderizarRessuprimento();
+}
+function alternarFiltroSegmentoRessuprimento(seg) {
+  filtroSegmentoRessuprimento = (filtroSegmentoRessuprimento === seg) ? null : seg;
   abertosRessuprimento.clear();
   renderizarRessuprimento();
 }
@@ -1837,10 +1856,49 @@ function alternarNoRessuprimento(chave) {
   if (abertosRessuprimento.has(chave)) abertosRessuprimento.delete(chave); else abertosRessuprimento.add(chave);
   renderizarRessuprimento();
 }
+
+/* Recorta a árvore Marca›Segmento›Família (já pronta por filtro Picking/
+   Pulmão/Todos) pelo segmento macro escolhido no filtro de segmento. Como
+   cada SKU pertence a exatamente uma família (chave vem de dim_familias),
+   somar qtd/skus das famílias do recorte é exato — nunca conta a mesma
+   unidade duas vezes. null = Todos, devolve a árvore inteira sem recortar. */
+function arvoreFiltradaRessuprimento(p) {
+  const arvore = (p && p['arvore_' + filtroRessuprimento]) || [];
+  const seg = filtroSegmentoRessuprimento;
+  if (!seg) return arvore;
+  const marcas = [];
+  arvore.forEach(function (m) {
+    const segmentos = [];
+    (m.segmentos || []).forEach(function (s) {
+      const familias = (s.familias || []).filter(function (f) { return f.segmento_macro === seg; });
+      if (!familias.length) return;
+      const qtd = familias.reduce(function (a, f) { return a + f.qtd; }, 0);
+      const skus = familias.reduce(function (a, f) { return a + f.skus; }, 0);
+      segmentos.push({ codigo: s.codigo, nome: s.nome, qtd: qtd, skus: skus, familias: familias });
+    });
+    if (!segmentos.length) return;
+    const qtdM = segmentos.reduce(function (a, s) { return a + s.qtd; }, 0);
+    const skusM = segmentos.reduce(function (a, s) { return a + s.skus; }, 0);
+    marcas.push({ codigo: m.codigo, nome: m.nome, qtd: qtdM, skus: skusM, segmentos: segmentos });
+  });
+  const total = marcas.reduce(function (a, m) { return a + m.qtd; }, 0);
+  marcas.forEach(function (m) {
+    m.pct = total > 0 ? m.qtd / total * 100 : 0;
+    m.segmentos.forEach(function (s) {
+      s.pct = m.qtd > 0 ? s.qtd / m.qtd * 100 : 0;
+      s.familias.forEach(function (f) { f.pct = s.qtd > 0 ? f.qtd / s.qtd * 100 : 0; });
+    });
+  });
+  return marcas.sort(function (a, b) { return b.qtd - a.qtd; });
+}
+
 function expandirTudoRessuprimento() {
-  const p = window._snapshotRessuprimento;
-  const arvore = filtroRessuprimento === 'picking' ? p.arvore_picking : p.arvore_pulmao;
-  (arvore || []).forEach(function (m) { abertosRessuprimento.add('M|' + m.codigo); });
+  const arvore = arvoreFiltradaRessuprimento(window._snapshotRessuprimento);
+  arvore.forEach(function (m) {
+    const chaveM = 'M|' + m.codigo;
+    abertosRessuprimento.add(chaveM);
+    (m.segmentos || []).forEach(function (s) { abertosRessuprimento.add(chaveM + '|S|' + s.codigo); });
+  });
   renderizarRessuprimento();
 }
 function recolherTudoRessuprimento() { abertosRessuprimento.clear(); renderizarRessuprimento(); }
@@ -1862,6 +1920,22 @@ function linhaArvoreRessuprimento(opts) {
 
 const ROT_BUCKET = { meia: 'Meia', vestuario: 'Vestuário', calcado: 'Calçado' };
 const ROT_ZONA = { pulmao: 'Pulmão', picking_meia: 'Picking — Meia', picking_vestuario: 'Picking — Vestuário', picking_calcado: 'Picking — Calçado' };
+const ROT_FILTRO_RESSUP = { picking: 'Picking', pulmao: 'Pulmão', todos: 'Todos' };
+
+/* Rosca de ocupação — SVG inline, sem lib (mesma filosofia dos outros
+   gráficos desta tela: string HTML pronta, sem canvas/lib externa). */
+function donutOcupacao(pctVal, cor) {
+  const tam = 56, r = 21, c = 2 * Math.PI * r;
+  const pv = Math.max(0, Math.min(100, pctVal || 0));
+  const off = c * (1 - pv / 100);
+  return '<svg width="' + tam + '" height="' + tam + '" viewBox="0 0 ' + tam + ' ' + tam + '" class="donut-ocup">' +
+    '<circle cx="' + (tam / 2) + '" cy="' + (tam / 2) + '" r="' + r + '" fill="none" stroke="var(--border)" stroke-width="6"/>' +
+    '<circle cx="' + (tam / 2) + '" cy="' + (tam / 2) + '" r="' + r + '" fill="none" stroke="' + cor + '" stroke-width="6" ' +
+      'stroke-linecap="round" stroke-dasharray="' + c.toFixed(2) + '" stroke-dashoffset="' + off.toFixed(2) + '" ' +
+      'transform="rotate(-90 ' + (tam / 2) + ' ' + (tam / 2) + ')"/>' +
+    '<text x="50%" y="52%" text-anchor="middle" dominant-baseline="middle">' + fmtPct(pv) + '</text>' +
+  '</svg>';
+}
 
 function renderizarRessuprimento(p) {
   p = p || window._snapshotRessuprimento;
@@ -1882,33 +1956,83 @@ function renderizarRessuprimento(p) {
       'essas unidades <strong>não entram</strong> em nenhum número desta tela até isso ser resolvido.</div>';
   }
 
-  /* ---------- ocupação × capacidade (sempre as 4 zonas, não filtra) ---------- */
-  function cardOcupacao(zona, dados) {
-    if (!dados) return '';
-    const cor = dados.capacidade_estimada ? 'var(--text)' : (dados.pct >= 95 ? 'var(--red)' : dados.pct >= 85 ? 'var(--amber)' : 'var(--olive)');
-    return '<div class="kpi"><div class="rot">' + ROT_ZONA[zona] + (dados.capacidade_estimada ? ' <span title="Capacidade ainda não validada com a gestão — usando ocupado × 1.2 como estimativa provisória">≈</span>' : '') + '</div>' +
-      '<div class="val forte" style="color:' + cor + '">' + fmtPct(dados.pct) + '</div>' +
-      '<div class="sub">' + fmtInt(dados.ocupado) + ' / ' + fmtInt(dados.capacidade) + ' posições' +
-        (dados.capacidade_estimada ? ' (estimada)' : '') + ' · ' + fmtInt(dados.disponivel) + ' livres</div></div>';
-  }
-  const oc = p.ocupacao || {};
-  const kpisOcupacao = '<div class="kpi-row">' +
-    cardOcupacao('pulmao', oc.pulmao) + cardOcupacao('picking_meia', oc.picking_meia) +
-    cardOcupacao('picking_vestuario', oc.picking_vestuario) + cardOcupacao('picking_calcado', oc.picking_calcado) +
-  '</div>';
-
-  /* ---------- filtro Picking/Pulmão ---------- */
+  /* ---------- filtro Picking/Pulmão/Todos ---------- */
   const chips = '<div class="filtros">' +
     '<span class="rot-filtro">Ver</span>' +
     '<span class="chip' + (filtroRessuprimento === 'picking' ? ' on' : '') + '" onclick="alternarFiltroRessuprimento(\'picking\')">Picking</span>' +
     '<span class="chip' + (filtroRessuprimento === 'pulmao' ? ' on' : '') + '" onclick="alternarFiltroRessuprimento(\'pulmao\')">Pulmão</span>' +
+    '<span class="chip' + (filtroRessuprimento === 'todos' ? ' on' : '') + '" onclick="alternarFiltroRessuprimento(\'todos\')">Todos</span>' +
   '</div>';
 
-  const arvoreAtual = (filtroRessuprimento === 'picking' ? p.arvore_picking : p.arvore_pulmao) || [];
+  /* ---------- filtro por segmento (macro, cruza marcas) — recorta tudo abaixo ---------- */
+  const segmentosDisponiveis = p['por_segmento_macro_' + filtroRessuprimento] || [];
+  let chipsSegmento = '<div class="filtros">' +
+    '<span class="rot-filtro">Segmento</span>' +
+    '<span class="chip' + (!filtroSegmentoRessuprimento ? ' on' : '') + '" onclick="alternarFiltroSegmentoRessuprimento(null)">Todos</span>';
+  segmentosDisponiveis.forEach(function (s) {
+    chipsSegmento += '<span class="chip' + (filtroSegmentoRessuprimento === s.codigo ? ' on' : '') +
+      '" onclick="alternarFiltroSegmentoRessuprimento(\'' + escaparJs(s.codigo) + '\')">' + escapar(s.nome) + '</span>';
+  });
+  chipsSegmento += '</div>';
+
+  /* ---------- cards de SKU/endereço — respeitam Picking/Pulmão/Todos + segmento ---------- */
+  const statsBase = p['stats_' + filtroRessuprimento] || { geral: {}, por_segmento: {} };
+  const stats = filtroSegmentoRessuprimento
+    ? (statsBase.por_segmento[filtroSegmentoRessuprimento] || { skus_distintos: 0, enderecos_distintos: 0, media_skus_por_endereco: 0 })
+    : (statsBase.geral || {});
+  const kpisSku = '<div class="kpi-row">' +
+    '<div class="kpi"><div class="rot">SKUs distintos com estoque</div>' +
+      '<div class="val forte">' + fmtInt(stats.skus_distintos) + '</div>' +
+      '<div class="sub">' + fmtInt(stats.enderecos_distintos) + ' endereços ocupados</div></div>' +
+    '<div class="kpi"><div class="rot">Média de SKUs por endereço</div>' +
+      '<div class="val forte">' + fmtDec1(stats.media_skus_por_endereco) + '</div>' +
+      '<div class="sub">diversidade de SKUs por posição</div></div>' +
+  '</div>';
+
+  /* ---------- ocupação × capacidade: Total + as 4 zonas — sempre global, não segue o filtro ----------
+     São zonas físicas (posições), não um recorte por produto — por isso ficam de fora dos filtros
+     acima, do jeito que já era antes de o filtro de segmento existir. */
+  function corOcupacao(dados) {
+    return dados.capacidade_estimada ? 'var(--text-muted)' : (dados.pct >= 95 ? 'var(--red)' : dados.pct >= 85 ? 'var(--amber)' : 'var(--olive)');
+  }
+  function cardOcupacao(rotulo, dados) {
+    if (!dados) return '';
+    const cor = corOcupacao(dados);
+    return '<div class="kpi kpi-ocup">' +
+      '<div class="donut-wrap" style="color:' + cor + '">' + donutOcupacao(dados.pct, cor) + '</div>' +
+      '<div>' +
+        '<div class="rot">' + rotulo + (dados.capacidade_estimada ? ' <span title="Capacidade ainda não validada com a gestão — usando ocupado × 1.2 como estimativa provisória">≈</span>' : '') + '</div>' +
+        '<div class="val forte" style="color:' + cor + '">' + fmtPct(dados.pct) + '</div>' +
+        '<div class="sub">' + fmtInt(dados.ocupado) + ' / ' + fmtInt(dados.capacidade) + ' pos.' +
+          (dados.capacidade_estimada ? ' (estimada)' : '') + ' · ' + fmtInt(dados.disponivel) + ' livres</div>' +
+      '</div>' +
+    '</div>';
+  }
+  const oc = p.ocupacao || {};
+  const zonas = [oc.pulmao, oc.picking_meia, oc.picking_vestuario, oc.picking_calcado].filter(Boolean);
+  let totalOcup = null;
+  if (zonas.length) {
+    totalOcup = {
+      ocupado: zonas.reduce(function (s, z) { return s + z.ocupado; }, 0),
+      capacidade: zonas.reduce(function (s, z) { return s + z.capacidade; }, 0),
+      disponivel: zonas.reduce(function (s, z) { return s + z.disponivel; }, 0),
+      capacidade_estimada: zonas.some(function (z) { return z.capacidade_estimada; }),
+    };
+    totalOcup.pct = totalOcup.capacidade > 0 ? totalOcup.ocupado / totalOcup.capacidade * 100 : 0;
+  }
+  const kpisOcupacao = '<div class="kpi-row">' +
+    cardOcupacao('Total', totalOcup) +
+    cardOcupacao(ROT_ZONA.pulmao, oc.pulmao) +
+    cardOcupacao(ROT_ZONA.picking_meia, oc.picking_meia) +
+    cardOcupacao(ROT_ZONA.picking_vestuario, oc.picking_vestuario) +
+    cardOcupacao(ROT_ZONA.picking_calcado, oc.picking_calcado) +
+  '</div>';
+
+  const arvoreAtual = arvoreFiltradaRessuprimento(p);
   const totalGeral = arvoreAtual.reduce(function (s, m) { return s + m.qtd; }, 0);
   const skusGeral = arvoreAtual.reduce(function (s, m) { return s + m.skus; }, 0);
 
-  /* ---------- gráfico 1 (topo): composição por marca ---------- */
+  /* ---------- gráfico 1 (topo): composição por marca — geral, soma todos os segmentos do recorte ---------- */
   let barraMarca = '', legendaMarca = '';
   arvoreAtual.forEach(function (m) {
     const perc = totalGeral > 0 ? m.qtd / totalGeral * 100 : 0;
@@ -1920,27 +2044,24 @@ function renderizarRessuprimento(p) {
       ' · ' + fmtInt(m.qtd) + ' (' + fmtPct(perc) + ')</span>';
   });
 
-  /* ---------- gráfico 2 (embaixo): composição por segmento ---------- */
-  const segmentosFlat = [];
-  arvoreAtual.forEach(function (m) {
-    (m.segmentos || []).forEach(function (s) {
-      segmentosFlat.push({ nome: s.nome, qtd: s.qtd, marcaCodigo: m.codigo });
-    });
-  });
-  segmentosFlat.sort(function (a, b) { return b.qtd - a.qtd; });
-  const maxSeg = segmentosFlat.reduce(function (mx, s) { return Math.max(mx, s.qtd); }, 0);
+  /* ---------- gráfico 2 (embaixo): composição por segmento — visão macro, cruza TODAS as marcas ----------
+     Não usa a árvore por marca (que já pode estar recortada por segmento) nem teria sentido recortar
+     pelo próprio filtro de segmento — vem pronto de por_segmento_macro_* (ingest-ressuprimento.js),
+     sempre a visão completa do filtro Picking/Pulmão/Todos, pra dar contexto de onde o recorte
+     escolhido acima se encaixa no todo. */
+  const totalSegmento = segmentosDisponiveis.reduce(function (s, x) { return s + x.qtd; }, 0);
+  const maxSeg = segmentosDisponiveis.reduce(function (mx, s) { return Math.max(mx, s.qtd); }, 0);
   let barrasSegmento = '';
-  segmentosFlat.forEach(function (s) {
-    const cor = 'var(' + (COR_MARCA[s.marcaCodigo] || '--gelo') + ')';
+  segmentosDisponiveis.forEach(function (s) {
     const larg = maxSeg > 0 ? s.qtd / maxSeg * 100 : 0;
-    barrasSegmento += '<div class="bar-item">' +
+    barrasSegmento += '<div class="bar-item' + (filtroSegmentoRessuprimento === s.codigo ? ' on' : '') + '">' +
       '<div class="nome">' + escapar(s.nome) + '</div>' +
-      '<div class="trilho"><div class="preench" style="width:' + larg + '%;background:' + cor + '"></div></div>' +
-      '<div class="num">' + fmtInt(s.qtd) + ' · ' + fmtPct(totalGeral ? s.qtd / totalGeral * 100 : 0) + '</div>' +
+      '<div class="trilho"><div class="preench" style="width:' + larg + '%;background:var(--accent)"></div></div>' +
+      '<div class="num">' + fmtInt(s.qtd) + ' · ' + fmtPct(totalSegmento ? s.qtd / totalSegmento * 100 : 0) + '</div>' +
     '</div>';
   });
 
-  /* ---------- árvore Marca › Segmento ---------- */
+  /* ---------- árvore Marca › Segmento › Família ---------- */
   let linhasArvore = '';
   arvoreAtual.forEach(function (m) {
     if (m.qtd === 0) return;
@@ -1955,9 +2076,20 @@ function renderizarRessuprimento(p) {
     if (!abertosRessuprimento.has(chaveM)) return;
     (m.segmentos || []).forEach(function (s) {
       if (s.qtd === 0) return;
+      const chaveS = chaveM + '|S|' + s.codigo;
       linhasArvore += linhaArvoreRessuprimento({
-        classe: 'n2', chave: chaveM + '|S|' + s.codigo, temFilhos: false, indent: 'ind-2',
+        classe: 'n2', chave: chaveS, temFilhos: (s.familias || []).length > 0, indent: 'ind-2',
         rotulo: escapar(s.nome), qtd: s.qtd, pct: s.pct, skus: s.skus,
+      });
+      if (!abertosRessuprimento.has(chaveS)) return;
+      (s.familias || []).forEach(function (f) {
+        if (f.qtd === 0) return;
+        linhasArvore += linhaArvoreRessuprimento({
+          classe: 'n3', chave: chaveS + '|F|' + f.codigo, temFilhos: false, indent: 'ind-3',
+          rotulo: '<span class="cod">' + escapar(f.codigo) + '</span>' + escapar(f.nome) +
+                  '<span class="seg">' + escapar(f.segmento) + '</span>',
+          qtd: f.qtd, pct: f.pct, skus: f.skus,
+        });
       });
     });
   });
@@ -1980,7 +2112,7 @@ function renderizarRessuprimento(p) {
 
   /* ---------- material em validação (só faz sentido olhando o Pulmão) ---------- */
   let blocoValidacao = '';
-  if (filtroRessuprimento === 'pulmao' && (p.validacao || []).length) {
+  if (filtroRessuprimento !== 'picking' && (p.validacao || []).length) {
     const totalValidacao = p.validacao.reduce(function (s, v) { return s + v.qtd; }, 0);
     const linhasValidacao = p.validacao.slice(0, 200).map(function (v) {
       return '<tr><th>' + escapar(v.artigo_codigo) + '/' + escapar(v.cor) + '/' + escapar(v.tamanho) + '</th>' +
@@ -2005,22 +2137,24 @@ function renderizarRessuprimento(p) {
   document.getElementById('ressuprimento-conteudo').innerHTML =
     avisos +
     '<div class="kicker">Ocupação de posições — Pulmão e Picking</div>' +
-    kpisOcupacao +
     chips +
+    chipsSegmento +
+    kpisSku +
+    kpisOcupacao +
     '<div class="grid2">' +
       '<div class="card">' +
-        '<div class="section-title">Composição por marca — ' + (filtroRessuprimento === 'picking' ? 'Picking' : 'Pulmão') + '</div>' +
+        '<div class="section-title">Composição por marca — ' + ROT_FILTRO_RESSUP[filtroRessuprimento] + '</div>' +
         '<div class="barra-comp">' + barraMarca + '</div>' +
         '<div class="legenda">' + legendaMarca + '</div>' +
       '</div>' +
       '<div class="card">' +
-        '<div class="section-title">Composição por segmento</div>' +
+        '<div class="section-title">Composição por segmento — ' + ROT_FILTRO_RESSUP[filtroRessuprimento] + '</div>' +
         '<div class="bar-list">' + barrasSegmento + '</div>' +
       '</div>' +
     '</div>' +
     '<div class="card">' +
       '<div class="section-title" style="display:flex;align-items:center;justify-content:space-between">' +
-        '<span>Detalhamento — Marca › Segmento (' + (filtroRessuprimento === 'picking' ? 'Picking' : 'Pulmão') + ')</span>' +
+        '<span>Detalhamento — Marca › Segmento › Família (' + ROT_FILTRO_RESSUP[filtroRessuprimento] + ')</span>' +
         '<span>' +
           '<button class="btn-mini" onclick="expandirTudoRessuprimento()">Expandir tudo</button> ' +
           '<button class="btn-mini" onclick="recolherTudoRessuprimento()">Recolher tudo</button> ' +
@@ -2034,7 +2168,7 @@ function renderizarRessuprimento(p) {
     '<div class="card">' +
       '<div class="section-title">Ressuprimento por segmento — Picking × apoio no Pulmão</div>' +
       '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
-        'Não depende do filtro acima — cruza os dois arquivos sempre. "Apoio no Pulmão" só conta ' +
+        'Não depende dos filtros acima — cruza os dois arquivos sempre. "Apoio no Pulmão" só conta ' +
         'material confiável (Pulmão real + reclassificado por segurança/capacidade, nunca sujeira de sistema).</p>' +
       '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
         '<th class="esq">Segmento</th><th>Saldo no Picking</th><th>Endereços c/ apoio</th>' +
@@ -2050,12 +2184,16 @@ function renderizarRessuprimento(p) {
 function exportarCSVRessuprimento() {
   const p = window._snapshotRessuprimento;
   if (!p) return;
-  const arvore = filtroRessuprimento === 'picking' ? p.arvore_picking : p.arvore_pulmao;
-  const linhas = [['Filtro', 'Nivel', 'Marca', 'Segmento', 'Qtd', 'SKUs']];
-  (arvore || []).forEach(function (m) {
-    linhas.push([filtroRessuprimento, '1', m.nome, '', m.qtd, m.skus]);
+  const arvore = arvoreFiltradaRessuprimento(p);
+  const rotSeg = filtroSegmentoRessuprimento || 'Todos';
+  const linhas = [['Filtro', 'Segmento (filtro)', 'Nivel', 'Marca', 'Segmento', 'Familia', 'Qtd', 'SKUs']];
+  arvore.forEach(function (m) {
+    linhas.push([filtroRessuprimento, rotSeg, '1', m.nome, '', '', m.qtd, m.skus]);
     (m.segmentos || []).forEach(function (s) {
-      linhas.push([filtroRessuprimento, '2', m.nome, s.nome, s.qtd, s.skus]);
+      linhas.push([filtroRessuprimento, rotSeg, '2', m.nome, s.nome, '', s.qtd, s.skus]);
+      (s.familias || []).forEach(function (f) {
+        linhas.push([filtroRessuprimento, rotSeg, '3', m.nome, s.nome, f.codigo + ' ' + f.nome, f.qtd, f.skus]);
+      });
     });
   });
   const csv = linhas.map(function (l) {

@@ -100,6 +100,28 @@ function classificarBucket(segmento, categoria) {
   return 'outros';
 }
 
+/* ============================================================================
+   SEGMENTO MACRO — visão "geral do negócio", sem marca.
+   ------------------------------------------------------------
+   O campo `segmento` de dim_familias já vem com a marca embutida no texto
+   (ex.: "TÊNIS MIZUNO", "TÊXTIL/ACESSÓRIOS OLYMPIKUS") porque é assim que a
+   operação organiza a família. Isso é ótimo pro detalhamento por marca, mas
+   pedido explícito da gestão foi ter uma visão de segmento que cruze TODAS as
+   marcas (ex.: "TÊNIS" somando Mizuno + Olympikus + Under Armour) — daí essa
+   função só remove o nome da marca (já resolvido por dim_familias pra essa
+   família) do texto do segmento. Sem lista de marcas fixa: usa a própria
+   marca já resolvida, então funciona pra qualquer marca cadastrada.
+   ============================================================================ */
+function segmentoMacro(segmento, marca) {
+  const seg = String(segmento || '').trim();
+  if (!seg) return '—';
+  const m = String(marca || '').trim();
+  if (!m) return seg;
+  const re = new RegExp('\\s*\\b' + m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b\\s*', 'gi');
+  const limpo = seg.replace(re, ' ').replace(/\s{2,}/g, ' ').trim();
+  return limpo || seg; // se sobrar vazio (ex.: segmento === marca, caso "MELISSA"), mantém o original
+}
+
 /* ----------------------------------------------------------------------------
    DATA "DD-MM-AA" do relatório (DT.CRI. do Pulmão) → Date em UTC.
    Usado só pra achar "o item mais antigo" dentro de um grupo — não entra em
@@ -262,7 +284,10 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
 
   picking.registros.forEach(function (r) {
     const fam = infoFamilia(r.familia_codigo);
-    const enriquecido = Object.assign({}, r, { marca: fam.marca, segmento: fam.segmento, categoria: fam.categoria });
+    const enriquecido = Object.assign({}, r, {
+      marca: fam.marca, segmento: fam.segmento, categoria: fam.categoria,
+      segmento_macro: segmentoMacro(fam.segmento, fam.marca),
+    });
 
     let reclass = RECLASSIFICA_PICKING_PARA_PULMAO[r.rua];
     if (r.rua === '81' && r.nivel === '2') reclass = { motivo: MOTIVO_81_02, apoioConfiavel: true };
@@ -283,6 +308,7 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     const classif = classificarRuaPulmao(r.rua);
     return Object.assign({}, r, {
       marca: fam.marca, segmento: fam.segmento, categoria: fam.categoria,
+      segmento_macro: segmentoMacro(fam.segmento, fam.marca),
       origem: 'pulmao', motivo: null,
       apoio_confiavel: classif.grupo === 'PULMAO',
       em_validacao: classif.grupo !== 'PULMAO',
@@ -323,19 +349,33 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     picking_calcado: zona('picking_calcado', posicoesOcupadas(pickingReal.filter(function (r) { return r.bucket === 'calcado'; }))),
   };
 
-  /* ---------- árvore Marca › Segmento, uma por filtro (picking / pulmão) ---------- */
+  /* ---------- árvore Marca › Segmento › Família, uma por filtro (picking / pulmão / todos) ----------
+     Mesma estrutura de 3 níveis do Balanço de Estoque (Armazém › Marca › Família — ver ingest.js), só
+     trocando o nível 1 (lá é Armazém, aqui é Marca): a Família carrega código + nome (=categoria do
+     gabarito, mesma regra do Balanço) e o segmento_macro pra render exatamente como lá ("103 VESTUÁRIO
+     MIZUNO" + selo "TÊXTIL/ACESSÓRIOS"). */
   function construirArvore(lista) {
     const porMarca = new Map();
     const totalQtd = lista.reduce(function (s, r) { return s + r.qtd; }, 0);
     lista.forEach(function (r) {
       if (!porMarca.has(r.marca)) porMarca.set(r.marca, { codigo: r.marca, nome: r.marca, qtd: 0, skus: new Set(), segmentos: new Map() });
       const nMarca = porMarca.get(r.marca);
+      const skuKey = chaveSku(r.artigo_codigo, r.cor, r.tamanho);
       nMarca.qtd += r.qtd;
-      nMarca.skus.add(chaveSku(r.artigo_codigo, r.cor, r.tamanho));
-      if (!nMarca.segmentos.has(r.segmento)) nMarca.segmentos.set(r.segmento, { codigo: r.segmento, nome: r.segmento, qtd: 0, skus: new Set() });
+      nMarca.skus.add(skuKey);
+      if (!nMarca.segmentos.has(r.segmento)) nMarca.segmentos.set(r.segmento, { codigo: r.segmento, nome: r.segmento, qtd: 0, skus: new Set(), familias: new Map() });
       const nSeg = nMarca.segmentos.get(r.segmento);
       nSeg.qtd += r.qtd;
-      nSeg.skus.add(chaveSku(r.artigo_codigo, r.cor, r.tamanho));
+      nSeg.skus.add(skuKey);
+      if (!nSeg.familias.has(r.familia_codigo)) {
+        nSeg.familias.set(r.familia_codigo, {
+          codigo: r.familia_codigo, nome: r.categoria || r.familia_codigo,
+          segmento: r.segmento, segmento_macro: r.segmento_macro, qtd: 0, skus: new Set(),
+        });
+      }
+      const nFam = nSeg.familias.get(r.familia_codigo);
+      nFam.qtd += r.qtd;
+      nFam.skus.add(skuKey);
     });
     return Array.from(porMarca.values())
       .sort(function (a, b) { return b.qtd - a.qtd; })
@@ -346,11 +386,74 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
           segmentos: Array.from(m.segmentos.values())
             .sort(function (a, b) { return b.qtd - a.qtd; })
             .map(function (s) {
-              return { codigo: s.codigo, nome: s.nome, qtd: s.qtd, skus: s.skus.size,
-                       pct: m.qtd > 0 ? (s.qtd / m.qtd) * 100 : 0 };
+              return {
+                codigo: s.codigo, nome: s.nome, qtd: s.qtd, skus: s.skus.size,
+                pct: m.qtd > 0 ? (s.qtd / m.qtd) * 100 : 0,
+                familias: Array.from(s.familias.values())
+                  .sort(function (a, b) { return b.qtd - a.qtd; })
+                  .map(function (f) {
+                    return {
+                      codigo: f.codigo, nome: f.nome, segmento: f.segmento, segmento_macro: f.segmento_macro,
+                      qtd: f.qtd, skus: f.skus.size, pct: s.qtd > 0 ? (f.qtd / s.qtd) * 100 : 0,
+                    };
+                  }),
+              };
             }),
         };
       });
+  }
+
+  /* ---------- composição por segmento — visão macro, cruza TODAS as marcas ----------
+     Independente da árvore acima: agrega direto por segmento_macro, ignorando marca —
+     é o "geral do negócio" pedido, sem misturar com a composição por marca. */
+  function construirPorSegmentoMacro(lista) {
+    const porSeg = new Map();
+    const totalQtd = lista.reduce(function (s, r) { return s + r.qtd; }, 0);
+    lista.forEach(function (r) {
+      const chave = r.segmento_macro;
+      if (!porSeg.has(chave)) porSeg.set(chave, { codigo: chave, nome: chave, qtd: 0, skus: new Set() });
+      const n = porSeg.get(chave);
+      n.qtd += r.qtd;
+      n.skus.add(chaveSku(r.artigo_codigo, r.cor, r.tamanho));
+    });
+    return Array.from(porSeg.values())
+      .sort(function (a, b) { return b.qtd - a.qtd; })
+      .map(function (s) {
+        return { codigo: s.codigo, nome: s.nome, qtd: s.qtd, skus: s.skus.size,
+                 pct: totalQtd > 0 ? (s.qtd / totalQtd) * 100 : 0 };
+      });
+  }
+
+  /* ---------- estatísticas gerais e por segmento_macro (SKUs distintos, endereços, média) ----------
+     Calculado aqui (não no navegador) porque "endereços distintos" e "média de SKUs por endereço"
+     dependem do dado bruto (rua/nível/box), e o mesmo endereço físico pode guardar famílias de
+     segmentos diferentes — somar contagens já agregadas por família daria overcount. */
+  function estatisticas(lista) {
+    function calcular(sub) {
+      const skus = new Set();
+      const skusPorEndereco = new Map(); // endereco -> Set de skus (pra tirar a média certa)
+      sub.forEach(function (r) {
+        if (r.qtd <= 0) return;
+        const sku = chaveSku(r.artigo_codigo, r.cor, r.tamanho);
+        const end = r.rua + '|' + r.nivel + '|' + r.box;
+        skus.add(sku);
+        if (!skusPorEndereco.has(end)) skusPorEndereco.set(end, new Set());
+        skusPorEndereco.get(end).add(sku);
+      });
+      let somaSkusPorEndereco = 0;
+      skusPorEndereco.forEach(function (s) { somaSkusPorEndereco += s.size; });
+      const nEnd = skusPorEndereco.size;
+      return {
+        skus_distintos: skus.size,
+        enderecos_distintos: nEnd,
+        media_skus_por_endereco: nEnd > 0 ? somaSkusPorEndereco / nEnd : 0,
+      };
+    }
+    const porSegmento = {};
+    Array.from(new Set(lista.map(function (r) { return r.segmento_macro; }))).forEach(function (seg) {
+      porSegmento[seg] = calcular(lista.filter(function (r) { return r.segmento_macro === seg; }));
+    });
+    return { geral: calcular(lista), por_segmento: porSegmento };
   }
 
   /* ---------- material em endereço de validação (sinalização de FIFO) ---------- */
@@ -414,6 +517,16 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     ocupacao: ocupacao,
     arvore_picking: construirArvore(pickingReal),
     arvore_pulmao: construirArvore(pulmaoTudo),
+    // "Todos": estoque completo da distribuidora — Picking + Pulmão somados (são
+    // espaços físicos diferentes, então a soma direta é o total real, sem risco
+    // de contar a mesma unidade duas vezes).
+    arvore_todos: construirArvore(pickingReal.concat(pulmaoTudo)),
+    por_segmento_macro_picking: construirPorSegmentoMacro(pickingReal),
+    por_segmento_macro_pulmao: construirPorSegmentoMacro(pulmaoTudo),
+    por_segmento_macro_todos: construirPorSegmentoMacro(pickingReal.concat(pulmaoTudo)),
+    stats_picking: estatisticas(pickingReal),
+    stats_pulmao: estatisticas(pulmaoTudo),
+    stats_todos: estatisticas(pickingReal.concat(pulmaoTudo)),
     validacao: Array.from(validacaoPorGrupo.values()).sort(function (a, b) {
       return (a.mais_antigo || '9999') < (b.mais_antigo || '9999') ? -1 : 1; // mais antigo primeiro (FIFO)
     }),
@@ -481,3 +594,4 @@ window.parsearPulmao = parsearPulmao;
 window.construirSnapshotRessuprimento = construirSnapshotRessuprimento;
 window.classificarRuaPulmao = classificarRuaPulmao;
 window.classificarBucket = classificarBucket;
+window.segmentoMacro = segmentoMacro;
