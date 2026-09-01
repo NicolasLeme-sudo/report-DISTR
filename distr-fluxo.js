@@ -74,7 +74,11 @@ function rect(fase, n, kind) {
   if (e.alerta) marks.push('<i class="df-mk df-mk-al" title="Pendência a decidir">?</i>');
   if (e.marco) marks.push('<i class="df-mk df-mk-ms" title="Marco do processo">★</i>');
   if (e.loop) marks.push('<i class="df-mk df-mk-lp" title="Reinjeta no ciclo">↺</i>');
-  if (e.novo) marks.push('<i class="df-mk df-mk-nv" title="Etapa nova nesta revisão">novo</i>');
+  // Selo "NOVO" e a seção "Etapa nova nesta revisão" no painel de detalhe
+  // (mais abaixo, em openDetail) foram tirados de vista a pedido do usuário
+  // -- "não temos necessidade disso no momento". O campo `e.novo`/`extraido_de`
+  // continua vindo no payload (é dado histórico da migração da planilha),
+  // só parou de ser desenhado. Reativar é só desfazer este comentário.
   const cls = kind === "gate" ? TIPO_CLS.gate : (TIPO_CLS[e.tipo] || "t-n");
   return (
     '<button type="button" class="df-box df-step ' + cls + '" id="' + bid +
@@ -498,11 +502,7 @@ function openDetail(fase, n) {
   let html =
     '<p class="df-dg-kick">Etapa ' + esc(d.n) + '</p><h3 class="df-dg-h">' + esc(d.nome) + "</h3>" +
     '<span class="df-dg-chip t-' + esc(d.tipo) + '">' + esc(TIPO_LBL[d.tipo] || d.tipo) + "</span>";
-  if (d.novo) {
-    html += '<div class="df-dg-sec df-dg-novo"><b>Etapa nova nesta revisão</b>' +
-      "<p>Antes fazia parte do texto corrido da etapa <b>" + esc(d.extraido_de) +
-      "</b>, sem número próprio — foi promovida para ficar visível e ter sua própria linha no fluxo.</p></div>";
-  } else if (d.n_orig) {
+  if (d.n_orig) {
     html += '<div class="df-dg-sec"><b>Número na planilha original</b><p>' + esc(d.n_orig) + "</p></div>";
   }
   if (d.nome !== d.nome_orig) {
@@ -1149,14 +1149,12 @@ function atualizarCabecalho() {
   const cnt = {};
   vals.forEach(function (d) { cnt[d.tipo] = (cnt[d.tipo] || 0) + 1; });
   const nFases = DADOS.lanes.reduce(function (s, l) { return s + l.fases.length; }, 0);
-  const nNovos = vals.filter(function (d) { return d.novo; }).length;
   const set = function (id, v) { const el = document.getElementById(id); if (el) el.textContent = v; };
   set("df-stat-total", vals.length);
   set("df-stat-fases", nFases);
   set("df-stat-normal", (cnt.principal || 0) + (cnt.seq || 0) + (cnt.gate || 0));
   set("df-stat-desvio", cnt.desvio || 0);
   set("df-stat-bif", cnt.bifurcacao || 0);
-  set("df-stat-novos", nNovos);
 }
 
 /* ============================================================
@@ -1310,7 +1308,6 @@ function montarShell(root) {
     '<div class="df-stat df-a"><b id="df-stat-normal">0</b><span>Caminho normal</span></div>' +
     '<div class="df-stat df-b"><b id="df-stat-desvio">0</b><span>Desvios / B.O.</span></div>' +
     '<div class="df-stat df-c"><b id="df-stat-bif">0</b><span>Bifurcações</span></div>' +
-    '<div class="df-stat"><b id="df-stat-novos">0</b><span>Etapas novas</span></div>' +
     "</div></header>" +
     '<div class="df-wrap">' +
     (isAdmin() ?

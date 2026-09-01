@@ -586,9 +586,8 @@ tr.total > th, tr.total > td {
 #dfRoot .df-mk-lp {border-color:var(--df-blue);color:var(--df-blue)}
 #dfRoot .df-mk:nth-of-type(2) {right:12px}
 #dfRoot .df-mk:nth-of-type(3) {right:30px}
-#dfRoot .df-mk-nv {position:absolute;top:-8px;left:-6px;right:auto;width:auto;height:auto;border-radius:4px;
- background:var(--df-blue);border:none;color:#fff;font-size:8px;font-weight:800;letter-spacing:.04em;
- text-transform:uppercase;padding:1.5px 5px}
+/* Selo ".df-mk-nv" ("NOVO") removido de vista a pedido do usuário — CSS
+   junto, já que nada mais o desenha (ver comentário em rect(), distr-fluxo.js). */
 
 /* divisor entre fases dentro da mesma lane */
 #dfRoot .df-phase-div {position:relative;width:100%;display:flex;align-items:center;justify-content:center;
@@ -744,7 +743,6 @@ tr.total > th, tr.total > td {
 #dfRoot .df-dg-sec ul {margin:0;padding-left:19px;display:grid;gap:6px}
 #dfRoot .df-dg-marco b {color:var(--df-green)} #dfRoot .df-dg-loop b {color:var(--df-blue)}
 #dfRoot .df-dg-bo b {color:var(--df-red)} #dfRoot .df-dg-alert b {color:var(--df-gold)}
-#dfRoot .df-dg-novo {border-left:2px solid var(--df-blue);padding-left:12px} #dfRoot .df-dg-novo b {color:var(--df-blue)}
 #dfRoot .df-dg-meta {display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0}
 #dfRoot .df-dg-meta dt {font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--df-tx2);font-weight:700}
 #dfRoot .df-dg-meta dd {margin:3px 0 0;font-size:13.5px}
