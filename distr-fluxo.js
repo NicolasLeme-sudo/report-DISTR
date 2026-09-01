@@ -232,10 +232,24 @@ function renderTudo() {
    ============================================================ */
 function rectOf(el, lane) {
   const r = el.getBoundingClientRect(), lr = lane.getBoundingClientRect();
+  // O <svg class="df-wires"> é filho de .df-lane e HERDA o zoom do pai (zoom,
+  // ao contrário de transform, é uma propriedade que cascateia pros
+  // descendentes). Isso significa que qualquer coordenada que a gente escreva
+  // no atributo "d" do path é multiplicada de novo pelo zoom da lane na hora
+  // de desenhar na tela — um dobro de escala que não existe em nenhum outro
+  // canto do CSS. Resultado medido com getScreenCTM(): sem essa divisão, o
+  // traçado caía a ~300px de onde a caixa realmente estava (bug relatado como
+  // "linhas bagunçadas, nada centralizado"). Dividindo pelo zoom ATUAL aqui,
+  // a multiplicação que o <svg> vai fazer sozinho na hora de renderizar
+  // CANCELA essa divisão e a linha acerta exatamente a posição real da caixa
+  // — não importa o que o zoom fizer por baixo dos panos com min-width/flex,
+  // porque r/lr já são a posição REAL medida na tela (drawLane roda depois
+  // de fitAll aplicar o zoom final, ver comentário em drawAll).
+  const zoom = parseFloat(getComputedStyle(lane).zoom) || 1;
   return {
-    x: r.left - lr.left, y: r.top - lr.top, w: r.width, h: r.height,
-    cx: r.left - lr.left + r.width / 2, cy: r.top - lr.top + r.height / 2,
-    right: r.left - lr.left + r.width, bottom: r.top - lr.top + r.height,
+    x: (r.left - lr.left) / zoom, y: (r.top - lr.top) / zoom, w: r.width / zoom, h: r.height / zoom,
+    cx: (r.left - lr.left + r.width / 2) / zoom, cy: (r.top - lr.top + r.height / 2) / zoom,
+    right: (r.left - lr.left + r.width) / zoom, bottom: (r.top - lr.top + r.height) / zoom,
   };
 }
 function ptSide(rc, side) {
@@ -368,16 +382,26 @@ function drawAll() {
   // em telas do app que não são o Fluxo de Processos — se a seção nunca foi
   // aberta (ROOT ainda não montado), não há nada pra desenhar.
   if (!ROOT) return;
-  // --df-vw precisa ser atualizado ANTES de desenhar as linhas: ele controla
-  // a largura "full bleed" do diagrama (regra .df-lane-fit), que recentraliza
-  // as colunas. Atualizado depois (como estava, dentro de fitAll), as linhas
-  // eram desenhadas contra a centralização ANTIGA e só a centralização em si
-  // mudava na sequência — caixas e linhas ficavam uma centralização inteira
-  // desalinhadas entre si. É o bug de "linhas saem do lugar" ao mudar o zoom
-  // do navegador ou redimensionar a janela (inclusive ao abrir um painel de
-  // detalhe, que pode mudar a presença da barra de rolagem).
+  // --df-vw precisa ser atualizado ANTES de tudo: ele controla a largura
+  // "full bleed" do diagrama (regra .df-lane-fit), que recentraliza as colunas.
   ROOT.style.setProperty("--df-vw", document.documentElement.clientWidth + "px");
-  zoomOff(); Array.prototype.slice.call(ROOT.querySelectorAll(".df-lane")).forEach(drawLane); fitAll();
+  // fitAll() ANTES de drawLane() — de propósito, na ordem inversa da versão
+  // anterior. fitAll() mede o tamanho NATURAL (zoom solto) e já aplica o zoom
+  // de ajuste final; só DEPOIS disso as linhas são desenhadas, lendo a
+  // posição REAL das caixas na tela (getBoundingClientRect no estado final),
+  // não uma predição de "zoom escala tudo uniformemente". Essa predição
+  // quebra quando .df-lane é esticado por min-width:100% (uma fase cabe
+  // sozinha, mas o conjunto da lane inteira não): o zoom recalcula o
+  // min-width contra o container, e a largura pós-zoom da lane NÃO é
+  // simplesmente largura-natural × zoom — confirmado com medição real via
+  // getScreenCTM(): o traçado ficava a ~300px de onde a caixa realmente
+  // estava (bug relatado como "linhas bagunçadas, nada centralizado").
+  // Medir DEPOIS do zoom aplicado elimina a predição: não importa o que o
+  // zoom faz por baixo dos panos, a linha sempre acerta onde a caixa
+  // REALMENTE está, porque lê a mesma verdade que os olhos veem.
+  fitAll();
+  void ROOT.offsetHeight; // força o reflow assentar antes de medir (ver comentário acima)
+  Array.prototype.slice.call(ROOT.querySelectorAll(".df-lane")).forEach(drawLane);
 }
 let _raf = null;
 function scheduleDraw() {
@@ -414,6 +438,17 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleDr
 // a cor muda sozinha via CSS var, mas os traçados SVG e o zoom de ajuste
 // precisam de um redesenho para recalcular contra o novo layout.
 new MutationObserver(scheduleDraw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-tema"] });
+// ResizeObserver no <html>: pega qualquer mudança de largura DISPONÍVEL que
+// não é "resize" da janela — a mais comum é a barra de rolagem vertical
+// aparecer/sumir conforme o conteúdo da página cresce (ex.: o subtítulo
+// "Última atualização" que só chega depois do fetch do snapshot, ou o menu
+// lateral). document.documentElement.clientWidth muda nesses casos, mas
+// window não dispara "resize" — e --df-vw só é reescrito num redesenho, então
+// sem isto o traçado das linhas ficava medido contra uma largura que já não
+// era mais a real, deixando o SVG desalinhado das caixas (bug relatado:
+// "linhas bagunçadas, nada centralizado" — reproduzido e confirmado por
+// medição: o path da linha ficava a ~300px de onde a caixa realmente estava).
+if (window.ResizeObserver) new ResizeObserver(scheduleDraw).observe(document.documentElement);
 
 /* ============================================================
    MODO EDIÇÃO — só existe a capacidade para admin (isAdmin()); mesmo admin

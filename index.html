@@ -93,7 +93,26 @@ body {
   background: var(--bg); color: var(--text);
   font-size: 13px; line-height: 1.45;
   -webkit-font-smoothing: antialiased;
+  /* As linhas "full-bleed" dos balões de setor/fase (.df-lane-h::before,
+     .df-phase-div::before) usam left/right:-9999px de propósito, pra
+     atravessar a tela inteira sem depender de medir a largura real do
+     container. Isso cria ~20.000px de largura de caixa só que
+     transbordando pra fora da tela — sem isto aqui, o navegador via
+     nisso "a página é mais larga que a tela" e cravava uma barra de
+     rolagem horizontal na PÁGINA TODA (sidebar incluída), que ao
+     arrastar não mostrava nada, porque não tem nada lá: é só a sobra
+     invisível da linha. overflow-x:hidden no body recorta o transbordo
+     sem afetar nenhum scroll horizontal de verdade — o único que existe
+     no app é interno ao diagrama (.df-lane-fit), que tem seu próprio
+     overflow-x:auto e não depende do body. */
+  overflow-x: hidden;
 }
+/* O elemento de rolagem real da página é o <html> (scrollingElement), não o
+   body -- então overflow-x:hidden só no body (acima) não impedia a barra de
+   rolagem horizontal: ela vinha do <html>, que sem esta regra ficava com
+   overflow-x:visible por padrão e deixava a sobra das linhas full-bleed
+   vazar pra fora da página inteira. */
+html { overflow-x: hidden; }
 
 /* ============================================================
    2) LOGIN

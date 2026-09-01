@@ -899,6 +899,11 @@ async function processarEstoque(supabaseClient, file, onProgresso) {
 /* Exposto no escopo global porque o index.html é single-file sem bundler —
    mesma abordagem do Report E-commerce. */
 window.processarEstoque = processarEstoque;
+// numeroBR também é usado pelo ingest-ressuprimento.js (mesma regra de
+// conversão de número, dois relatórios diferentes) -- exposto aqui pra não
+// duplicar a lógica que acabou de ganhar 17 casos de teste em ingest.js.
+window.numeroBR = numeroBR;
+window.lerTudoPaginado = lerTudoPaginado;
 window.parsearRelatorio = parsearRelatorio;
 window.detectarLayout = detectarLayout;
 window.parsearRelatorioEstoque = parsearRelatorioEstoque;
