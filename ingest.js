@@ -96,13 +96,53 @@ const COLUNAS_ARTIGO = {
    registro — o dashboard nunca vê "VS", vê valido=true / em_linha=true. */
 const STATUS_VALIDOS = ['VS', 'VN', 'IN', 'IS'];
 
-/* Número no formato brasileiro do relatório: "1.502,490" → 1502.49
-   Campo vazio vira 0 (e não NaN, que contaminaria toda a soma a jusante). */
+/* Número do relatório: "1.502,490" → 1502.49
+   Campo vazio vira 0 (e não NaN, que contaminaria toda a soma a jusante).
+
+   A versão antiga apagava TODO ponto e trocava a vírgula por ponto, o que
+   assume formato brasileiro sem verificar. Isso lia "1502.49" (decimal com
+   ponto) como 150249 — cem vezes maior, e SEM erro: o número errado entrava
+   no dashboard com cara de certo. O layout delimitado por "|" já mistura
+   convenções (a data dele vem em ISO, 2026-08-25), então "é sempre pt-BR"
+   não é garantia que se possa assumir de graça.
+
+   A regra usada aqui é a invariante do formato brasileiro: separador de
+   milhar é SEMPRE seguido de exatamente 3 dígitos. "1.502" é mil e
+   quinhentos e dois; "1.50" não existe em pt-BR — ali o ponto só pode ser
+   decimal. Isso resolve o caso ambíguo sem mexer em nada que já lia certo. */
 function numeroBR(texto) {
-  const s = String(texto || '').trim();
+  let s = String(texto == null ? '' : texto).trim();
   if (!s) return 0;
-  const n = Number(s.replace(/\./g, '').replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
+
+  let negativo = false;
+  if (/^-/.test(s)) { negativo = true; s = s.slice(1).trim(); }
+  // Alguns relatórios marcam negativo com o sinal DEPOIS do número ("1.234,50-").
+  if (/-$/.test(s)) { negativo = true; s = s.slice(0, -1).trim(); }
+
+  const temVirgula = s.indexOf(',') !== -1;
+  const ultimoPonto = s.lastIndexOf('.');
+  let normalizado;
+
+  if (temVirgula) {
+    // Quem vier depois — ponto ou vírgula — é o separador DECIMAL; o outro é
+    // milhar. Cobre pt-BR ("1.502,49") e en-US ("1,502.49") sem adivinhação.
+    normalizado = ultimoPonto > s.lastIndexOf(',')
+      ? s.replace(/,/g, '')                          // en-US
+      : s.replace(/\./g, '').replace(',', '.');      // pt-BR
+  } else if (ultimoPonto !== -1) {
+    const casas = s.length - ultimoPonto - 1;
+    // 3 casas após o ÚLTIMO ponto = milhar ("25.371" = 25371, "1.502.490").
+    // Qualquer outra quantidade = decimal ("1502.49", "1502.4905").
+    normalizado = casas === 3 ? s.replace(/\./g, '') : s.replace(/\./g, function (_, i) {
+      return i === ultimoPonto ? '.' : '';
+    });
+  } else {
+    normalizado = s;
+  }
+
+  const n = Number(normalizado);
+  if (!Number.isFinite(n)) return 0;
+  return negativo ? -n : n;
 }
 
 function fatia(linha, faixa) {
@@ -273,6 +313,17 @@ function normalizarCabecalho(s) {
     .replace(/\s+/g, ' ');
 }
 
+/* Colunas sem as quais o resultado fica ERRADO em silêncio, e não só pobre.
+   Se 'qtd' não é achada, toda linha lê quantidade 0, cai no descarte de "SKU
+   zerado" e o arquivo inteiro some — com a mensagem enganosa de que o admin
+   mandou o arquivo errado. Se 'valor' não é achada, pior: as quantidades
+   entram certas e o estoque aparece valendo R$ 0,00, sem erro nenhum.
+   'cor' e 'tamanho' entram na lista porque fazem parte da chave de dedup:
+   sem elas, tamanhos diferentes do mesmo artigo viram uma linha só.
+   Fora daqui ficam descricao/um/local — se sumirem, o relatório fica menos
+   descritivo, mas nenhum número muda. */
+const COLUNAS_PIPE_OBRIGATORIAS = ['st', 'em_linha', 'fam', 'artigo', 'cor', 'tamanho', 'armazem', 'qtd', 'preco', 'valor'];
+
 function mapearColunasPipe(linhaCabecalho) {
   const nomes = linhaCabecalho.split('|').map(normalizarCabecalho);
   const idx = {};
@@ -282,6 +333,21 @@ function mapearColunasPipe(linhaCabecalho) {
       if (aliases.indexOf(nomes[i]) !== -1) { idx[campo] = i; return; }
     }
   });
+
+  const faltando = COLUNAS_PIPE_OBRIGATORIAS.filter(function (c) { return idx[c] === undefined; });
+  if (faltando.length) {
+    // Falha nomeando a coluna e mostrando o que foi lido: quem recebe este erro
+    // é o admin no meio do upload, e ele precisa saber que o arquivo está certo
+    // e o que mudou foi um nome de coluna — não que mandou o arquivo errado.
+    throw new Error(
+      'Coluna' + (faltando.length > 1 ? 's' : '') + ' não encontrada' +
+      (faltando.length > 1 ? 's' : '') + ' no cabeçalho: ' +
+      faltando.map(function (c) { return '"' + ALIAS_COLUNAS_PIPE[c][0] + '"'; }).join(', ') +
+      '. O cabeçalho lido foi: ' + nomes.filter(Boolean).join(' | ') +
+      '. Se o sistema renomeou alguma coluna, o alias precisa ser adicionado em ' +
+      'ALIAS_COLUNAS_PIPE (ingest.js).'
+    );
+  }
   return idx;
 }
 
@@ -353,7 +419,16 @@ function parsearRelatorioPipe(textoArquivo) {
   }
 
   if (!idx) {
-    throw new Error('Cabeçalho de colunas não encontrado no arquivo delimitado por "|".');
+    // A linha de cabeçalho é achada procurando uma coluna chamada "St" — ela é
+    // a âncora, não só mais uma coluna. Por isso renomear "St" cai AQUI e não
+    // na validação de colunas obrigatórias: sem a âncora, nem chegamos a
+    // mapear. Dizer qual é a âncora poupa o admin de procurar às cegas.
+    throw new Error(
+      'Cabeçalho de colunas não encontrado no arquivo delimitado por "|". ' +
+      'A linha de cabeçalho é localizada por uma coluna chamada "St" — se o ' +
+      'sistema renomeou essa coluna, o alias precisa ser adicionado em ' +
+      'ALIAS_COLUNAS_PIPE e na detecção de cabeçalho (ingest.js).'
+    );
   }
 
   return {
@@ -399,7 +474,15 @@ function deduplicarPosicoes(registros) {
 
   registros.forEach(function (r) {
     const chave = [
-      r.valido, r.em_linha, r.familia_codigo, r.armazem,
+      // estabelecimento entra na chave: sem ele, o mesmo SKU no mesmo código
+      // de armazém vindo de dois estabelecimentos virava UMA linha, e o
+      // Object.assign abaixo guarda o estabelecimento do PRIMEIRO — o estoque
+      // do segundo era gravado como se fosse do primeiro. O total geral
+      // continuava certo, só a atribuição ficava errada, que é o tipo de
+      // divergência que ninguém acha. Hoje a extração é de um estabelecimento
+      // só e isto não muda nada; é a trava pra quando exportarem os dois
+      // juntos no mesmo arquivo.
+      r.valido, r.em_linha, r.familia_codigo, r.estabelecimento, r.armazem,
       r.artigo_codigo, r.cor, r.tamanho,
     ].join('\u0001');
 
