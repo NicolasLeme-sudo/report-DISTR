@@ -386,9 +386,27 @@ function drawAll() {
   // em telas do app que não são o Fluxo de Processos — se a seção nunca foi
   // aberta (ROOT ainda não montado), não há nada pra desenhar.
   if (!ROOT) return;
-  // --df-vw precisa ser atualizado ANTES de tudo: ele controla a largura
-  // "full bleed" do diagrama (regra .df-lane-fit), que recentraliza as colunas.
-  ROOT.style.setProperty("--df-vw", document.documentElement.clientWidth + "px");
+  // --df-vw (largura) e --df-vw-inicio (margin-left) precisam ser atualizados
+  // ANTES de tudo: controlam a largura "full bleed" do diagrama (regra
+  // .df-lane-fit). Calculados por MEDIÇÃO real, não por %: a página tem uma
+  // sidebar fixa (assimétrica -- só do lado esquerdo), então o truque
+  // genérico de breakout (margin-left:calc(50% - vw/2), que assume a página
+  // inteira simetricamente centralizada) sobrava sidebar de um lado sem
+  // nada do outro e descentralizava o diagrama (bug relatado). .df-wrap não
+  // tem nenhum ajuste de posição nele mesmo, então serve de referência
+  // estável pra achar onde .df-lane-fit cairia SEM margin nenhum.
+  const wrap = ROOT.querySelector(".df-wrap");
+  if (wrap) {
+    const wrapRect = wrap.getBoundingClientRect();
+    const wrapPadLeft = parseFloat(getComputedStyle(wrap).paddingLeft) || 0;
+    const naturalLeft = wrapRect.left + wrapPadLeft; // onde .df-lane-fit cairia com margin-left:0
+    const conteudo = document.querySelector(".conteudo");
+    const cRect = conteudo ? conteudo.getBoundingClientRect() : wrapRect;
+    const cPadLeft = conteudo ? parseFloat(getComputedStyle(conteudo).paddingLeft) || 0 : 0;
+    const desiredLeft = cRect.left + cPadLeft; // mesmo x onde o resto do texto da página começa
+    ROOT.style.setProperty("--df-vw", (window.innerWidth - desiredLeft) + "px");
+    ROOT.style.setProperty("--df-vw-inicio", (desiredLeft - naturalLeft) + "px");
+  }
   // fitAll() ANTES de drawLane() — de propósito, na ordem inversa da versão
   // anterior. fitAll() mede o tamanho NATURAL (zoom solto) e já aplica o zoom
   // de ajuste final; só DEPOIS disso as linhas são desenhadas, lendo a

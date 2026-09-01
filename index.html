@@ -541,11 +541,19 @@ tr.total > th, tr.total > td {
 #dfRoot .df-lane-h span {position:relative;background:var(--df-bg);padding:8px 22px;
  border:1.5px solid var(--df-gold);border-radius:999px;font-size:15px;font-weight:700;color:var(--df-gold)}
 #dfRoot .df-lane-sub {color:var(--df-tx2);font-size:13.5px;margin-top:12px;max-width:70ch;text-align:center}
-/* Área do diagrama: ocupa a largura inteira da janela (sai da coluna de texto de
-   1180px) e é reduzida por JS até caber — por isso não existe barra de rolagem aqui.
-   --df-vw é escrito pelo JS com a largura real da janela (sem contar a barra da página),
-   evitando o 100vw, que causaria rolagem horizontal na página inteira. */
-#dfRoot .df-lane-fit {--df-pad:24px;width:var(--df-vw,100%);margin-left:calc(50% - var(--df-vw,100%)/2);
+/* Área do diagrama: ocupa a largura inteira da janela DISPONÍVEL (sai da
+   coluna de texto de 1180px) e é reduzida por JS até caber.
+   --df-vw (largura) e --df-vw-inicio (posição do início, em px) são escritos
+   pelo JS medindo de verdade onde a área de conteúdo começa NESTA tela —
+   não dá pra usar o truque genérico de "breakout" (margin-left:calc(50% -
+   vw/2)) porque ele assume a página inteira centralizada, sem sidebar.
+   Com a sidebar fixa de 260px a página não é simétrica: aquele cálculo
+   centralizava o diagrama relativo à LARGURA TOTAL da janela (sidebar
+   incluída), sobrando ~130px de sidebar de um lado sem nada do outro —
+   bug relatado como "os fluxos não estão centralizados". margin-left aqui
+   vira um valor em px já calculado (não um calc%), então funciona igual
+   não importa a largura da sidebar. */
+#dfRoot .df-lane-fit {--df-pad:24px;width:var(--df-vw,100%);margin-left:var(--df-vw-inicio,0px);
  padding:0 var(--df-pad);margin-top:26px;text-align:center;
  overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;
  scrollbar-width:none;-webkit-overflow-scrolling:touch}
