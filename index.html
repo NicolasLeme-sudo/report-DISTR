@@ -752,6 +752,15 @@ tr.total > th, tr.total > td {
 
 #dfRoot .df-hit {outline:2px solid var(--df-gold);outline-offset:2px}
 #dfRoot .df-dim {opacity:.28}
+/* Pulso ao apertar Enter na busca — só na etapa que o scrollIntoView acabou
+   de visitar, pra diferenciar "achei 5" (contorno dourado parado, .df-hit)
+   de "é essa aqui que você tá vendo agora" (pulsa e some sozinho). */
+#dfRoot .df-hit-atual {animation: df-pulso-busca 1.1s ease-out}
+@keyframes df-pulso-busca {
+  0%   {outline-color: var(--df-gold); box-shadow: 0 0 0 0 rgba(246,189,0,.55)}
+  60%  {box-shadow: 0 0 0 14px rgba(246,189,0,0)}
+  100% {box-shadow: 0 0 0 14px rgba(246,189,0,0)}
+}
 
 @media (prefers-reduced-motion:reduce){#dfRoot * {transition:none!important}}
 #dfRoot .df-drag-hint {display:none;font-size:11.5px;color:var(--df-gold);margin-top:8px;align-items:center;gap:6px}

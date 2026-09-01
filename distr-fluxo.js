@@ -544,9 +544,13 @@ function openDetail(fase, n) {
 function wireSearch() {
   const q = document.getElementById("df-q"), qhint = document.getElementById("df-qhint");
   if (!q) return;
+  // matches/idx: a lista de etapas batidas pela busca ATUAL e qual delas o
+  // Enter vai visitar da próxima vez — Enter repetido cicla pelas seguintes,
+  // voltando pro início depois da última (busca de verdade, não só filtro).
+  let matches = [], idx = 0;
   q.addEventListener("input", function () {
     const t = q.value.trim().toLowerCase();
-    let n = 0;
+    matches = []; idx = 0;
     ROOT.querySelectorAll(".df-step[data-n]").forEach(function (b) {
       const key = nodeKey(b.getAttribute("data-fase"), b.getAttribute("data-n")), d = DADOS.nos[key];
       if (!d) return;
@@ -554,9 +558,28 @@ function wireSearch() {
       const hit = t && hay.indexOf(t) > -1;
       b.classList.toggle("df-hit", hit);
       b.classList.toggle("df-dim", !!t && !hit);
-      if (hit) n++;
+      if (hit) matches.push(b);
     });
+    const n = matches.length;
     qhint.textContent = t ? n + " etapa" + (n === 1 ? "" : "s") + " encontrada" + (n === 1 ? "" : "s") : "";
+  });
+  // Enter leva até a etapa: sem isso, achar 1 resultado num fluxo de 60+
+  // etapas ainda obrigava a rolar a página inteira até achar o retângulo com
+  // o contorno dourado. scrollIntoView cuida sozinho de qualquer combinação
+  // de scroll (rolagem vertical da página + rolagem horizontal interna do
+  // diagrama em .df-lane-fit), então funciona igual não importa o zoom
+  // automático nem quantas fases tem antes da etapa buscada.
+  q.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" || !matches.length) return;
+    e.preventDefault();
+    const alvo = matches[idx % matches.length];
+    idx = (idx + 1) % matches.length;
+    alvo.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    // pulso mais forte só na etapa visitada agora, pra diferenciar de "achei
+    // 5, essa é a que você tá vendo" quando há mais de um resultado.
+    alvo.classList.remove("df-hit-atual");
+    void alvo.offsetWidth; // reinicia a animação se o Enter for apertado de novo na mesma etapa
+    alvo.classList.add("df-hit-atual");
   });
 }
 
