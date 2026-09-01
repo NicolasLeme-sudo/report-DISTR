@@ -681,6 +681,14 @@ tr.total > th, tr.total > td {
 #dfRoot th {background:var(--df-bg-deep);text-align:left;padding:10px 13px;font-size:11px;letter-spacing:.08em;
  text-transform:uppercase;color:var(--df-tx2);border-bottom:1px solid var(--df-bd);white-space:nowrap}
 #dfRoot td {padding:10px 13px;border-bottom:1px solid var(--df-bd);vertical-align:top}
+/* Tabela de Armazéns (a única <table> em #dfRoot): Código/Transf./Status têm
+   conteúdo curto e fixo ("AC190", "T+ / T−", "ATIVO ▾") — sem largura própria
+   eles disputavam espaço de igual pra igual com Utilização, que é a coluna
+   com o texto mais longo, e cortava no meio sem aviso. Encolhendo as curtas,
+   Utilização ganha o espaço de volta e cabe numa linha só no caso comum. */
+#dfRoot table th:nth-child(1), #dfRoot table td:nth-child(1) { width: 80px; }
+#dfRoot table th:nth-child(5), #dfRoot table td:nth-child(5) { width: 84px; }
+#dfRoot table th:nth-child(6), #dfRoot table td:nth-child(6) { width: 108px; }
 #dfRoot tr:last-child td {border-bottom:0}
 /* Status do armazém reaproveita as classes .badge/.status-cell/.status-toggle/
    .status-dropdown/.status-opt já usadas na tela de Estoque (definidas mais
