@@ -1008,11 +1008,11 @@ tr.total > th, tr.total > td {
           um com o outro (ocupação, reclassificação de ruas e o apoio de ressuprimento por segmento).
         </p>
         <div class="dropzone" id="dropzonePicking">
-          Clique para selecionar o .txt de <strong>Picking</strong>
+          <span id="dropzonePickingTexto">Clique para selecionar o .txt de <strong>Picking</strong></span>
           <input type="file" id="inputPicking" accept=".txt,text/plain" style="display:none">
         </div>
         <div class="dropzone" id="dropzonePulmao" style="margin-top:10px">
-          Clique para selecionar o .txt de <strong>Pulmão</strong>
+          <span id="dropzonePulmaoTexto">Clique para selecionar o .txt de <strong>Pulmão</strong></span>
           <input type="file" id="inputPulmao" accept=".txt,text/plain" style="display:none">
         </div>
         <button class="btn-mini" id="btnProcessarRessuprimento" style="margin-top:12px" disabled>
@@ -2099,9 +2099,14 @@ let arquivoPickingSelecionado = null, arquivoPulmaoSelecionado = null;
 function atualizarEstadoDropzoneRessuprimento() {
   const btn = document.getElementById('btnProcessarRessuprimento');
   btn.disabled = !(arquivoPickingSelecionado && arquivoPulmaoSelecionado);
-  document.getElementById('dropzonePicking').textContent = arquivoPickingSelecionado
+  // Atualiza só o <span> do rótulo, nunca o <div> da dropzone inteiro: o
+  // <input type="file"> mora DENTRO desse mesmo <div>, e escrever no
+  // .textContent do pai apaga os filhos — o input sumia do DOM depois de
+  // escolher o 1º arquivo, e o clique na dropzone (ou na do outro arquivo)
+  // quebrava com "Cannot read properties of null (reading 'click')".
+  document.getElementById('dropzonePickingTexto').textContent = arquivoPickingSelecionado
     ? '✓ ' + arquivoPickingSelecionado.name : 'Clique para selecionar o .txt de Picking';
-  document.getElementById('dropzonePulmao').textContent = arquivoPulmaoSelecionado
+  document.getElementById('dropzonePulmaoTexto').textContent = arquivoPulmaoSelecionado
     ? '✓ ' + arquivoPulmaoSelecionado.name : 'Clique para selecionar o .txt de Pulmão';
 }
 document.getElementById('dropzonePicking').addEventListener('click', function () {
