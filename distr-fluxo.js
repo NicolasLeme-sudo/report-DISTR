@@ -1155,12 +1155,27 @@ function armazensTableHtml() {
       return '<button type="button" class="status-opt" data-i="' + i + '" data-status="' + k + '">' +
         '<i class="dot" style="background:var(' + corPontinho[bOpt[1]] + ')"></i>' + bOpt[0] + "</button>";
     }).join("");
-    const checkAttrs = (a.tt ? "checked " : "") + "disabled";
+    // Transf. (faz T+/T−): fora do modo edição isto é INFORMAÇÃO, não controle.
+    // Um checkbox desabilitado é quase ilegível — marcado e desmarcado ficam
+    // com o mesmo peso visual —, então em leitura vira badge com cor e texto
+    // ("T+ / T−" verde = faz, "—" apagado = não faz). O checkbox de verdade só
+    // aparece pra quem está editando, que é quem precisa clicar nele.
+    const fazTT = !!a.tt;
+    const celTransf = EDIT_MODE
+      ? '<label class="df-armz-check"><input type="checkbox" class="df-armz-check-input" data-i="' +
+        i + '"' + (fazTT ? " checked" : "") + "> T+ / T−</label>"
+      : '<span class="badge ' + (fazTT ? "disp" : "pend") + '">' + (fazTT ? "T+ / T−" : "—") + "</span>";
+    // Mesma regra pro status: fora do modo edição a pílula não abre dropdown
+    // (antes abria pra qualquer perfil e o clique não fazia nada, porque
+    // selecionarStatusArmazem() barra quem não está editando — menu que não
+    // faz nada é pior que menu que não existe).
+    const celStatus = EDIT_MODE
+      ? '<span class="status-cell"><span class="badge ' + st[1] + ' status-toggle" onclick="alternarMenuCategoria(this)">' +
+        st[0] + '<span class="status-caret">▼</span></span><div class="status-dropdown">' + opts + "</div></span>"
+      : '<span class="badge ' + st[1] + '">' + st[0] + "</span>";
     return "<tr>" + inputs +
-      '<td><label class="df-armz-check"><input type="checkbox" class="df-armz-check-input" data-i="' +
-        i + '" ' + checkAttrs + "> T+ / T−</label></td>" +
-      '<td><span class="status-cell"><span class="badge ' + st[1] + ' status-toggle" onclick="alternarMenuCategoria(this)">' +
-        st[0] + '<span class="status-caret">▼</span></span><div class="status-dropdown">' + opts + "</div></span></td>" +
+      "<td>" + celTransf + "</td>" +
+      "<td>" + celStatus + "</td>" +
       "</tr>";
   }).join("");
   return '<div class="df-tw"><table><thead><tr><th>Código</th><th>Utilização</th><th>Responsável</th>' +
@@ -1171,9 +1186,8 @@ function selecionarStatusArmazem(i, statusKey) {
   if (!EDIT_MODE || !DADOS.armazens || !DADOS.armazens[i]) return;
   DADOS.armazens[i].status = statusKey;
   marcarEditado();
-  const bloco = document.getElementById("df-armazens-bloco");
-  if (bloco) bloco.innerHTML = armazensTableHtml();
-  atualizarEdicaoArmazens();
+  atualizarEdicaoArmazens(); // já redesenha o bloco
+
 }
 function wireArmazensEdicao() {
   ROOT.addEventListener("input", function (e) {
@@ -1186,7 +1200,7 @@ function wireArmazensEdicao() {
   });
   ROOT.addEventListener("change", function (e) {
     const el = e.target.closest(".df-armz-check-input");
-    if (!el || el.disabled) return;
+    if (!el || !EDIT_MODE) return;
     const i = parseInt(el.dataset.i, 10);
     if (!DADOS.armazens || !DADOS.armazens[i]) return;
     DADOS.armazens[i].tt = el.checked;
@@ -1200,9 +1214,15 @@ function wireArmazensEdicao() {
 }
 // Chamada por setEditMode(): liga/desliga a edição da tabela de Armazéns
 // junto com o resto da página (nenhum campo edita fora do modo edição).
+// Redesenha o bloco inteiro (e não só troca readOnly como antes) porque as
+// colunas Transf. e Status agora mudam de FORMA entre leitura e edição —
+// badge x checkbox, pílula estática x pílula com dropdown. Só é chamada no
+// clique do "Editar fluxo" e na troca de status, nunca durante digitação,
+// então não existe risco de roubar o foco de quem está preenchendo um campo.
 function atualizarEdicaoArmazens() {
+  const bloco = document.getElementById("df-armazens-bloco");
+  if (bloco) bloco.innerHTML = armazensTableHtml();
   ROOT.querySelectorAll(".df-armz-input").forEach(function (el) { el.readOnly = !EDIT_MODE; });
-  ROOT.querySelectorAll(".df-armz-check-input").forEach(function (el) { el.disabled = !EDIT_MODE; });
 }
 // Seção "Pendências" removida da tela a pedido do usuário (desnecessária no
 // cenário atual — eram só notas de revisão/QA, sem valor operacional). O
@@ -1389,7 +1409,18 @@ async function iniciar(rootId, supabaseClient, perfilAtual) {
   wireArmazensEdicao();
   atualizarEdicaoArmazens();
   renderTudo();
+  // A seção carrega sob demanda: quando mostrarSecao('distr') rodou, o
+  // snapshot ainda não existia e a topbar ficou sem data. Agora que existe,
+  // reescreve o subtítulo — mas só se o usuário ainda estiver no Fluxo (ele
+  // pode ter trocado de seção enquanto o await acima resolvia).
+  if (typeof global.atualizarSubtituloSecao === "function") global.atualizarSubtituloSecao("distr");
 }
 
-global.DistrFluxo = { iniciar: iniciar };
+// dataSnapshot(): o index.html usa isto pra escrever "Última atualização" na
+// topbar quando a seção Fluxo de Processos está aberta. Retorna null enquanto
+// o snapshot não carregou (a seção carrega sob demanda, na primeira visita).
+global.DistrFluxo = {
+  iniciar: iniciar,
+  dataSnapshot: function () { return SNAP_INFO ? SNAP_INFO.gerado_em : null; },
+};
 })(window);

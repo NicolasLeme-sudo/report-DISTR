@@ -1057,11 +1057,32 @@ function corDoTema(nome) {
    ============================================================ */
 const TITULOS = {
   start: 'Start Inicial',
-  ressuprimento: 'Ressuprimento - Estoque',
+  ressuprimento: 'Ressuprimento',
   estoque: 'Balanço e Detalhamento de Estoque',
   distr: 'Fluxo de Processos',
   atualizar: 'Abastecimento',
 };
+
+// "Última atualização" na topbar é POR SEÇÃO: cada tela lê um snapshot
+// diferente (Estoque e Fluxo de Processos têm datas próprias) e as telas em
+// construção não leem nenhum. Antes só o Estoque escrevia aqui e o texto
+// ficava colado na topbar ao trocar de seção, datando a tela errada.
+let dataSnapshotEstoque = null;
+function atualizarSubtituloSecao(secao) {
+  const el = document.getElementById('topbarSub');
+  if (!el) return;
+  // Só escreve se a seção pedida for a que está na tela. As duas telas com
+  // dado carregam por await e chamam isto quando terminam — se o usuário
+  // trocou de seção nesse meio-tempo, a data que chegou é de uma tela que
+  // ele não está mais vendo.
+  const alvo = document.getElementById('secao-' + secao);
+  if (!alvo || !alvo.classList.contains('ativa')) return;
+  let iso = null;
+  if (secao === 'estoque') iso = dataSnapshotEstoque;
+  else if (secao === 'distr') iso = window.DistrFluxo ? DistrFluxo.dataSnapshot() : null;
+  el.textContent = iso ? 'Última atualização: ' + formatarDataHora(iso) : '';
+}
+window.atualizarSubtituloSecao = atualizarSubtituloSecao;
 
 // Fluxo de Processos carrega uma vez só, na primeira vez que a seção abre —
 // mesmo padrão do restante do app (ver carregarEstoque, chamado 1x no login).
@@ -1084,6 +1105,7 @@ function mostrarSecao(secao) {
   }[secao];
   if (item) document.getElementById(item).classList.add('ativo');
   document.getElementById('tituloSecao').textContent = TITULOS[secao] || '';
+  atualizarSubtituloSecao(secao);
   document.getElementById('topbarBusca').classList.toggle('ativa', secao === 'distr');
 
   if (secao === 'distr' && !distrFluxoCarregado) {
@@ -1200,8 +1222,8 @@ async function carregarEstoque() {
     return;
   }
 
-  document.getElementById('topbarSub').textContent =
-    'Última atualização: ' + formatarDataHora(data[0].gerado_em);
+  dataSnapshotEstoque = data[0].gerado_em;
+  atualizarSubtituloSecao('estoque');
   window._snapshot = data[0].payload;
   await aplicarCategoriasArmazemVivas(window._snapshot);
   renderizarEstoque(window._snapshot);
