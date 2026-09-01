@@ -926,7 +926,6 @@ tr.total > th, tr.total > td {
     </div>
     <div class="menu-item" id="menuRessuprimento" onclick="mostrarSecao('ressuprimento')">
       <span class="icone">📦</span> Ressuprimento
-      <span class="badge-em-construcao">Em construção</span>
     </div>
 
     <div class="sidebar-section-label">Gestão</div>
@@ -971,12 +970,7 @@ tr.total > th, tr.total > td {
     </section>
 
     <section class="secao" id="secao-ressuprimento">
-      <div class="placeholder">
-        <span class="icone-grande">📦</span>
-        <h3>Ressuprimento - Estoque</h3>
-        <p>Produtividade do ressuprimento e ocupação/capacidade do
-          estoque de PICKING. Em desenvolvimento.</p>
-      </div>
+      <div id="ressuprimento-conteudo"><div class="loading-msg">Carregando snapshot…</div></div>
     </section>
 
     <section class="secao ativa" id="secao-estoque">
@@ -1005,11 +999,33 @@ tr.total > th, tr.total > td {
         </div>
         <div class="log" id="logIngest"></div>
       </div>
+
+      <div class="section-title" style="margin-top:24px">Atualizar Ressuprimento (Picking + Pulmão)</div>
+      <div class="card">
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+          Envie os <strong>dois arquivos juntos</strong> — Endereços de Picking e Posição do Pulmão
+          por volume — exatamente como saem do sistema. Os dois são necessários porque a tela cruza
+          um com o outro (ocupação, reclassificação de ruas e o apoio de ressuprimento por segmento).
+        </p>
+        <div class="dropzone" id="dropzonePicking">
+          Clique para selecionar o .txt de <strong>Picking</strong>
+          <input type="file" id="inputPicking" accept=".txt,text/plain" style="display:none">
+        </div>
+        <div class="dropzone" id="dropzonePulmao" style="margin-top:10px">
+          Clique para selecionar o .txt de <strong>Pulmão</strong>
+          <input type="file" id="inputPulmao" accept=".txt,text/plain" style="display:none">
+        </div>
+        <button class="btn-mini" id="btnProcessarRessuprimento" style="margin-top:12px" disabled>
+          Processar Ressuprimento
+        </button>
+        <div class="log" id="logIngestRessuprimento"></div>
+      </div>
     </section>
   </main>
 </div>
 
 <script src="ingest.js"></script>
+<script src="ingest-ressuprimento.js"></script>
 <script src="distr-fluxo.js"></script>
 <script>
 /* ============================================================
@@ -1143,13 +1159,16 @@ function atualizarSubtituloSecao(secao) {
   let iso = null;
   if (secao === 'estoque') iso = dataSnapshotEstoque;
   else if (secao === 'distr') iso = window.DistrFluxo ? DistrFluxo.dataSnapshot() : null;
+  else if (secao === 'ressuprimento') iso = dataSnapshotRessuprimento;
   el.textContent = iso ? 'Última atualização: ' + formatarDataHora(iso) : '';
 }
 window.atualizarSubtituloSecao = atualizarSubtituloSecao;
 
-// Fluxo de Processos carrega uma vez só, na primeira vez que a seção abre —
-// mesmo padrão do restante do app (ver carregarEstoque, chamado 1x no login).
+// Fluxo de Processos e Ressuprimento carregam uma vez só, na primeira vez
+// que a seção abre — mesmo padrão do restante do app (ver carregarEstoque,
+// chamado 1x no login).
 let distrFluxoCarregado = false;
+let ressuprimentoCarregado = false;
 
 function mostrarSecao(secao) {
   // Trava de rota: esconder o item do menu não basta, porque a navegação
@@ -1174,6 +1193,10 @@ function mostrarSecao(secao) {
   if (secao === 'distr' && !distrFluxoCarregado) {
     distrFluxoCarregado = true;
     DistrFluxo.iniciar('dfRoot', supabaseClient, perfilAtual);
+  }
+  if (secao === 'ressuprimento' && !ressuprimentoCarregado) {
+    ressuprimentoCarregado = true;
+    carregarRessuprimento();
   }
 }
 
@@ -1769,6 +1792,284 @@ function exportarCSV() {
 }
 
 /* ============================================================
+   RESSUPRIMENTO — PICKING × PULMÃO
+   ------------------------------------------------------------
+   Só ITENS (qtd/%/SKUs) — nada de valor/custo aqui, isso já mora no Balanço
+   de Estoque (README, "cada dado mora só num lugar"). O payload vem pronto
+   do ingest-ressuprimento.js (pagina='ressuprimento' em dashboard_snapshots):
+   ocupação por zona, árvore Marca›Segmento por filtro, cruzamento de
+   ressuprimento por segmento e a lista de material em validação (FIFO).
+   ============================================================ */
+let filtroRessuprimento = 'picking';    // 'picking' | 'pulmao' — só afeta árvore/gráficos/export
+const abertosRessuprimento = new Set();
+let dataSnapshotRessuprimento = null;
+
+async function carregarRessuprimento() {
+  const alvo = document.getElementById('ressuprimento-conteudo');
+  const { data, error } = await supabaseClient
+    .from('dashboard_snapshots')
+    .select('payload, gerado_em')
+    .eq('pagina', 'ressuprimento')
+    .order('gerado_em', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    alvo.innerHTML = '<div class="aviso erro">Erro ao carregar o snapshot: ' + escapar(error.message) + '</div>';
+    return;
+  }
+  if (!data || data.length === 0) {
+    alvo.innerHTML = '<div class="aviso">Nenhum snapshot de ressuprimento publicado ainda. ' +
+      'Envie os arquivos de Picking e Pulmão pela tela <strong>Admin › Abastecimento</strong>.</div>';
+    return;
+  }
+  dataSnapshotRessuprimento = data[0].gerado_em;
+  atualizarSubtituloSecao('ressuprimento');
+  window._snapshotRessuprimento = data[0].payload;
+  renderizarRessuprimento();
+}
+
+function alternarFiltroRessuprimento(f) {
+  filtroRessuprimento = f;
+  abertosRessuprimento.clear();
+  renderizarRessuprimento();
+}
+function alternarNoRessuprimento(chave) {
+  if (abertosRessuprimento.has(chave)) abertosRessuprimento.delete(chave); else abertosRessuprimento.add(chave);
+  renderizarRessuprimento();
+}
+function expandirTudoRessuprimento() {
+  const p = window._snapshotRessuprimento;
+  const arvore = filtroRessuprimento === 'picking' ? p.arvore_picking : p.arvore_pulmao;
+  (arvore || []).forEach(function (m) { abertosRessuprimento.add('M|' + m.codigo); });
+  renderizarRessuprimento();
+}
+function recolherTudoRessuprimento() { abertosRessuprimento.clear(); renderizarRessuprimento(); }
+
+/* Mesmo formato de linha do Balanço de Estoque (linhaArvore), só que sem as
+   duas colunas de valor — aqui é só item. */
+function linhaArvoreRessuprimento(opts) {
+  const aberto = opts.temFilhos && abertosRessuprimento.has(opts.chave);
+  const btn = opts.temFilhos
+    ? '<span class="toggle" onclick="alternarNoRessuprimento(\'' + escaparJs(opts.chave) + '\')">' + (aberto ? '−' : '+') + '</span>'
+    : '<span class="toggle vazio">·</span>';
+  return '<tr class="' + opts.classe + '">' +
+    '<th class="' + (opts.indent || '') + '"><span class="desc">' + btn + '<span>' + opts.rotulo + '</span></span></th>' +
+    '<td>' + fmtInt(opts.qtd) + '</td>' +
+    '<td>' + fmtPct(opts.pct) + '</td>' +
+    '<td>' + fmtInt(opts.skus) + '</td>' +
+  '</tr>';
+}
+
+const ROT_BUCKET = { meia: 'Meia', vestuario: 'Vestuário', calcado: 'Calçado' };
+const ROT_ZONA = { pulmao: 'Pulmão', picking_meia: 'Picking — Meia', picking_vestuario: 'Picking — Vestuário', picking_calcado: 'Picking — Calçado' };
+
+function renderizarRessuprimento(p) {
+  p = p || window._snapshotRessuprimento;
+  if (!p) return;
+
+  /* ---------- avisos ---------- */
+  let avisos = '';
+  if ((p.familias_nao_mapeadas || []).length) {
+    avisos += '<div class="aviso">Famílias sem marca cadastrada em <code>dim_familias</code>: ' +
+      escapar(p.familias_nao_mapeadas.join(', ')) + '.</div>';
+  }
+  const gap = p.gap_estoque_reservado_picking;
+  if (gap && gap.registros) {
+    avisos += '<div class="aviso" style="border-color:var(--amber);color:var(--text)">' +
+      '<strong>GAP conhecido:</strong> ' + fmtInt(gap.registros) + ' endereços do Picking tinham saldo ' +
+      'negativo (' + fmtInt(gap.unidades) + ' un.) — reserva de separação/B.O. de remanejamento OU ' +
+      'faturamento do fechamento cuja cativação sumiu. Sem como distinguir os dois casos ainda, ' +
+      'essas unidades <strong>não entram</strong> em nenhum número desta tela até isso ser resolvido.</div>';
+  }
+
+  /* ---------- ocupação × capacidade (sempre as 4 zonas, não filtra) ---------- */
+  function cardOcupacao(zona, dados) {
+    if (!dados) return '';
+    const cor = dados.capacidade_estimada ? 'var(--text)' : (dados.pct >= 95 ? 'var(--red)' : dados.pct >= 85 ? 'var(--amber)' : 'var(--olive)');
+    return '<div class="kpi"><div class="rot">' + ROT_ZONA[zona] + (dados.capacidade_estimada ? ' <span title="Capacidade ainda não validada com a gestão — usando ocupado × 1.2 como estimativa provisória">≈</span>' : '') + '</div>' +
+      '<div class="val forte" style="color:' + cor + '">' + fmtPct(dados.pct) + '</div>' +
+      '<div class="sub">' + fmtInt(dados.ocupado) + ' / ' + fmtInt(dados.capacidade) + ' posições' +
+        (dados.capacidade_estimada ? ' (estimada)' : '') + ' · ' + fmtInt(dados.disponivel) + ' livres</div></div>';
+  }
+  const oc = p.ocupacao || {};
+  const kpisOcupacao = '<div class="kpi-row">' +
+    cardOcupacao('pulmao', oc.pulmao) + cardOcupacao('picking_meia', oc.picking_meia) +
+    cardOcupacao('picking_vestuario', oc.picking_vestuario) + cardOcupacao('picking_calcado', oc.picking_calcado) +
+  '</div>';
+
+  /* ---------- filtro Picking/Pulmão ---------- */
+  const chips = '<div class="filtros">' +
+    '<span class="rot-filtro">Ver</span>' +
+    '<span class="chip' + (filtroRessuprimento === 'picking' ? ' on' : '') + '" onclick="alternarFiltroRessuprimento(\'picking\')">Picking</span>' +
+    '<span class="chip' + (filtroRessuprimento === 'pulmao' ? ' on' : '') + '" onclick="alternarFiltroRessuprimento(\'pulmao\')">Pulmão</span>' +
+  '</div>';
+
+  const arvoreAtual = (filtroRessuprimento === 'picking' ? p.arvore_picking : p.arvore_pulmao) || [];
+  const totalGeral = arvoreAtual.reduce(function (s, m) { return s + m.qtd; }, 0);
+  const skusGeral = arvoreAtual.reduce(function (s, m) { return s + m.skus; }, 0);
+
+  /* ---------- gráfico 1 (topo): composição por marca ---------- */
+  let barraMarca = '', legendaMarca = '';
+  arvoreAtual.forEach(function (m) {
+    const perc = totalGeral > 0 ? m.qtd / totalGeral * 100 : 0;
+    if (perc <= 0) return;
+    const cor = 'var(' + (COR_MARCA[m.codigo] || '--gelo') + ')';
+    barraMarca += '<div style="width:' + perc + '%;background:' + cor + '" title="' +
+      escapar(m.nome) + ' — ' + fmtInt(m.qtd) + '">' + (perc > 6 ? escapar(m.nome) + ' ' + fmtPct(perc) : '') + '</div>';
+    legendaMarca += '<span><i style="background:' + cor + '"></i>' + escapar(m.nome) +
+      ' · ' + fmtInt(m.qtd) + ' (' + fmtPct(perc) + ')</span>';
+  });
+
+  /* ---------- gráfico 2 (embaixo): composição por segmento ---------- */
+  const segmentosFlat = [];
+  arvoreAtual.forEach(function (m) {
+    (m.segmentos || []).forEach(function (s) {
+      segmentosFlat.push({ nome: s.nome, qtd: s.qtd, marcaCodigo: m.codigo });
+    });
+  });
+  segmentosFlat.sort(function (a, b) { return b.qtd - a.qtd; });
+  const maxSeg = segmentosFlat.reduce(function (mx, s) { return Math.max(mx, s.qtd); }, 0);
+  let barrasSegmento = '';
+  segmentosFlat.forEach(function (s) {
+    const cor = 'var(' + (COR_MARCA[s.marcaCodigo] || '--gelo') + ')';
+    const larg = maxSeg > 0 ? s.qtd / maxSeg * 100 : 0;
+    barrasSegmento += '<div class="bar-item">' +
+      '<div class="nome">' + escapar(s.nome) + '</div>' +
+      '<div class="trilho"><div class="preench" style="width:' + larg + '%;background:' + cor + '"></div></div>' +
+      '<div class="num">' + fmtInt(s.qtd) + ' · ' + fmtPct(totalGeral ? s.qtd / totalGeral * 100 : 0) + '</div>' +
+    '</div>';
+  });
+
+  /* ---------- árvore Marca › Segmento ---------- */
+  let linhasArvore = '';
+  arvoreAtual.forEach(function (m) {
+    if (m.qtd === 0) return;
+    const chaveM = 'M|' + m.codigo;
+    const corM = 'var(' + (COR_MARCA[m.codigo] || '--gelo') + ')';
+    linhasArvore += linhaArvoreRessuprimento({
+      classe: 'n1', chave: chaveM, temFilhos: (m.segmentos || []).length > 0,
+      rotulo: '<i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' +
+              corM + ';margin-right:7px"></i><strong>' + escapar(m.nome) + '</strong>',
+      qtd: m.qtd, pct: m.pct, skus: m.skus,
+    });
+    if (!abertosRessuprimento.has(chaveM)) return;
+    (m.segmentos || []).forEach(function (s) {
+      if (s.qtd === 0) return;
+      linhasArvore += linhaArvoreRessuprimento({
+        classe: 'n2', chave: chaveM + '|S|' + s.codigo, temFilhos: false, indent: 'ind-2',
+        rotulo: escapar(s.nome), qtd: s.qtd, pct: s.pct, skus: s.skus,
+      });
+    });
+  });
+  linhasArvore += '<tr class="total">' +
+    '<th><span class="desc"><span class="toggle vazio">·</span><span>TOTAL GERAL</span></span></th>' +
+    '<td>' + fmtInt(totalGeral) + '</td><td>100,0%</td><td>' + fmtInt(skusGeral) + '</td>' +
+  '</tr>';
+
+  /* ---------- painel de ressuprimento por segmento (não filtra — cruza os dois arquivos sempre) ---------- */
+  const rps = p.ressuprimento_por_segmento || {};
+  let linhasRessup = '';
+  ['meia', 'vestuario', 'calcado'].forEach(function (b) {
+    const d = rps[b]; if (!d) return;
+    linhasRessup += '<tr><th>' + ROT_BUCKET[b] + '</th>' +
+      '<td>' + fmtInt(d.saldo_picking) + '</td>' +
+      '<td>' + fmtInt(d.enderecos_com_apoio_pulmao) + '</td>' +
+      '<td>' + fmtInt(d.apoio_pulmao_disponivel) + '</td>' +
+      '<td>' + (d.gap_reservado_nao_contado ? fmtInt(d.gap_reservado_nao_contado) : '—') + '</td></tr>';
+  });
+
+  /* ---------- material em validação (só faz sentido olhando o Pulmão) ---------- */
+  let blocoValidacao = '';
+  if (filtroRessuprimento === 'pulmao' && (p.validacao || []).length) {
+    const totalValidacao = p.validacao.reduce(function (s, v) { return s + v.qtd; }, 0);
+    const linhasValidacao = p.validacao.slice(0, 200).map(function (v) {
+      return '<tr><th>' + escapar(v.artigo_codigo) + '/' + escapar(v.cor) + '/' + escapar(v.tamanho) + '</th>' +
+        '<td>' + escapar(v.descricao) + '</td>' +
+        '<td>' + escapar(v.classificacao) + '</td>' +
+        '<td>' + fmtInt(v.qtd) + '</td>' +
+        '<td>' + (v.mais_antigo ? formatarDataSimples(v.mais_antigo) : '—') + '</td></tr>';
+    }).join('');
+    blocoValidacao =
+      '<div class="card">' +
+        '<div class="section-title">Material em endereço de validação (sujeira/perca/trânsito)</div>' +
+        '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
+          'Ainda é vendável (decisão da operação), mas fica sinalizado aqui pra reforçar FIFO — ' +
+          'ordenado do mais antigo pro mais novo. Total: ' + fmtInt(totalValidacao) + ' un. em ' +
+          fmtInt(p.validacao.length) + ' grupos' + (p.validacao.length > 200 ? ' (mostrando os 200 mais antigos)' : '') + '.</p>' +
+        '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
+          '<th class="esq">SKU</th><th class="esq">Descrição</th><th class="esq">Classificação</th><th>Qtd</th><th>Mais antigo</th>' +
+        '</tr></thead><tbody>' + linhasValidacao + '</tbody></table></div>' +
+      '</div>';
+  }
+
+  document.getElementById('ressuprimento-conteudo').innerHTML =
+    avisos +
+    '<div class="kicker">Ocupação de posições — Pulmão e Picking</div>' +
+    kpisOcupacao +
+    chips +
+    '<div class="grid2">' +
+      '<div class="card">' +
+        '<div class="section-title">Composição por marca — ' + (filtroRessuprimento === 'picking' ? 'Picking' : 'Pulmão') + '</div>' +
+        '<div class="barra-comp">' + barraMarca + '</div>' +
+        '<div class="legenda">' + legendaMarca + '</div>' +
+      '</div>' +
+      '<div class="card">' +
+        '<div class="section-title">Composição por segmento</div>' +
+        '<div class="bar-list">' + barrasSegmento + '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card">' +
+      '<div class="section-title" style="display:flex;align-items:center;justify-content:space-between">' +
+        '<span>Detalhamento — Marca › Segmento (' + (filtroRessuprimento === 'picking' ? 'Picking' : 'Pulmão') + ')</span>' +
+        '<span>' +
+          '<button class="btn-mini" onclick="expandirTudoRessuprimento()">Expandir tudo</button> ' +
+          '<button class="btn-mini" onclick="recolherTudoRessuprimento()">Recolher tudo</button> ' +
+          '<button class="btn-mini" onclick="exportarCSVRessuprimento()">⬇ CSV</button>' +
+        '</span>' +
+      '</div>' +
+      '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
+        '<th class="esq">Descrição</th><th>Qtd</th><th>% do nível</th><th>SKUs</th>' +
+      '</tr></thead><tbody>' + linhasArvore + '</tbody></table></div>' +
+    '</div>' +
+    '<div class="card">' +
+      '<div class="section-title">Ressuprimento por segmento — Picking × apoio no Pulmão</div>' +
+      '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
+        'Não depende do filtro acima — cruza os dois arquivos sempre. "Apoio no Pulmão" só conta ' +
+        'material confiável (Pulmão real + reclassificado por segurança/capacidade, nunca sujeira de sistema).</p>' +
+      '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
+        '<th class="esq">Segmento</th><th>Saldo no Picking</th><th>Endereços c/ apoio</th>' +
+        '<th>Apoio disponível no Pulmão</th><th>GAP reservado (não contado)</th>' +
+      '</tr></thead><tbody>' + linhasRessup + '</tbody></table></div>' +
+    '</div>' +
+    blocoValidacao +
+    '<div style="font-size:11px;color:var(--text-muted);margin-top:12px">' +
+      'Picking: ' + escapar(p.arquivo_picking || '—') + ' · Pulmão: ' + escapar(p.arquivo_pulmao || '—') +
+    '</div>';
+}
+
+function exportarCSVRessuprimento() {
+  const p = window._snapshotRessuprimento;
+  if (!p) return;
+  const arvore = filtroRessuprimento === 'picking' ? p.arvore_picking : p.arvore_pulmao;
+  const linhas = [['Filtro', 'Nivel', 'Marca', 'Segmento', 'Qtd', 'SKUs']];
+  (arvore || []).forEach(function (m) {
+    linhas.push([filtroRessuprimento, '1', m.nome, '', m.qtd, m.skus]);
+    (m.segmentos || []).forEach(function (s) {
+      linhas.push([filtroRessuprimento, '2', m.nome, s.nome, s.qtd, s.skus]);
+    });
+  });
+  const csv = linhas.map(function (l) {
+    return l.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(';');
+  }).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ressuprimento-' + filtroRessuprimento + '-distribuidora.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/* ============================================================
    TELA DE INGESTÃO (Admin)
    ============================================================ */
 document.getElementById('dropzone').addEventListener('click', function () {
@@ -1790,6 +2091,53 @@ document.getElementById('inputArquivo').addEventListener('change', async functio
     console.error(e);
   } finally {
     ev.target.value = '';   // permite reenviar o mesmo arquivo
+  }
+});
+
+/* ---------- Ressuprimento: dois arquivos, um botão só (precisa dos dois) ---------- */
+let arquivoPickingSelecionado = null, arquivoPulmaoSelecionado = null;
+function atualizarEstadoDropzoneRessuprimento() {
+  const btn = document.getElementById('btnProcessarRessuprimento');
+  btn.disabled = !(arquivoPickingSelecionado && arquivoPulmaoSelecionado);
+  document.getElementById('dropzonePicking').textContent = arquivoPickingSelecionado
+    ? '✓ ' + arquivoPickingSelecionado.name : 'Clique para selecionar o .txt de Picking';
+  document.getElementById('dropzonePulmao').textContent = arquivoPulmaoSelecionado
+    ? '✓ ' + arquivoPulmaoSelecionado.name : 'Clique para selecionar o .txt de Pulmão';
+}
+document.getElementById('dropzonePicking').addEventListener('click', function () {
+  document.getElementById('inputPicking').click();
+});
+document.getElementById('dropzonePulmao').addEventListener('click', function () {
+  document.getElementById('inputPulmao').click();
+});
+document.getElementById('inputPicking').addEventListener('change', function (ev) {
+  arquivoPickingSelecionado = ev.target.files && ev.target.files[0] || null;
+  atualizarEstadoDropzoneRessuprimento();
+});
+document.getElementById('inputPulmao').addEventListener('change', function (ev) {
+  arquivoPulmaoSelecionado = ev.target.files && ev.target.files[0] || null;
+  atualizarEstadoDropzoneRessuprimento();
+});
+document.getElementById('btnProcessarRessuprimento').addEventListener('click', async function () {
+  const log = document.getElementById('logIngestRessuprimento');
+  log.textContent = '';
+  const escrever = function (msg) { log.textContent += msg + '\n'; log.scrollTop = log.scrollHeight; };
+  const btn = document.getElementById('btnProcessarRessuprimento');
+  btn.disabled = true;
+  try {
+    await window.processarRessuprimento(supabaseClient, arquivoPickingSelecionado, arquivoPulmaoSelecionado, escrever);
+    escrever('Recarregando o dashboard…');
+    ressuprimentoCarregado = true;
+    await carregarRessuprimento();
+    mostrarSecao('ressuprimento');
+    arquivoPickingSelecionado = null; arquivoPulmaoSelecionado = null;
+    document.getElementById('inputPicking').value = '';
+    document.getElementById('inputPulmao').value = '';
+    atualizarEstadoDropzoneRessuprimento();
+  } catch (e) {
+    escrever('ERRO: ' + (e && e.message ? e.message : String(e)));
+    console.error(e);
+    btn.disabled = false;
   }
 });
 
