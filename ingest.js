@@ -429,12 +429,21 @@ function deduplicarPosicoes(registros) {
    um único segmento no report do e-commerce. Aqui a regra é: só para quando a
    página vier VAZIA, e o offset avança pelo tamanho REAL retornado.
    ---------------------------------------------------------------------------- */
-async function lerTudoPaginado(supabaseClient, tabela, colunas, aplicarFiltros) {
+async function lerTudoPaginado(supabaseClient, tabela, colunas, aplicarFiltros, ordenarPor) {
   const LOTE = 5000;
   let offset = 0;
   const tudo = [];
   while (true) {
-    let q = supabaseClient.from(tabela).select(colunas).range(offset, offset + LOTE - 1);
+    // A ordenação não é enfeite: sem ORDER BY estável o Postgres não promete a
+    // MESMA ordem entre duas consultas, e paginar por offset em cima de ordem
+    // indefinida pode repetir uma linha numa página e pular outra na seguinte.
+    // Hoje dim_armazens/dim_familias cabem numa página só e o problema não
+    // aparece; quando crescerem, apareceria como gabarito faltando pra uma
+    // família — o tipo de bug que ninguém liga ao paginador. Default 'codigo'
+    // porque é a PK das duas dimensões que hoje passam por aqui.
+    let q = supabaseClient.from(tabela).select(colunas)
+      .order(ordenarPor || 'codigo', { ascending: true })
+      .range(offset, offset + LOTE - 1);
     if (aplicarFiltros) q = aplicarFiltros(q);
     const { data, error } = await q;
     if (error) throw error;

@@ -1375,15 +1375,26 @@ async function salvar() {
       armazens: DADOS.armazens,
       pendencias: DADOS.pendencias,
     };
-    const { error } = await SB.from("dashboard_snapshots").insert({ pagina: "distr_fluxo", payload: payload });
+    // .select() no insert pra trazer de volta o gerado_em que o BANCO gravou
+    // (a coluna é default now(); o relógio do servidor é a fonte de verdade,
+    // não o do navegador). Sem isto o SNAP_INFO ficava com a data da versão
+    // ANTERIOR e a topbar seguia anunciando "Última atualização" velha logo
+    // depois de o admin publicar uma versão nova.
+    const { data, error } = await SB.from("dashboard_snapshots")
+      .insert({ pagina: "distr_fluxo", payload: payload })
+      .select("gerado_em")
+      .single();
     if (error) throw error;
+    if (data && data.gerado_em) {
+      SNAP_INFO = { gerado_em: data.gerado_em };
+      if (typeof global.atualizarSubtituloSecao === "function") global.atualizarSubtituloSecao("distr");
+    }
     EDITADO = false;
     const bar = document.getElementById("df-editbar");
     if (bar) bar.classList.remove("df-tem-mudanca");
     alert("Alterações salvas — quem abrir o fluxo agora já vê a versão nova.");
   } catch (e) {
-    alert("Não foi possível salvar: " + (e && e.message ? e.message : String(e)) +
-      (isAdmin() ? "" : "\n\n(seu perfil não tem permissão de escrita neste fluxo)"));
+    alert("Não foi possível salvar: " + (e && e.message ? e.message : String(e)));
   } finally {
     if (btn) { btn.disabled = !EDITADO; btn.textContent = "Salvar alterações"; }
   }

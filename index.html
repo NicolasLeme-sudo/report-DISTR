@@ -1025,6 +1025,22 @@ function fmtPct(v) {
   const n = Number(v) || 0;
   return n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
 }
+/* escapar() é pra TEXTO dentro do HTML. Este aqui é pra quando o valor cai
+   DENTRO de um literal de string JS num atributo onclick="fn('valor')" — caso
+   das duas linhas em linhaArvore() e no badge de categoria do armazém, que
+   interpolam código de armazém/marca/família. Esses códigos vêm do arquivo de
+   extração (entrada externa: o parser tira o armazém de "EXTRE-AC190"), então
+   uma aspa simples ali dentro fecharia a string e quebraria o handler.
+   A ordem importa: o navegador decodifica as entidades HTML ANTES de o JS ser
+   lido, então & vem primeiro, depois as barras/aspas que o JS precisa ver
+   escapadas, e a aspa dupla vira entidade pra não fechar o atributo. */
+function escaparJs(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '&quot;');
+}
 function escapar(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
@@ -1402,7 +1418,7 @@ function recolherTudo() { abertos.clear(); renderizarEstoque(window._snapshot); 
 function linhaArvore(opts) {
   const aberto = opts.temFilhos && abertos.has(opts.chave);
   const btn = opts.temFilhos
-    ? '<span class="toggle" onclick="alternarNo(\'' + opts.chave + '\')">' + (aberto ? '−' : '+') + '</span>'
+    ? '<span class="toggle" onclick="alternarNo(\'' + escaparJs(opts.chave) + '\')">' + (aberto ? '−' : '+') + '</span>'
     : '<span class="toggle vazio">·</span>';
   return '<tr class="' + opts.classe + '">' +
     '<th class="' + (opts.indent || '') + '"><span class="desc">' + btn +
@@ -1550,7 +1566,7 @@ function renderizarEstoque(p) {
     // dim_armazens pela RLS) — gestor/operador veem só a leitura, igual antes.
     const opcoesCategoria = ['DISPONIVEL', 'ANALISE', 'BLOQUEADO'].map(function (cat) {
       const bOpt = BADGE_CATEGORIA[cat];
-      return '<button class="status-opt" onclick="alterarCategoriaArmazem(\'' + a.codigo + '\',\'' + cat + '\')">' +
+      return '<button class="status-opt" onclick="alterarCategoriaArmazem(\'' + escaparJs(a.codigo) + '\',\'' + cat + '\')">' +
         '<i class="dot" style="background:var(' + COR_CATEGORIA[cat] + ')"></i>' + bOpt[1] + '</button>';
     }).join('');
     const badgeArmazem = perfilAtual === 'admin'
