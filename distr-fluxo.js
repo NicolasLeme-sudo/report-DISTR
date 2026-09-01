@@ -410,7 +410,17 @@ function scheduleDraw() {
 }
 
 /* ---------- ajuste automático à tela (herdado do artifact aprovado) ---------- */
-const FIT_MIN = 0.58;
+// Piso do zoom automático. Antes 0.58: o diagrama real (com bifurcações
+// paralelas) já precisa de MUITO menos que isso pra caber sem rolagem
+// horizontal (medido: ~0.12 pra caber inteiro) — ou seja, mesmo em 0.58 a
+// maior parte da largura já dependia do "arraste pro lado" pra ser vista.
+// Subido pra 0.85 a pedido da operação: preferem rolar mais pra ver os
+// desvios/bifurcações do que ter etapas/losangos pequenos demais pra ler
+// sem dar zoom no PRÓPRIO NAVEGADOR. Esse piso é POR LANE (cada "Fluxo
+// principal"/"Fluxo de Reversa" tem seu próprio, calculado a partir da
+// linha mais larga dela) — subir o número não quebra nada de layout, só
+// muda quanto do desenho cabe sem precisar arrastar.
+const FIT_MIN = 0.85;
 function zoomOff() { ROOT.querySelectorAll(".df-lane").forEach(function (l) { l.style.zoom = ""; }); }
 function fitAll() {
   const lanes = Array.prototype.slice.call(ROOT.querySelectorAll(".df-lane"));
