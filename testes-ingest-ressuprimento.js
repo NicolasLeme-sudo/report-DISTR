@@ -170,9 +170,14 @@ eq(payloadOcup.ocupacao.picking_calcado.capacidade_estimada, false,
    'zona com capacidade cadastrada não é marcada como estimada');
 
 /* -------------------------------------------------------------------------- */
-secao('ocupação é posição FÍSICA — reclassificado do picking não infla o pulmão');
-// A2 está na rua 20 (tratada como Pulmão no CRUZAMENTO de apoio), mas fisicamente
-// é prateleira dentro do Picking: não pode ocupar posição de porta-pallet.
+secao('ocupação — 20/70/80/81-02 são apoio de ressuprimento, não posição de ninguém');
+// Confirmado pela operação (03/09/2026): essas ruas contam como Pulmão no
+// CRUZAMENTO de apoio (não são posição de picking), mas ficam de fora da
+// CONTAGEM de posições das duas zonas. Motivo, medido no arquivo real:
+// 2.662 endereços ALOCADOS nessas ruas contra só 339 com saldo de verdade —
+// contá-las por alocação (a mesma regra que acerta as outras zonas) inflava
+// o Pulmão pra 156% da capacidade. A gestão não inclui essas posições nem
+// nos 5.010 lugares do Pulmão nem nos 3.933 do Picking-calçado.
 const pickingRua20 = {
   registros: [
     { familia_codigo: '101', artigo_codigo: 'A2', cor: 'PT', tamanho: '40', ean: 'E2', rua: '20', nivel: '1', box: '1', qtd: 10, qtd_gap_reservado: 0 },
@@ -184,9 +189,9 @@ const payloadFisico = construirSnapshotRessuprimento(
   { arquivo_picking: 'p.txt', arquivo_pulmao: 'x.txt' }
 );
 eq(payloadFisico.ocupacao.pulmao.ocupado, 0,
-   'rua 20 (reclassificada como apoio de pulmão) NÃO ocupa posição de pulmão');
-eq(payloadFisico.ocupacao.picking_calcado.ocupado, 1,
-   'ela ocupa a posição de picking, que é onde o material fisicamente está');
+   'rua 20 (reclassificada) NÃO ocupa posição de pulmão — não é porta-pallet fixo');
+eq(payloadFisico.ocupacao.picking_calcado.ocupado, 0,
+   'nem de picking — pickingReal já a exclui, e ela não volta em lugar nenhum');
 
 /* -------------------------------------------------------------------------- */
 secao('segmentoMacro — os 6 baldes da gestão, cruzando todas as marcas');

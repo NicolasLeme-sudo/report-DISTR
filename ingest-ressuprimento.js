@@ -369,27 +369,24 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
       capacidade_estimada: !cap[nome], // true = ainda é ocupado×1.2, não o número real da gestão
     };
   }
-  /* OCUPAÇÃO É POSIÇÃO FÍSICA, não classificação de uso.
-     As ruas 20/70/80/81-02 são tratadas como Pulmão no CRUZAMENTO de
-     ressuprimento (é material de apoio, não de picking), mas fisicamente elas
-     ficam dentro do prédio do Picking — ocupam prateleira de Picking, não
-     posição de porta-pallet. Contá-las no Pulmão inflava a zona em 339
-     endereços e era o que fazia a ocupação estourar 100% contra a capacidade
-     real da gestão. Aqui, portanto, a ocupação do Pulmão usa só o Pulmão
-     físico (`pulmao.registros`), e o material reclassificado volta a pesar na
-     zona de Picking do seu próprio bucket, que é onde ele realmente está. */
+  /* OCUPAÇÃO: as ruas 20/70/80/81-02 contam como Pulmão no CRUZAMENTO de apoio
+     (confirmado pela operação, 03/09/2026 — não são posição de picking), mas
+     NÃO entram na contagem de posições de nenhuma das duas zonas. Não são
+     porta-pallet fixo do Pulmão nem prateleira dedicada do Picking: são
+     endereço de apoio, com uma característica que quebra a definição de
+     "posição ocupada = endereço alocado" usada nas outras zonas — têm 2.662
+     endereços ALOCADOS no arquivo real contra só 339 com saldo de verdade (a
+     maioria é cadastro de SKU sem estoque ali). Contá-las por alocação infla o
+     Pulmão pra 156% da capacidade; a gestão não as inclui nos 5.010 lugares do
+     Pulmão nem nos 3.933 do Picking-calçado. Por isso a ocupação usa só o
+     Pulmão físico (`pulmao.registros`, sem o reclassificado do Picking) e o
+     Picking de verdade (`pickingReal`, que já exclui o reclassificado). */
   const pulmaoFisico = pulmaoTudo.filter(function (r) { return r.origem === 'pulmao'; });
-  const pickingFisico = pickingReal.concat(pulmaoViaPicking.map(function (r) {
-    return Object.assign({}, r, { bucket: classificarBucket(r.segmento, r.categoria) });
-  }));
-  function ocupadoDoBucket(b) {
-    return posicoesOcupadas(pickingFisico.filter(function (r) { return r.bucket === b; }));
-  }
   const ocupacao = {
     pulmao: zona('pulmao', posicoesOcupadas(pulmaoFisico)),
-    picking_meia: zona('picking_meia', ocupadoDoBucket('meia')),
-    picking_vestuario: zona('picking_vestuario', ocupadoDoBucket('vestuario')),
-    picking_calcado: zona('picking_calcado', ocupadoDoBucket('calcado')),
+    picking_meia: zona('picking_meia', posicoesOcupadas(pickingReal.filter(function (r) { return r.bucket === 'meia'; }))),
+    picking_vestuario: zona('picking_vestuario', posicoesOcupadas(pickingReal.filter(function (r) { return r.bucket === 'vestuario'; }))),
+    picking_calcado: zona('picking_calcado', posicoesOcupadas(pickingReal.filter(function (r) { return r.bucket === 'calcado'; }))),
   };
 
   /* ---------- árvore Marca › Segmento › Família, uma por filtro (picking / pulmão / todos) ----------
