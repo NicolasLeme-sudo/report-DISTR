@@ -40,15 +40,15 @@ eq(ctx.classificarZona('98', '02'), 'TRANSITO', 'rua 98 (transitório) -> Trâns
 eq(ctx.classificarZona('27', '01'), 'TRANSITO', 'rua 27 (perca) -> Trânsito');
 
 /* ------------------------------------------------------------------ */
-console.log('\n=== turnoDe — inclusive as bordas e a janela sobreposta ===');
+console.log('\n=== turnoDe (fallback por horário) — só 3 turnos, T02 absorve o antigo bloco sobreposto ===');
 eq(ctx.turnoDe(5 * 60), 'T01', '05:00 -> T01 (início)');
 eq(ctx.turnoDe(14 * 60 + 47), 'T01', '14:47 -> T01 (última minuto)');
 eq(ctx.turnoDe(14 * 60 + 48), 'T02', '14:48 -> T02 (início)');
-eq(ctx.turnoDe(19 * 60 + 59), 'T02', '19:59 -> T02 (último minuto)');
-eq(ctx.turnoDe(20 * 60), 'T02_T03', '20:00 -> T02/T03 (início da sobreposição)');
-eq(ctx.turnoDe(23 * 60 + 59), 'T02_T03', '23:59 -> T02/T03');
-eq(ctx.turnoDe(0), 'T02_T03', '00:00 -> T02/T03 (a janela vira o dia)');
-eq(ctx.turnoDe(15), 'T02_T03', '00:15 -> T02/T03 (último minuto da sobreposição)');
+eq(ctx.turnoDe(19 * 60 + 59), 'T02', '19:59 -> T02 (era T02 antes, continua)');
+eq(ctx.turnoDe(20 * 60), 'T02', '20:00 -> T02 (era o início do bloco sobreposto, agora vira T02)');
+eq(ctx.turnoDe(23 * 60 + 59), 'T02', '23:59 -> T02');
+eq(ctx.turnoDe(0), 'T02', '00:00 -> T02 (a janela vira o dia, ainda T02)');
+eq(ctx.turnoDe(15), 'T02', '00:15 -> T02 (último minuto do antigo bloco sobreposto)');
 eq(ctx.turnoDe(16), 'T03', '00:16 -> T03 (início)');
 eq(ctx.turnoDe(4 * 60 + 59), 'T03', '04:59 -> T03 (último minuto)');
 
@@ -154,9 +154,27 @@ eq(snapDias.por_dia[0].dia, '2026-08-10', 'dias vêm em ordem cronológica');
 eq(snapDias.por_dia[0].pecas, 30, 'dia 10 soma 10 + 20 peças');
 eq(snapDias.por_dia[0].operadores, 2, 'dia 10 teve 2 operadores distintos');
 eq(snapDias.por_dia[0].turnos.T01.pecas, 10, '08:00 do dia 10 cai no T01');
-eq(snapDias.por_dia[0].turnos.T02_T03.pecas, 20, '22:00 do dia 10 cai na janela sobreposta T02/T03');
+eq(snapDias.por_dia[0].turnos.T02.pecas, 20, '22:00 do dia 10 cai no T02 (fallback, sem colaborador cadastrado)');
 eq(snapDias.por_dia[1].turnos.T03.pecas, 30, '03:00 do dia 11 cai no T03');
 eq(snapDias.total.operadores_distintos, 2, 'total de operadores distintos no período');
+
+/* ------------------------------------------------------------------ */
+console.log('\n=== turno real do colaborador (dim_colaboradores_turno) vence o chute por horário ===');
+// EX1 (login de D1/D3) está cadastrado como T03 de verdade -- mesmo os
+// movimentos das 08:00 (que o horário chutaria T01) e das 03:00 (que já
+// bateria T03 por acaso) devem virar T03 pelo CADASTRO, não pelo relógio.
+// EX2 (login de D2) não está na base -- continua no fallback por horário.
+const mapaColabTeste = new Map([['EX1', 'T03']]);
+const snapComColaborador = ctx.construirSnapshotMovimentacoes(
+  ctx.parsearKardex(arquivoDias), { arquivo: 't.txt' }, new Map(), new Map(), [], mapaColabTeste
+);
+eq(snapComColaborador.por_dia[0].turnos.T01, undefined, 'EX1 cadastrado como T03 -- o T01 do horário some do dia 10');
+eq(snapComColaborador.por_dia[0].turnos.T03.pecas, 10, 'movimento das 08:00 de EX1 vira T03 pelo cadastro, não T01 pelo relógio');
+eq(snapComColaborador.por_dia[0].turnos.T02.pecas, 20, 'EX2 (não cadastrado) continua no fallback por horário -- T02');
+eq(snapComColaborador.resolucao_turno, { por_cadastro: 2, por_horario: 1 }, '2 movimentos de EX1 resolvidos pelo cadastro, 1 de EX2 pelo horário');
+
+const semColaborador = ctx.construirSnapshotMovimentacoes(ctx.parsearKardex(arquivoDias), { arquivo: 't.txt' });
+eq(semColaborador.resolucao_turno, { por_cadastro: 0, por_horario: 3 }, 'sem mapa de colaborador, os 3 movimentos caem no fallback por horário');
 
 /* ------------------------------------------------------------------ */
 console.log('\n=== cabeçalho com coluna renomeada falha nomeando a coluna ===');

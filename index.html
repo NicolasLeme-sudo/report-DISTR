@@ -1081,6 +1081,27 @@ tr.total > th, tr.total > td {
         <div class="log" id="logIngestKardex"></div>
       </div>
 
+      <div class="section-title" style="margin-top:24px">Base de Ativos (turno real do colaborador)</div>
+      <div class="card">
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+          Envie o <strong>.xlsx</strong> da base de Ativos (aba "Ativos"), atualizada semanalmente pela gestão.
+          Cruza o <strong>Código</strong> do colaborador com o <strong>Login</strong> que aparece no Kardex
+          (mesmo número, trocando o "15" inicial por "EX") e usa a coluna <strong>Horario</strong> pra saber o
+          turno real (1º/2º/3º Turno). ADM e Cargo de Confiança não têm turno operacional — a movimentação
+          desses logins (e de quem ainda não está nesta base) continua sendo presumida pelo horário do
+          movimento. Reenviar a planilha atualiza quem mudou de turno.
+        </p>
+        <div class="dropzone" id="dropzoneAtivos">
+          <span id="dropzoneAtivosTexto">Clique para selecionar o .xlsx da <strong>base de Ativos</strong></span>
+          <input type="file" id="inputAtivos" accept=".xlsx" style="display:none">
+        </div>
+        <button class="btn-mini" id="btnProcessarAtivos" style="margin-top:12px" disabled>
+          Processar Ativos
+        </button>
+        <div class="aviso ok" id="okIngestAtivos" style="display:none;margin-top:10px"></div>
+        <div class="log" id="logIngestAtivos"></div>
+      </div>
+
       <div class="section-title" style="margin-top:24px">Planejamento de Ressuprimento (PFA por turno)</div>
       <div class="card">
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
@@ -1097,8 +1118,7 @@ tr.total > th, tr.total > td {
             <label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Turno</label>
             <select id="turnoPlanejamentoPfa" style="padding:7px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)">
               <option value="T01">T01 (05:00–14:47)</option>
-              <option value="T02">T02 (14:48–19:59)</option>
-              <option value="T02_T03">T02/T03 (20:00–00:15)</option>
+              <option value="T02">T02 (14:48–00:15)</option>
               <option value="T03">T03 (00:16–04:59)</option>
             </select>
           </div>
@@ -1117,6 +1137,9 @@ tr.total > th, tr.total > td {
 <script src="ingest.js"></script>
 <script src="ingest-ressuprimento.js"></script>
 <script src="ingest-movimentacoes.js"></script>
+<script src="ingest-colaboradores.js"></script>
+<!-- SheetJS — só usado na tela de Admin, pra ler a base de Ativos (.xlsx) -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="distr-fluxo.js"></script>
 <script>
 /* ============================================================
@@ -1907,7 +1930,7 @@ function exportarCSV() {
    ============================================================ */
 let filtroRessuprimento = 'picking';        // 'picking' | 'pulmao' | 'todos'
 let filtroSegmentoRessuprimento = null;     // null = Todos | um dos 6 segmentos da gestão
-let filtroTurnoRessuprimento = null;        // null = todos os turnos | T01 | T02 | T02_T03 | T03
+let filtroTurnoRessuprimento = null;        // null = todos os turnos | T01 | T02 | T03
 let dadosMovimentacoes = null;              // snapshot do Kardex (pagina='ressuprimento_mov')
 // Histórico contínuo (tabela ressuprimento_historico_diario), independente
 // de qual foi o último Kardex processado — alimenta o card "Ressuprimento
@@ -2305,10 +2328,10 @@ function renderizarRessuprimento(p) {
    (posição é do dia, Kardex é de período), então cada um sobe no seu tempo e a
    tela mostra o que existir.
    ============================================================ */
-const ROT_TURNO = { T01: 'T01', T02: 'T02', T02_T03: 'T02/T03', T03: 'T03' };
-const JANELA_TURNO = { T01: '05:00–14:47', T02: '14:48–19:59', T02_T03: '20:00–00:15', T03: '00:16–04:59' };
-const COR_TURNO = { T01: '--accent', T02: '--brand-miz', T02_T03: '--laranja', T03: '--olive' };
-const ORDEM_TURNO = ['T01', 'T02', 'T02_T03', 'T03'];
+const ROT_TURNO = { T01: 'T01', T02: 'T02', T03: 'T03' };
+const JANELA_TURNO = { T01: '05:00–14:47', T02: '14:48–00:15', T03: '00:16–04:59' };
+const COR_TURNO = { T01: '--accent', T02: '--brand-miz', T03: '--olive' };
+const ORDEM_TURNO = ['T01', 'T02', 'T03'];
 
 function alternarFiltroTurnoRessuprimento(t) {
   filtroTurnoRessuprimento = (filtroTurnoRessuprimento === t) ? null : t;
@@ -2688,7 +2711,7 @@ function blocoMovimentacoes() {
     '<div class="barras-dia">' + barras + '</div>' +
     '<div class="legenda" style="margin-top:10px">' + legendaTurno + '</div>' +
     '<div style="overflow-x:auto;margin-top:16px"><table class="arvore"><thead><tr>' +
-      '<th class="esq">Dia</th><th>T01</th><th>T02</th><th>T02/T03</th><th>T03</th>' +
+      '<th class="esq">Dia</th><th>T01</th><th>T02</th><th>T03</th>' +
       '<th>Total peças</th><th>Movimentos</th><th>Operadores</th>' +
     '</tr></thead><tbody>' + linhasDias + '</tbody></table></div>' +
     (m ? '<div style="font-size:11px;color:var(--text-muted);margin-top:12px">' +
@@ -2696,6 +2719,8 @@ function blocoMovimentacoes() {
       fmtInt(m.descartados.fiscal_mesmo_endereco) + ' pares de mesmo endereço, ' +
       fmtInt(m.descartados.sem_volume) + ' sem volume, ' +
       fmtInt(m.descartados.sem_par_exato) + ' pernas sem par no período.' +
+      (m.resolucao_turno ? ' Turno real (base de Ativos): ' + fmtInt(m.resolucao_turno.por_cadastro) +
+        ' movimento(s); presumido pelo horário: ' + fmtInt(m.resolucao_turno.por_horario) + '.' : '') +
     '</div>' : '') +
   '</div>' +
   '<div class="card">' +
@@ -2711,13 +2736,12 @@ function exportarCSVMovimentacoes() {
   const usaHistorico = historicoRessuprimento && historicoRessuprimento.length > 0;
   const dias = usaHistorico ? diasDoHistorico(historicoRessuprimento) : (m ? m.por_dia || [] : []);
   if (dias.length === 0) return;
-  const linhas = [['Dia', 'T01', 'T02', 'T02/T03', 'T03', 'Total pecas', 'Movimentos', 'Operadores']];
+  const linhas = [['Dia', 'T01', 'T02', 'T03', 'Total pecas', 'Movimentos', 'Operadores']];
   dias.forEach(function (d) {
     linhas.push([
       d.dia,
       d.turnos.T01 ? d.turnos.T01.pecas : 0,
       d.turnos.T02 ? d.turnos.T02.pecas : 0,
-      d.turnos.T02_T03 ? d.turnos.T02_T03.pecas : 0,
       d.turnos.T03 ? d.turnos.T03.pecas : 0,
       d.pecas, d.movimentos, d.operadores !== undefined ? d.operadores : '',
     ]);
@@ -2855,6 +2879,71 @@ document.getElementById('btnProcessarKardex').addEventListener('click', async fu
     arquivoKardexSelecionado = null;
     document.getElementById('inputKardex').value = '';
     atualizarEstadoDropzoneKardex();
+  } catch (e) {
+    escrever('ERRO: ' + (e && e.message ? e.message : String(e)));
+    console.error(e);
+    btn.disabled = false;
+  }
+});
+
+/* ---------- Base de Ativos: turno real do colaborador (.xlsx) ---------- */
+let arquivoAtivosSelecionado = null;
+function atualizarEstadoDropzoneAtivos() {
+  document.getElementById('btnProcessarAtivos').disabled = !arquivoAtivosSelecionado;
+  document.getElementById('dropzoneAtivosTexto').textContent = arquivoAtivosSelecionado
+    ? '✓ ' + arquivoAtivosSelecionado.name : 'Clique para selecionar o .xlsx da base de Ativos';
+}
+document.getElementById('dropzoneAtivos').addEventListener('click', function () {
+  document.getElementById('inputAtivos').click();
+});
+document.getElementById('inputAtivos').addEventListener('change', function (ev) {
+  arquivoAtivosSelecionado = (ev.target.files && ev.target.files[0]) || null;
+  atualizarEstadoDropzoneAtivos();
+});
+
+/* Lê a aba "Ativos" (nome muda toda semana, ex: "Ativos 31.08" — pega a
+   primeira aba cujo nome COMEÇA com "ativos", sem depender da data) e
+   devolve [{codigo, nome, horario}] pelo NOME do cabeçalho, não pela
+   posição da coluna — mesmo padrão dos parsers de texto do app. */
+function lerPlanilhaAtivos(workbook) {
+  const nomeAba = workbook.SheetNames.find(function (n) { return /^ativos/i.test(n.trim()); }) || workbook.SheetNames[0];
+  const linhas = XLSX.utils.sheet_to_json(workbook.Sheets[nomeAba], { header: 1, defval: '' });
+  if (linhas.length === 0) throw new Error('Aba "' + nomeAba + '" está vazia.');
+  const cabecalho = linhas[0].map(function (c) { return String(c || '').trim().toLowerCase(); });
+  const idxCodigo = cabecalho.indexOf('código') !== -1 ? cabecalho.indexOf('código') : cabecalho.indexOf('codigo');
+  const idxNome = cabecalho.indexOf('nome');
+  const idxHorario = cabecalho.indexOf('horario') !== -1 ? cabecalho.indexOf('horario') : cabecalho.indexOf('horário');
+  if (idxCodigo === -1 || idxHorario === -1) {
+    throw new Error('Não encontrei as colunas "Código" e/ou "Horario" no cabeçalho da aba "' + nomeAba +
+      '". Cabeçalho lido: ' + cabecalho.filter(Boolean).join(' | '));
+  }
+  return linhas.slice(1)
+    .filter(function (l) { return l[idxCodigo] !== '' && l[idxCodigo] != null; })
+    .map(function (l) {
+      return { codigo: l[idxCodigo], nome: idxNome !== -1 ? l[idxNome] : '', horario: l[idxHorario] };
+    });
+}
+
+document.getElementById('btnProcessarAtivos').addEventListener('click', async function () {
+  const log = document.getElementById('logIngestAtivos');
+  const ok = document.getElementById('okIngestAtivos');
+  ok.style.display = 'none';
+  log.textContent = '';
+  const escrever = function (msg) { log.textContent += msg + '\n'; log.scrollTop = log.scrollHeight; };
+  const btn = document.getElementById('btnProcessarAtivos');
+  btn.disabled = true;
+  try {
+    escrever('Lendo o arquivo…');
+    const buffer = await arquivoAtivosSelecionado.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: 'array', cellDates: false });
+    const registros = lerPlanilhaAtivos(workbook);
+    escrever(registros.length.toLocaleString('pt-BR') + ' linha(s) lidas da planilha.');
+    await window.processarColaboradores(supabaseClient, registros, escrever);
+    ok.textContent = '✔ Processado com sucesso — pode selecionar o próximo arquivo.';
+    ok.style.display = '';
+    arquivoAtivosSelecionado = null;
+    document.getElementById('inputAtivos').value = '';
+    atualizarEstadoDropzoneAtivos();
   } catch (e) {
     escrever('ERRO: ' + (e && e.message ? e.message : String(e)));
     console.error(e);

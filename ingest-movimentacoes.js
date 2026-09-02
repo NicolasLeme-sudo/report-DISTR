@@ -58,30 +58,30 @@ function classificarZona(rua, nivel) {
 }
 
 /* ============================================================================
-   TURNOS — gabarito da operação (02/09/2026)
+   TURNOS — gabarito da operação
    ============================================================================
    T01      05:00–14:47
-   T02      14:48–19:59
-   T02/T03  20:00–00:15  <- o T03 entra às 20h ainda dentro do T02, de propósito
-                            (reforço noturno). Como o Kardex não diz a qual
-                            turno o operador pertence, essa janela é um balde
-                            próprio em vez de ser chutada pra um dos dois —
-                            decisão da operação. Vira atribuição exata no dia em
-                            que existir o cadastro login -> turno.
+   T02      14:48–00:15   <- absorve o antigo bloco "sobreposto" (20:00–00:15)
    T03      00:16–04:59
+
+   Até 04/09/2026 o bloco 20:00–00:15 era um balde à parte ("T02/T03") porque
+   o Kardex não diz a qual turno o operador pertence. Isso mudou: agora dá
+   pra saber o turno REAL de cada login pela base de Ativos
+   (dim_colaboradores_turno, ver ingest-colaboradores.js) — esta janela por
+   HORÁRIO vira só o FALLBACK pra quando o login não está cadastrado (ou é
+   ADM/confiança, que não tem turno operacional). Decisão da operação:
+   quando é chute, o bloco 20:00–00:15 chuta T02.
    ============================================================================ */
 const TURNOS = [
-  { id: 'T01',     rotulo: 'T01',     janela: '05:00–14:47' },
-  { id: 'T02',     rotulo: 'T02',     janela: '14:48–19:59' },
-  { id: 'T02_T03', rotulo: 'T02/T03', janela: '20:00–00:15' },
-  { id: 'T03',     rotulo: 'T03',     janela: '00:16–04:59' },
+  { id: 'T01', rotulo: 'T01', janela: '05:00–14:47' },
+  { id: 'T02', rotulo: 'T02', janela: '14:48–00:15' },
+  { id: 'T03', rotulo: 'T03', janela: '00:16–04:59' },
 ];
 
 function turnoDe(minutosDoDia) {
   const m = Number(minutosDoDia) || 0;
   if (m >= 300 && m < 888) return 'T01';
-  if (m >= 888 && m < 1200) return 'T02';
-  if (m >= 1200 || m < 16) return 'T02_T03';
+  if (m >= 888 || m < 16) return 'T02';
   return 'T03';
 }
 
@@ -95,9 +95,10 @@ function parsearDataHora(texto) {
   const hh = Number(m[4]), mm = Number(m[5]);
   if (mes < 1 || mes > 12 || dia < 1 || dia > 31 || hh > 23 || mm > 59) return null;
   const iso = ano + '-' + String(mes).padStart(2, '0') + '-' + String(dia).padStart(2, '0');
-  // Movimento entre 00:00 e 00:15 pertence ao turno T02/T03 que começou no dia
-  // anterior, mas fica no dia de calendário mesmo: são 150 linhas em 340.503 no
-  // arquivo real (0,04%), não compensa inventar "dia operacional" por isso.
+  // Movimento entre 00:00 e 00:15 pertence ao T02 que começou no dia anterior
+  // (fallback por horário), mas fica no dia de CALENDÁRIO mesmo: são 150
+  // linhas em 340.503 no arquivo real (0,04%), não compensa inventar "dia
+  // operacional" por isso.
   return { dia: iso, minutos: hh * 60 + mm };
 }
 
@@ -330,10 +331,11 @@ function segmentoMacroSeDisponivel(fam) {
   return window.segmentoMacro(fam.segmento, fam.categoria);
 }
 
-function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFamilias, planejamento) {
+function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFamilias, planejamento, mapaColaboradorTurno) {
   mapaArtigoFamilia = mapaArtigoFamilia || new Map();
   mapaFamilias = mapaFamilias || new Map();
   planejamento = planejamento || [];
+  mapaColaboradorTurno = mapaColaboradorTurno || new Map();
 
   const casado = casarMovimentos(parsed.pernas);
   const movs = casado.movimentos;
@@ -354,8 +356,20 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
   let pecasEmTransito = 0, movimentosEmTransito = 0;
   let semFamiliaPecas = 0, semFamiliaMovimentos = 0;
   const artigosSemFamilia = new Set();
+  // Quantos movimentos tiveram o turno resolvido pelo cadastro real do
+  // colaborador (dim_colaboradores_turno) vs. chutado pelo horário do
+  // movimento (login não cadastrado, ou ADM/confiança, que não tem turno
+  // operacional) — visível na tela, nunca escondido.
+  let porCadastro = 0, porHorario = 0;
 
   movs.forEach(function (m) {
+    // Turno REAL do colaborador quando existir cadastro pra esse login;
+    // senão mantém o turno já chutado pelo horário do movimento (turnoDe,
+    // calculado em casarMovimentos). Nunca sobrescreve com um turno vazio —
+    // ADM/CARGO DE CONFIANCA e login desconhecido não têm entrada aqui.
+    const turnoCadastrado = mapaColaboradorTurno.get(m.login);
+    if (turnoCadastrado) { m.turno = turnoCadastrado; porCadastro++; } else { porHorario++; }
+
     const rota = m.origem.zona + ' -> ' + m.destino.zona;
     if (!rotas.has(rota)) rotas.set(rota, { rota: rota, pecas: 0, movimentos: 0 });
     const r = rotas.get(rota);
@@ -507,6 +521,9 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
     // turno) pra alimentar o histórico contínuo de "Ressuprimento por dia"
     // na tela — ver processarMovimentacoes.
     historico_diario: Array.from(porDiaSegmentoTurno.values()),
+    // Quantos movimentos tiveram o turno resolvido pelo cadastro real
+    // (dim_colaboradores_turno) vs. chutado pelo horário — nunca escondido.
+    resolucao_turno: { por_cadastro: porCadastro, por_horario: porHorario },
     // Artigo que nunca apareceu num upload de Picking/Pulmão não tem entrada
     // no dicionário artigo→família ainda — fica de fora da quebra por
     // segmento e do cruzamento de planejamento, mas visível aqui, nunca
@@ -536,8 +553,8 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
   const parsed = parsearKardex(texto);
   avisar(parsed.pernas.length.toLocaleString('pt-BR') + ' linhas TL+/TL- lidas.');
 
-  avisar('Carregando dicionário artigo→família, famílias e planejamento…');
-  const [linhasArtigoFamilia, linhasFam, linhasPlanejamento] = await Promise.all([
+  avisar('Carregando dicionário artigo→família, famílias, planejamento e turno dos colaboradores…');
+  const [linhasArtigoFamilia, linhasFam, linhasPlanejamento, linhasColaboradores] = await Promise.all([
     // ordenarPor='artigo_codigo': o default de lerTudoPaginado ('codigo') é a
     // PK de dim_armazens/dim_familias, não a de dim_artigo_familia — sem isso
     // a consulta quebrava com "coluna codigo não existe" e o catch abaixo
@@ -555,20 +572,40 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
         avisar('Aviso: não deu pra ler o planejamento (' + (e && e.message) + ') — rodou migracao_planejamento.sql?');
         return [];
       }),
+    window.lerTudoPaginado(supabaseClient, 'dim_colaboradores_turno', 'login, turno', null, 'login')
+      .catch(function (e) {
+        avisar('Aviso: não deu pra ler o turno dos colaboradores (' + (e && e.message) + ') — rodou ' +
+          'migracao_colaboradores_turno.sql? Sem ela, o turno de todo mundo é chutado pelo horário.');
+        return [];
+      }),
   ]);
   const mapaArtigoFamilia = new Map(linhasArtigoFamilia.map(function (a) { return [a.artigo_codigo, a.familia_codigo]; }));
   const mapaFamilias = new Map(linhasFam.map(function (f) { return [f.codigo, f]; }));
+  // Só entra no mapa quem tem turno OPERACIONAL cadastrado (T01/T02/T03) —
+  // ADM/CARGO DE CONFIANCA gravam turno null em dim_colaboradores_turno e
+  // ficam de fora daqui de propósito, caindo no fallback por horário.
+  const mapaColaboradorTurno = new Map(
+    linhasColaboradores.filter(function (c) { return c.turno; }).map(function (c) { return [c.login, c.turno]; })
+  );
   if (mapaArtigoFamilia.size === 0) {
     avisar('Aviso: dicionário artigo→família está vazio — processe Picking/Pulmão pelo menos uma vez ' +
       'pra habilitar a quebra por segmento e o cruzamento com o planejamento.');
   }
+  if (mapaColaboradorTurno.size === 0) {
+    avisar('Aviso: base de turno dos colaboradores está vazia — todo o turno deste Kardex será ' +
+      'presumido pelo horário do movimento. Envie a base de Ativos em Admin › Abastecimento.');
+  }
 
   avisar('Casando pares e classificando zonas…');
-  const payload = construirSnapshotMovimentacoes(parsed, { arquivo: file.name }, mapaArtigoFamilia, mapaFamilias, linhasPlanejamento);
+  const payload = construirSnapshotMovimentacoes(
+    parsed, { arquivo: file.name }, mapaArtigoFamilia, mapaFamilias, linhasPlanejamento, mapaColaboradorTurno
+  );
   avisar(
     payload.total.movimentos_ressuprimento.toLocaleString('pt-BR') + ' movimentos de ressuprimento · ' +
     payload.total.pecas_ressupridas.toLocaleString('pt-BR') + ' peças em ' +
-    payload.total.dias_com_movimento + ' dias.'
+    payload.total.dias_com_movimento + ' dias · turno real de ' +
+    payload.resolucao_turno.por_cadastro.toLocaleString('pt-BR') + ' movimento(s), ' +
+    payload.resolucao_turno.por_horario.toLocaleString('pt-BR') + ' presumido(s) pelo horário.'
   );
 
   avisar('Publicando o snapshot…');
