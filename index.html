@@ -2110,7 +2110,7 @@ function renderizarRessuprimento(p) {
     '</div>';
   });
 
-  /* ---------- árvore Marca › Segmento › Família ---------- */
+  /* ---------- árvore Marca › Grupo › Família ---------- */
   let linhasArvore = '';
   arvoreAtual.forEach(function (m) {
     if (m.qtd === 0) return;
@@ -2191,7 +2191,7 @@ function renderizarRessuprimento(p) {
     '</div>' +
     '<div class="card">' +
       '<div class="section-title" style="display:flex;align-items:center;justify-content:space-between">' +
-        '<span>Detalhamento — Marca › Segmento › Família (' + ROT_FILTRO_RESSUP[filtroRessuprimento] + ')</span>' +
+        '<span>Detalhamento — Marca › Grupo › Família (' + ROT_FILTRO_RESSUP[filtroRessuprimento] + ')</span>' +
         '<span>' +
           '<button class="btn-mini" onclick="expandirTudoRessuprimento()">Expandir tudo</button> ' +
           '<button class="btn-mini" onclick="recolherTudoRessuprimento()">Recolher tudo</button> ' +

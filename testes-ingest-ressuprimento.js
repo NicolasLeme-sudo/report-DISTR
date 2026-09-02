@@ -229,5 +229,36 @@ eq(payloadStats.stats_picking.geral.pecas, 40, '40 peças no total');
 eq(payloadStats.stats_picking.geral.media_pecas_por_endereco, 20,
    'média é 40 peças / 2 endereços = 20 (e não 3 SKUs / 2 endereços = 1,5)');
 
+/* -------------------------------------------------------------------------- */
+secao('árvore — nível 2 é GRUPO (Vestuário/Calçados), não o segmento cru');
+const mapaFamiliasGrupo = new Map([
+  ['060', { marca: 'OLYMPIKUS', categoria: 'VESTUÁRIO OLYMPIKUS', segmento: 'TÊXTIL/ACESSÓRIOS OLYMPIKUS' }],
+  ['068', { marca: 'OLYMPIKUS', categoria: 'MEIAS OLYMPIKUS', segmento: 'TÊXTIL/ACESSÓRIOS OLYMPIKUS' }],
+  ['043', { marca: 'OLYMPIKUS', categoria: 'TÊNIS OLYMPIKUS', segmento: 'TÊNIS OLYMPIKUS' }],
+  ['054', { marca: 'OLYMPIKUS', categoria: 'CHINELO OLYMPIKUS', segmento: 'CHINELO' }],
+]);
+const pickingGrupo = {
+  registros: [
+    { familia_codigo: '060', artigo_codigo: 'G1', cor: 'PT', tamanho: 'M', ean: 'G1', rua: '1', nivel: '1', box: '1', qtd: 10, qtd_gap_reservado: 0 },
+    { familia_codigo: '068', artigo_codigo: 'G2', cor: 'PT', tamanho: 'U', ean: 'G2', rua: '1', nivel: '1', box: '2', qtd: 5, qtd_gap_reservado: 0 },
+    { familia_codigo: '043', artigo_codigo: 'G3', cor: 'PT', tamanho: '40', ean: 'G3', rua: '1', nivel: '1', box: '3', qtd: 7, qtd_gap_reservado: 0 },
+    { familia_codigo: '054', artigo_codigo: 'G4', cor: 'PT', tamanho: 'U', ean: 'G4', rua: '1', nivel: '1', box: '4', qtd: 3, qtd_gap_reservado: 0 },
+  ],
+  negativas_excluidas: 0, negativas_unidades: 0,
+};
+const payloadGrupo = construirSnapshotRessuprimento(
+  pickingGrupo, { registros: [], colisoes_volume: 0 }, mapaFamiliasGrupo, {},
+  { arquivo_picking: 'p.txt', arquivo_pulmao: 'x.txt' }
+);
+const marcaOly = payloadGrupo.arvore_picking.filter(function (m) { return m.codigo === 'OLYMPIKUS'; })[0];
+const gruposOly = marcaOly.segmentos.map(function (s) { return s.codigo; }).sort();
+eq(gruposOly.join(','), 'CALÇADOS,VESTUÁRIO', 'só 2 grupos no nível 2, nunca o segmento cru "TÊXTIL/ACESSÓRIOS ..."');
+const grupoVest = marcaOly.segmentos.filter(function (s) { return s.codigo === 'VESTUÁRIO'; })[0];
+eq(grupoVest.qtd, 15, 'grupo VESTUÁRIO soma vestuário(10) + meia(5)');
+eq(grupoVest.familias.length, 2, 'grupo VESTUÁRIO tem as 2 famílias (vestuário e meia) por baixo');
+const grupoCalc = marcaOly.segmentos.filter(function (s) { return s.codigo === 'CALÇADOS'; })[0];
+eq(grupoCalc.qtd, 10, 'grupo CALÇADOS soma tênis(7) + chinelo(3)');
+eq(grupoCalc.familias.length, 2, 'grupo CALÇADOS tem as 2 famílias (tênis e chinelo) por baixo');
+
 console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
 process.exit(falhas === 0 ? 0 : 1);

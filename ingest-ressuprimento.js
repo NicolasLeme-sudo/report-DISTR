@@ -144,6 +144,22 @@ function segmentoMacro(segmento, categoria) {
   return 'OUTROS';
 }
 
+/* ============================================================================
+   GRUPO DO DETALHAMENTO — o nível do meio da árvore Marca › Grupo › Família
+   ============================================================================
+   Pedido da gestão (03/09/2026): o nível 2 da árvore não deve mostrar o texto
+   cru do `segmento` ("TÊXTIL/ACESSÓRIOS MIZUNO" — verboso e ainda carrega a
+   marca, redundante com o nível 1). Vira só 2 grupos, cada um somando alguns
+   dos 6 segmentos macro: VESTUÁRIO reúne vestuário/meia/acessório, CALÇADOS
+   reúne calçado/chinelo/chuteira. A família continua mostrando o segmento_macro
+   fino (MEIA, ACESSÓRIO etc.) no selo — o grupo aqui é só uma dobra a mais
+   pra navegação, não substitui a granularidade que já existe embaixo. */
+function grupoDetalhamento(segMacro) {
+  if (segMacro === 'VESTUÁRIO' || segMacro === 'MEIA' || segMacro === 'ACESSÓRIO') return 'VESTUÁRIO';
+  if (segMacro === 'CALÇADO' || segMacro === 'CHINELO' || segMacro === 'CHUTEIRA') return 'CALÇADOS';
+  return 'OUTROS';
+}
+
 /* ----------------------------------------------------------------------------
    DATA "DD-MM-AA" do relatório (DT.CRI. do Pulmão) → Date em UTC.
    Usado só pra achar "o item mais antigo" dentro de um grupo — não entra em
@@ -403,8 +419,9 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
       const skuKey = chaveSku(r.artigo_codigo, r.cor, r.tamanho);
       nMarca.qtd += r.qtd;
       nMarca.skus.add(skuKey);
-      if (!nMarca.segmentos.has(r.segmento)) nMarca.segmentos.set(r.segmento, { codigo: r.segmento, nome: r.segmento, qtd: 0, skus: new Set(), familias: new Map() });
-      const nSeg = nMarca.segmentos.get(r.segmento);
+      const grupo = grupoDetalhamento(r.segmento_macro);
+      if (!nMarca.segmentos.has(grupo)) nMarca.segmentos.set(grupo, { codigo: grupo, nome: grupo, qtd: 0, skus: new Set(), familias: new Map() });
+      const nSeg = nMarca.segmentos.get(grupo);
       nSeg.qtd += r.qtd;
       nSeg.skus.add(skuKey);
       if (!nSeg.familias.has(r.familia_codigo)) {
