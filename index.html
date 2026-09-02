@@ -1952,6 +1952,30 @@ function alternarNoPlanejamento(chave) {
 }
 let dataSnapshotRessuprimento = null;
 
+/* "Ressuprido sem planejamento" — agrupado por família (uma linha por
+   família, expande pra ver dia a dia), com busca e cabeçalho clicável pra
+   ordenar. Pedido explícito (04/09/2026): a lista flat família+dia repetia
+   a mesma família várias vezes e ficava difícil de ler. */
+const abertosSemPlano = new Set();
+let filtroTextoSemPlano = '';
+let ordemSemPlano = { campo: 'pecas', direcao: 'desc' };
+function alternarAbertoSemPlano(familiaCod) {
+  if (abertosSemPlano.has(familiaCod)) abertosSemPlano.delete(familiaCod); else abertosSemPlano.add(familiaCod);
+  renderizarRessuprimento();
+}
+function filtrarSemPlano(texto) {
+  filtroTextoSemPlano = texto;
+  renderizarRessuprimento();
+}
+function ordenarSemPlano(campo) {
+  if (ordemSemPlano.campo === campo) {
+    ordemSemPlano.direcao = ordemSemPlano.direcao === 'asc' ? 'desc' : 'asc';
+  } else {
+    ordemSemPlano = { campo: campo, direcao: campo === 'familia' ? 'asc' : 'desc' };
+  }
+  renderizarRessuprimento();
+}
+
 /* Carrega o histórico diário (ressuprimento_historico_diario) pro intervalo
    [filtroHistDe, filtroHistAte], default últimos 7 dias corridos até hoje.
    Tabela ausente (migração não rodada) vira lista vazia — o card cai de
@@ -2668,12 +2692,57 @@ function blocoMovimentacoes() {
         });
     });
 
-    let linhasSemPlano = '';
-    semPlano.slice(0, 100).forEach(function (r) {
-      linhasSemPlano += '<tr><th class="esq">' + escapar(r.familia_codigo) + ' — ' + escapar(r.familia_nome) + '</th>' +
-        '<td>' + formatarDataSimples(r.dia) + '</td>' +
-        '<td>' + fmtInt(r.pecas) + '</td></tr>';
+    /* ---------- agrupa por família (uma linha por família, dias dentro) ---------- */
+    const buscaSemPlano = filtroTextoSemPlano.trim().toLowerCase();
+    const porFamiliaSemPlanoTotal = new Set(semPlano.map(function (r) { return r.familia_codigo; })).size;
+    const porFamiliaSemPlano = new Map();
+    semPlano.forEach(function (r) {
+      if (buscaSemPlano && (r.familia_codigo + ' ' + r.familia_nome).toLowerCase().indexOf(buscaSemPlano) === -1) return;
+      if (!porFamiliaSemPlano.has(r.familia_codigo)) {
+        porFamiliaSemPlano.set(r.familia_codigo, { familia_codigo: r.familia_codigo, familia_nome: r.familia_nome, pecas: 0, dias: [] });
+      }
+      const grupo = porFamiliaSemPlano.get(r.familia_codigo);
+      grupo.pecas += r.pecas;
+      grupo.dias.push({ dia: r.dia, pecas: r.pecas });
     });
+    const gruposSemPlano = Array.from(porFamiliaSemPlano.values());
+    gruposSemPlano.forEach(function (g) { g.dias.sort(function (a, b) { return b.dia < a.dia ? -1 : 1; }); });
+
+    const sinalSemPlano = ordemSemPlano.direcao === 'asc' ? 1 : -1;
+    gruposSemPlano.sort(function (a, b) {
+      if (ordemSemPlano.campo === 'familia') {
+        const na = a.familia_codigo + ' ' + a.familia_nome, nb = b.familia_codigo + ' ' + b.familia_nome;
+        return na < nb ? -sinalSemPlano : na > nb ? sinalSemPlano : 0;
+      }
+      if (ordemSemPlano.campo === 'dias') return (a.dias.length - b.dias.length) * sinalSemPlano;
+      return (a.pecas - b.pecas) * sinalSemPlano; // 'pecas' (default)
+    });
+
+    function setaOrdem(campo) {
+      if (ordemSemPlano.campo !== campo) return '';
+      return ' <span style="font-size:9px">' + (ordemSemPlano.direcao === 'asc' ? '▲' : '▼') + '</span>';
+    }
+    function thOrdenavel(campo, rotulo, classe) {
+      return '<th class="' + (classe || '') + '" style="cursor:pointer;user-select:none" ' +
+        'onclick="ordenarSemPlano(\'' + campo + '\')" title="Ordenar por ' + rotulo + '">' + rotulo + setaOrdem(campo) + '</th>';
+    }
+
+    let linhasSemPlano = '';
+    gruposSemPlano.forEach(function (g) {
+      const chave = 'F|' + g.familia_codigo;
+      const aberto = abertosSemPlano.has(chave);
+      const btn = '<span class="toggle" onclick="alternarAbertoSemPlano(\'' + escaparJs(chave) + '\')">' + (aberto ? '−' : '+') + '</span>';
+      linhasSemPlano += '<tr class="n1"><th class="esq"><span class="desc">' + btn + '<span>' +
+          escapar(g.familia_codigo) + ' — ' + escapar(g.familia_nome) + '</span></span></th>' +
+        '<td>' + fmtInt(g.dias.length) + ' dia' + (g.dias.length > 1 ? 's' : '') + '</td>' +
+        '<td><strong>' + fmtInt(g.pecas) + '</strong></td></tr>';
+      if (!aberto) return;
+      g.dias.forEach(function (d) {
+        linhasSemPlano += '<tr class="n2"><th class="esq ind-2">' + formatarDataSimples(d.dia) + '</th>' +
+          '<td>—</td><td>' + fmtInt(d.pecas) + '</td></tr>';
+      });
+    });
+    const totalPecasSemPlanoFiltrado = gruposSemPlano.reduce(function (s, g) { return s + g.pecas; }, 0);
 
     blocoPlanejamento = '<div class="card">' +
       '<div class="section-title">Ressuprimento planejado × realizado</div>' +
@@ -2687,12 +2756,22 @@ function blocoMovimentacoes() {
       (plano.length ? '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
         '<th class="esq">Turno › Família › PFA</th><th>Status</th><th>Peças</th>' +
       '</tr></thead><tbody>' + linhasPlano + '</tbody></table></div>' : '') +
-      (semPlano.length ? '<div class="section-title" style="margin-top:18px;font-size:13px">Ressuprido sem planejamento</div>' +
-        '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
-          '<th class="esq">Família</th><th>Dia</th><th>Peças</th>' +
-        '</tr></thead><tbody>' + linhasSemPlano + '</tbody></table>' +
-        (semPlano.length > 100 ? '<p style="font-size:11px;color:var(--text-muted);margin-top:6px">mostrando as 100 maiores de ' + fmtInt(semPlano.length) + '</p>' : '') +
-        '</div>' : '') +
+      (semPlano.length ? '<div style="margin-top:18px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
+          '<div class="section-title" style="margin:0;font-size:13px">Ressuprido sem planejamento</div>' +
+          '<input type="text" placeholder="Buscar família…" value="' + escapar(filtroTextoSemPlano) + '" ' +
+            'oninput="filtrarSemPlano(this.value)" style="padding:5px 9px;border-radius:6px;background:var(--bg-input);' +
+            'color:var(--text);border:1px solid var(--border);font-size:12px;width:200px">' +
+        '</div>' +
+        '<p style="font-size:11px;color:var(--text-muted);margin:4px 0 8px">' +
+          fmtInt(gruposSemPlano.length) + ' família(s)' +
+          (buscaSemPlano ? ' (filtrado de ' + fmtInt(porFamiliaSemPlanoTotal) + ')' : '') + ' · ' +
+          fmtInt(totalPecasSemPlanoFiltrado) + ' peças no total — clique numa família pra ver dia a dia; ' +
+          'clique num título de coluna pra ordenar.</p>' +
+        (gruposSemPlano.length ? '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
+            thOrdenavel('familia', 'Família', 'esq') + thOrdenavel('dias', 'Dias') + thOrdenavel('pecas', 'Peças') +
+          '</tr></thead><tbody>' + linhasSemPlano + '</tbody></table></div>' :
+          '<div class="aviso">Nenhuma família bate com "' + escapar(filtroTextoSemPlano) + '".</div>') +
+      '' : '') +
     '</div>';
   }
 
