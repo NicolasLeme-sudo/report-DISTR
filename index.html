@@ -2462,6 +2462,19 @@ function blocoMovimentacoes() {
        Minimiza espaço: turno e família mostram só a contagem por status,
        colapsados por padrão. A PFA individual (a que mais ocupa espaço) só
        aparece expandindo — é o nível que o usuário pediu pra jogar pro fim. */
+    // p.pecas é o total da FAMÍLIA no dia (o Kardex não separa por PFA — ver
+    // comentário em ingest-movimentacoes.js), então quando várias PFAs
+    // compartilham a mesma família+data elas repetem o MESMO número. Somar
+    // direto (reduce ingênuo) contava esse total uma vez por PFA — uma
+    // família com 63 PFAs aparecia com 63× o valor real. Aqui deduplicamos
+    // por família+data antes de somar, contando cada total uma única vez.
+    function pecasUnicasPorFamiliaData(lista) {
+      const vistos = new Map();
+      lista.forEach(function (p) { vistos.set(p.familia_codigo + '|' + p.data, p.pecas); });
+      let soma = 0;
+      vistos.forEach(function (v) { soma += v; });
+      return soma;
+    }
     function resumoStatus(lista) {
       const c = { D0: 0, 'D-1': 0, planejado_nao_ressuprido: 0, aguardando: 0 };
       lista.forEach(function (p) { c[p.status] = (c[p.status] || 0) + 1; });
@@ -2492,10 +2505,9 @@ function blocoMovimentacoes() {
         linhasPlano += linhaPlanejamento({ classe: 'n1', chave: chaveT, temFilhos: false, rotulo: '<strong>' + ROT_TURNO[t] + '</strong>', status: '—', pecas: 0 });
         return;
       }
-      const pecasTurno = doTurno.reduce(function (s, p) { return s + p.pecas; }, 0);
       linhasPlano += linhaPlanejamento({
         classe: 'n1', chave: chaveT, temFilhos: true,
-        rotulo: '<strong>' + ROT_TURNO[t] + '</strong>', status: resumoStatus(doTurno), pecas: pecasTurno,
+        rotulo: '<strong>' + ROT_TURNO[t] + '</strong>', status: resumoStatus(doTurno), pecas: pecasUnicasPorFamiliaData(doTurno),
       });
       if (!abertosPlanejamento.has(chaveT)) return;
 
@@ -2510,10 +2522,9 @@ function blocoMovimentacoes() {
           const familiaCod = par[0], pfasDaFamilia = par[1];
           const nomeFamilia = escapar(familiaCod) + ' — ' + escapar(pfasDaFamilia[0].familia_nome);
           const chaveF = chaveT + '|F|' + familiaCod;
-          const pecasFamilia = pfasDaFamilia.reduce(function (s, p) { return s + p.pecas; }, 0);
           linhasPlano += linhaPlanejamento({
             classe: 'n2', chave: chaveF, temFilhos: true, indent: 'ind-2',
-            rotulo: nomeFamilia, status: resumoStatus(pfasDaFamilia), pecas: pecasFamilia,
+            rotulo: nomeFamilia, status: resumoStatus(pfasDaFamilia), pecas: pecasUnicasPorFamiliaData(pfasDaFamilia),
           });
           if (!abertosPlanejamento.has(chaveF)) return;
 
@@ -2524,9 +2535,14 @@ function blocoMovimentacoes() {
             else if (p.status === 'aguardando') statusHtml = '<span style="color:var(--text-muted)">Aguardando o turno</span>';
             else statusHtml = '<span style="color:var(--red);font-weight:600">Pendente — desde ' + formatarDataSimples(p.data) +
               (p.dias_pendente ? ' (' + p.dias_pendente + ' dia' + (p.dias_pendente > 1 ? 's' : '') + ')' : ' (hoje)') + '</span>';
+            // O Kardex não separa o que cada PFA ressupriu individualmente — só o
+            // total da família no dia (é esse total que aparece no nó da família,
+            // acima). Repetir esse mesmo número em cada PFA já causou o bug de
+            // somar N vezes o mesmo valor (uma família com 63 PFAs mostrava 63×
+            // o total real). Por isso a PFA individual não mostra peças.
             linhasPlano += linhaPlanejamento({
               classe: 'n3', chave: chaveF + '|P|' + p.pfa, temFilhos: false, indent: 'ind-3',
-              rotulo: 'PFA ' + escapar(p.pfa), status: statusHtml, pecas: p.pecas,
+              rotulo: 'PFA ' + escapar(p.pfa), status: statusHtml, pecas: 0,
             });
           });
         });
@@ -2544,7 +2560,9 @@ function blocoMovimentacoes() {
       '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
         'Cruza as PFAs lançadas em <strong>Admin › Planejamento</strong> com o que o Kardex mostra ' +
         'chegando no Picking — D0 no próprio dia, D-1 quando o turno da noite adianta. Turno sem ' +
-        'nenhuma PFA lançada aparece com "—" (não é falha, é ausência de lançamento).</p>' +
+        'nenhuma PFA lançada aparece com "—" (não é falha, é ausência de lançamento). A coluna Peças ' +
+        'só existe por família e por turno: o Kardex não identifica o que cada PFA ressupriu ' +
+        'individualmente, então a PFA sozinha não mostra um número.</p>' +
       kpisPlano +
       (plano.length ? '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
         '<th class="esq">Turno › Família › PFA</th><th>Status</th><th>Peças</th>' +
