@@ -1909,6 +1909,18 @@ let filtroRessuprimento = 'picking';        // 'picking' | 'pulmao' | 'todos'
 let filtroSegmentoRessuprimento = null;     // null = Todos | um dos 6 segmentos da gestão
 let filtroTurnoRessuprimento = null;        // null = todos os turnos | T01 | T02 | T02_T03 | T03
 let dadosMovimentacoes = null;              // snapshot do Kardex (pagina='ressuprimento_mov')
+// Histórico contínuo (tabela ressuprimento_historico_diario), independente
+// de qual foi o último Kardex processado — alimenta o card "Ressuprimento
+// por dia" e a "Composição por segmento" no intervalo de datas escolhido.
+// Some para "ontem/hoje" no default: cada dia trabalhado atualiza esse
+// histórico, então o intervalo padrão sempre reflete o que já foi lançado.
+let historicoRessuprimento = [];
+let filtroHistDe = null;   // 'AAAA-MM-DD'
+let filtroHistAte = null;  // 'AAAA-MM-DD'
+function hojeISO() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
 const abertosRessuprimento = new Set();
 const abertosPlanejamento = new Set();      // árvore Turno › Família › PFAs, mesmo padrão de abertosRessuprimento
 function alternarNoPlanejamento(chave) {
@@ -1916,6 +1928,23 @@ function alternarNoPlanejamento(chave) {
   renderizarRessuprimento();
 }
 let dataSnapshotRessuprimento = null;
+
+/* Carrega o histórico diário (ressuprimento_historico_diario) pro intervalo
+   [filtroHistDe, filtroHistAte], default últimos 7 dias corridos até hoje.
+   Tabela ausente (migração não rodada) vira lista vazia — o card cai de
+   volta pro período único do último Kardex, sem quebrar a tela. */
+async function carregarHistoricoRessuprimento() {
+  if (!filtroHistDe) filtroHistDe = window.diaISO ? window.diaISO(-6, hojeISO()) : hojeISO();
+  if (!filtroHistAte) filtroHistAte = hojeISO();
+  try {
+    const { data, error } = await supabaseClient.from('ressuprimento_historico_diario')
+      .select('dia, segmento, turno, pecas, movimentos')
+      .gte('dia', filtroHistDe).lte('dia', filtroHistAte);
+    historicoRessuprimento = (!error && data) ? data : [];
+  } catch (e) {
+    historicoRessuprimento = [];
+  }
+}
 
 async function carregarRessuprimento() {
   const alvo = document.getElementById('ressuprimento-conteudo');
@@ -1929,6 +1958,7 @@ async function carregarRessuprimento() {
     supabaseClient.from('dashboard_snapshots')
       .select('payload, gerado_em').eq('pagina', 'ressuprimento_mov')
       .order('gerado_em', { ascending: false }).limit(1),
+    carregarHistoricoRessuprimento(),
   ]);
   const { data, error } = resPosicao;
   dadosMovimentacoes = (!resMov.error && resMov.data && resMov.data.length) ? resMov.data[0].payload : null;
@@ -2297,9 +2327,49 @@ function movimentosDoDia(d) {
   return t ? t.movimentos : 0;
 }
 
+/* Colapsa o histórico bruto (uma linha por dia+segmento+turno) no mesmo
+   formato que a tela já sabe desenhar — dia -> {pecas, movimentos, turnos}. */
+function diasDoHistorico(linhas) {
+  const porDia = new Map();
+  linhas.forEach(function (h) {
+    if (!porDia.has(h.dia)) porDia.set(h.dia, { dia: h.dia, pecas: 0, movimentos: 0, turnos: {} });
+    const d = porDia.get(h.dia);
+    d.pecas += h.pecas; d.movimentos += h.movimentos;
+    if (!d.turnos[h.turno]) d.turnos[h.turno] = { pecas: 0, movimentos: 0 };
+    d.turnos[h.turno].pecas += h.pecas; d.turnos[h.turno].movimentos += h.movimentos;
+  });
+  return Array.from(porDia.values()).sort(function (a, b) { return a.dia < b.dia ? -1 : 1; });
+}
+function porTurnoDoHistorico(linhas) {
+  const mapa = new Map();
+  linhas.forEach(function (h) {
+    if (!mapa.has(h.turno)) mapa.set(h.turno, { turno: h.turno, pecas: 0, movimentos: 0 });
+    const t = mapa.get(h.turno); t.pecas += h.pecas; t.movimentos += h.movimentos;
+  });
+  return Array.from(mapa.values()).sort(function (a, b) { return b.pecas - a.pecas; });
+}
+function porSegmentoDoHistorico(linhas) {
+  const mapa = new Map();
+  linhas.forEach(function (h) {
+    if (!mapa.has(h.segmento)) mapa.set(h.segmento, { segmento: h.segmento, pecas: 0, movimentos: 0 });
+    const s = mapa.get(h.segmento); s.pecas += h.pecas; s.movimentos += h.movimentos;
+  });
+  return Array.from(mapa.values()).sort(function (a, b) { return b.pecas - a.pecas; });
+}
+function alterarIntervaloHistorico(campo, valor) {
+  if (campo === 'de') filtroHistDe = valor; else filtroHistAte = valor;
+  carregarHistoricoRessuprimento().then(renderizarRessuprimento);
+}
+function usarUltimos7DiasHistorico() {
+  filtroHistDe = window.diaISO(-6, hojeISO());
+  filtroHistAte = hojeISO();
+  carregarHistoricoRessuprimento().then(renderizarRessuprimento);
+}
+
 function blocoMovimentacoes() {
   const m = dadosMovimentacoes;
-  if (!m) {
+  const usaHistorico = historicoRessuprimento && historicoRessuprimento.length > 0;
+  if (!m && !usaHistorico) {
     return '<div class="card">' +
       '<div class="section-title">Ressuprimento por dia</div>' +
       '<div class="aviso">Nenhum Kardex publicado ainda. Envie a extração de ' +
@@ -2308,7 +2378,29 @@ function blocoMovimentacoes() {
       '</div>';
   }
 
-  const dias = m.por_dia || [];
+  // Fonte dos dados do gráfico/tabela por dia e da composição por segmento:
+  // o histórico contínuo (ressuprimento_historico_diario) no intervalo
+  // escolhido, quando existir — cobre vários uploads de Kardex ao longo do
+  // tempo. Sem histórico ainda gravado (migração recente, ou tabela vazia),
+  // cai pro período do ÚLTIMO Kardex processado, pra não ficar em branco.
+  const dias = usaHistorico ? diasDoHistorico(historicoRessuprimento) : (m ? m.por_dia || [] : []);
+  const porTurnoFonte = usaHistorico ? porTurnoDoHistorico(historicoRessuprimento) : (m ? m.por_turno || [] : []);
+  const porSegmentoFonte = usaHistorico ? porSegmentoDoHistorico(historicoRessuprimento) : (m ? m.por_segmento || [] : []);
+
+  const seletorIntervalo = '<div class="filtros" style="margin-bottom:10px">' +
+    '<span class="rot-filtro">Período</span>' +
+    '<input type="date" value="' + escapar(filtroHistDe || '') + '" max="' + escapar(filtroHistAte || '') + '" ' +
+      'style="padding:4px 8px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border);font-size:12px" ' +
+      'onchange="alterarIntervaloHistorico(\'de\', this.value)">' +
+    '<span style="color:var(--text-muted);font-size:12px">até</span>' +
+    '<input type="date" value="' + escapar(filtroHistAte || '') + '" min="' + escapar(filtroHistDe || '') + '" ' +
+      'style="padding:4px 8px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border);font-size:12px" ' +
+      'onchange="alterarIntervaloHistorico(\'ate\', this.value)">' +
+    '<span class="chip" onclick="usarUltimos7DiasHistorico()">Últimos 7 dias</span>' +
+    (usaHistorico ? '' : '<span style="color:var(--text-muted);font-size:11px">— sem histórico gravado neste intervalo ainda; mostrando o último Kardex processado (' +
+      (m && m.periodo && m.periodo.de ? escapar(m.periodo.de) + ' a ' + escapar(m.periodo.ate) : '—') + ').</span>') +
+  '</div>';
+
   const pecas = dias.reduce(function (s, d) { return s + pecasDoDia(d); }, 0);
   const movimentos = dias.reduce(function (s, d) { return s + movimentosDoDia(d); }, 0);
   const diasComMovimento = dias.filter(function (d) { return pecasDoDia(d) > 0; }).length;
@@ -2320,7 +2412,7 @@ function blocoMovimentacoes() {
     '<span class="chip' + (!filtroTurnoRessuprimento ? ' on' : '') +
       '" onclick="alternarFiltroTurnoRessuprimento(null)">Todos</span>';
   ORDEM_TURNO.forEach(function (t) {
-    const dados = (m.por_turno || []).filter(function (x) { return x.turno === t; })[0];
+    const dados = (porTurnoFonte || []).filter(function (x) { return x.turno === t; })[0];
     if (!dados) return;
     chipsTurno += '<span class="chip' + (filtroTurnoRessuprimento === t ? ' on' : '') +
       '" title="' + JANELA_TURNO[t] + '" onclick="alternarFiltroTurnoRessuprimento(\'' + t + '\')">' +
@@ -2341,8 +2433,8 @@ function blocoMovimentacoes() {
       '<div class="val forte">' + fmtInt(mediaDia) + '</div>' +
       '<div class="sub">peças/dia no período</div></div>' +
     '<div class="kpi"><div class="rot">Fila em andamento</div>' +
-      '<div class="val forte" style="color:var(--amber)">' + fmtInt(m.total.pecas_em_transito) + '</div>' +
-      '<div class="sub">baixado do Pulmão, ainda no corredor</div></div>' +
+      '<div class="val forte" style="color:var(--amber)">' + (m ? fmtInt(m.total.pecas_em_transito) : '—') + '</div>' +
+      '<div class="sub">baixado do Pulmão, ainda no corredor no último Kardex processado</div></div>' +
   '</div>';
 
   /* ---------- gráfico: barras por dia, empilhadas por turno ----------
@@ -2373,14 +2465,17 @@ function blocoMovimentacoes() {
 
   let legendaTurno = '';
   ORDEM_TURNO.forEach(function (t) {
-    const dados = (m.por_turno || []).filter(function (x) { return x.turno === t; })[0];
+    const dados = (porTurnoFonte || []).filter(function (x) { return x.turno === t; })[0];
     if (!dados) return;
     legendaTurno += '<span><i style="background:var(' + COR_TURNO[t] + ')"></i>' +
       ROT_TURNO[t] + ' <span style="color:var(--text-muted)">(' + JANELA_TURNO[t] + ')</span> · ' +
       fmtInt(dados.pecas) + '</span>';
   });
 
-  /* ---------- tabela dia a dia ---------- */
+  /* ---------- tabela dia a dia ----------
+     "Operadores" só existe no snapshot de um Kardex específico (m.por_dia) —
+     o histórico agregado (dia+segmento+turno) não guarda quem mexeu, então
+     essa coluna vira "—" quando a fonte é o intervalo histórico. */
   let linhasDias = '';
   dias.forEach(function (d) {
     let cels = '';
@@ -2391,24 +2486,24 @@ function blocoMovimentacoes() {
     linhasDias += '<tr><th class="esq">' + formatarDataSimples(d.dia) + '</th>' + cels +
       '<td><strong>' + fmtInt(d.pecas) + '</strong></td>' +
       '<td>' + fmtInt(d.movimentos) + '</td>' +
-      '<td>' + fmtInt(d.operadores) + '</td></tr>';
+      '<td>' + (d.operadores !== undefined ? fmtInt(d.operadores) : '—') + '</td></tr>';
   });
   let totCels = '';
   ORDEM_TURNO.forEach(function (t) {
-    const dados = (m.por_turno || []).filter(function (x) { return x.turno === t; })[0];
+    const dados = (porTurnoFonte || []).filter(function (x) { return x.turno === t; })[0];
     totCels += '<td>' + (dados ? fmtInt(dados.pecas) : '—') + '</td>';
   });
   linhasDias += '<tr class="total"><th class="esq">TOTAL</th>' + totCels +
-    '<td>' + fmtInt(m.total.pecas_ressupridas) + '</td>' +
-    '<td>' + fmtInt(m.total.movimentos_ressuprimento) + '</td>' +
-    '<td>' + fmtInt(m.total.operadores_distintos) + '</td></tr>';
+    '<td>' + fmtInt(pecas) + '</td>' +
+    '<td>' + fmtInt(movimentos) + '</td>' +
+    '<td>' + (!usaHistorico && m ? fmtInt(m.total.operadores_distintos) : '—') + '</td></tr>';
 
-  const periodo = m.periodo && m.periodo.de
-    ? m.periodo.de + ' a ' + m.periodo.ate
-    : 'período não identificado no arquivo';
+  const periodo = usaHistorico
+    ? formatarDataSimples(filtroHistDe) + ' a ' + formatarDataSimples(filtroHistAte)
+    : (m && m.periodo && m.periodo.de ? m.periodo.de + ' a ' + m.periodo.ate : 'período não identificado no arquivo');
 
   /* ---------- composição por segmento (resolvida pelo dicionário artigo→família) ---------- */
-  const porSegmento = m.por_segmento || [];
+  const porSegmento = porSegmentoFonte;
   const totalSegMov = porSegmento.reduce(function (s, x) { return s + x.pecas; }, 0);
   const maxSegMov = porSegmento.reduce(function (mx, x) { return Math.max(mx, x.pecas); }, 0);
   let barrasSegMov = '';
@@ -2421,14 +2516,16 @@ function blocoMovimentacoes() {
       '<div class="num">' + fmtInt(s.pecas) + ' · ' + fmtPct(totalSegMov ? s.pecas / totalSegMov * 100 : 0) + '</div>' +
     '</div>';
   });
-  const avisoSemFamilia = (m.sem_familia && m.sem_familia.pecas > 0)
+  const avisoSemFamilia = (m && m.sem_familia && m.sem_familia.pecas > 0)
     ? '<p style="font-size:11px;color:var(--amber);margin-top:8px">' + fmtInt(m.sem_familia.artigos_distintos) +
       ' artigo(s) ainda sem entrada no dicionário artigo→família (' + fmtInt(m.sem_familia.pecas) +
       ' peças) — processe Picking/Pulmão de novo pra completar.</p>' : '';
 
-  /* ---------- planejamento: D0 / D-1 / sem planejamento ---------- */
-  const plano = m.planejamento || [];
-  const semPlano = m.ressuprimento_sem_planejamento || [];
+  /* ---------- planejamento: D0 / D-1 / sem planejamento (sempre do ÚLTIMO
+     Kardex processado — o cruzamento com PFA é por período de arquivo, não
+     faz sentido sobre um intervalo histórico arbitrário). ---------- */
+  const plano = m ? m.planejamento || [] : [];
+  const semPlano = m ? m.ressuprimento_sem_planejamento || [] : [];
   let blocoPlanejamento = '';
   if (plano.length === 0 && semPlano.length === 0) {
     blocoPlanejamento = '<div class="card">' +
@@ -2585,6 +2682,7 @@ function blocoMovimentacoes() {
       'Conta o movimento que <strong>chega no Picking</strong> — direto do Pulmão ou pelo corredor de ' +
       'ressuprimento (ruas 500/600). É assim que cada peça é contada uma vez só: o ressuprimento ' +
       'costuma acontecer em dois saltos, e somar as duas pernas contaria a mesma peça duas vezes.</p>' +
+    seletorIntervalo +
     chipsTurno +
     kpis +
     '<div class="barras-dia">' + barras + '</div>' +
@@ -2593,12 +2691,12 @@ function blocoMovimentacoes() {
       '<th class="esq">Dia</th><th>T01</th><th>T02</th><th>T02/T03</th><th>T03</th>' +
       '<th>Total peças</th><th>Movimentos</th><th>Operadores</th>' +
     '</tr></thead><tbody>' + linhasDias + '</tbody></table></div>' +
-    '<div style="font-size:11px;color:var(--text-muted);margin-top:12px">' +
-      'Kardex: ' + escapar(m.arquivo || '—') + ' · descartados como fiscal/importação: ' +
+    (m ? '<div style="font-size:11px;color:var(--text-muted);margin-top:12px">' +
+      'Último Kardex processado: ' + escapar(m.arquivo || '—') + ' · descartados como fiscal/importação: ' +
       fmtInt(m.descartados.fiscal_mesmo_endereco) + ' pares de mesmo endereço, ' +
       fmtInt(m.descartados.sem_volume) + ' sem volume, ' +
       fmtInt(m.descartados.sem_par_exato) + ' pernas sem par no período.' +
-    '</div>' +
+    '</div>' : '') +
   '</div>' +
   '<div class="card">' +
     '<div class="section-title">Composição do ressuprimento por segmento</div>' +
@@ -2610,16 +2708,18 @@ function blocoMovimentacoes() {
 
 function exportarCSVMovimentacoes() {
   const m = dadosMovimentacoes;
-  if (!m) return;
+  const usaHistorico = historicoRessuprimento && historicoRessuprimento.length > 0;
+  const dias = usaHistorico ? diasDoHistorico(historicoRessuprimento) : (m ? m.por_dia || [] : []);
+  if (dias.length === 0) return;
   const linhas = [['Dia', 'T01', 'T02', 'T02/T03', 'T03', 'Total pecas', 'Movimentos', 'Operadores']];
-  (m.por_dia || []).forEach(function (d) {
+  dias.forEach(function (d) {
     linhas.push([
       d.dia,
       d.turnos.T01 ? d.turnos.T01.pecas : 0,
       d.turnos.T02 ? d.turnos.T02.pecas : 0,
       d.turnos.T02_T03 ? d.turnos.T02_T03.pecas : 0,
       d.turnos.T03 ? d.turnos.T03.pecas : 0,
-      d.pecas, d.movimentos, d.operadores,
+      d.pecas, d.movimentos, d.operadores !== undefined ? d.operadores : '',
     ]);
   });
   const csv = linhas.map(function (l) {

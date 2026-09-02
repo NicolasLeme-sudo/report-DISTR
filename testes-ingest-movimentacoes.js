@@ -202,6 +202,15 @@ eq(snapSeg.sem_familia.pecas, 3, 'Z1 (sem entrada no dicionário) fica sinalizad
 eq(snapSeg.sem_familia.artigos_distintos, 1, 'conta 1 artigo distinto sem família');
 
 /* ------------------------------------------------------------------ */
+console.log('\n=== historico_diario — uma linha por dia+segmento+turno, sem somar entre turnos/segmentos ===');
+const histMap = {};
+snapSeg.historico_diario.forEach(function (h) { histMap[h.dia + '|' + h.segmento + '|' + h.turno] = h; });
+eq(histMap['2026-08-10|VESTUÁRIO|T01'].pecas, 10, 'V1 (T01, 08:00) vira uma linha própria de VESTUÁRIO no dia 10');
+eq(histMap['2026-08-10|CALÇADO|T01'].pecas, 5, 'T1 (T01, 09:00) vira uma linha própria de CALÇADO no dia 10 — não soma com VESTUÁRIO');
+eq(histMap['2026-08-10|SEM FAMÍLIA|T01'].pecas, 3, 'Z1 sem família também entra no histórico, sinalizado');
+eq(snapSeg.historico_diario.length, 3, 'uma linha por combinação distinta de dia+segmento+turno, nada a mais');
+
+/* ------------------------------------------------------------------ */
 console.log('\n=== cruzamento com planejamento — D0, D-1 e sem planejamento ===');
 const arquivoPlano = [
   'VULSP|MOVIMENTOS|de:03/08/2026|ate:31/08/2026', CAB,
@@ -310,6 +319,42 @@ console.log('\n=== processarMovimentacoes — dim_artigo_familia NÃO tem coluna
   eq(payload.sem_familia.pecas, 0, 'nada cai em "sem família" quando o dicionário é lido com sucesso');
   ok(!avisos.some(function (a) { return /Aviso: não deu pra ler o dicionário/.test(a); }),
      'não emite aviso de falha de leitura quando a consulta funciona');
+
+  /* ---------------------------------------------------------------- */
+  console.log('\n=== upsertHistoricoDiario — grava em lotes, upsert por dia+segmento+turno ===');
+  const chamadas = [];
+  const clienteOk = {
+    from: function (nome) {
+      return {
+        upsert: async function (linhas, opts) {
+          chamadas.push({ tabela: nome, linhas: linhas, opts: opts });
+          return { error: null };
+        },
+      };
+    },
+  };
+  const linhasGrandes = [];
+  for (let i = 0; i < 1200; i++) {
+    linhasGrandes.push({ dia: '2026-08-1' + (i % 9), segmento: 'VESTUÁRIO', turno: 'T01', pecas: 1, movimentos: 1 });
+  }
+  const avisosHist = [];
+  await ctx.upsertHistoricoDiario(clienteOk, linhasGrandes, function (m) { avisosHist.push(m); });
+  eq(chamadas.length, 3, '1200 linhas em lotes de 500 viram 3 chamadas de upsert (500+500+200)');
+  ok(chamadas.every(function (c) { return c.tabela === 'ressuprimento_historico_diario' && c.opts.onConflict === 'dia,segmento,turno'; }),
+     'toda chamada mira a tabela certa com o onConflict de dia+segmento+turno');
+  ok(avisosHist.some(function (a) { return /1\.200 linha/.test(a); }), 'avisa quantas linhas foram gravadas');
+
+  console.log('\n=== upsertHistoricoDiario — tabela ainda não existe (migração não rodada) ===');
+  const clienteSemTabela = { from: function () { return { select: function () { return this; }, order: function () { return this; }, range: async function () { return {}; } }; } };
+  const avisosSemTabela = [];
+  await ctx.upsertHistoricoDiario(clienteSemTabela, [{ dia: '2026-08-10', segmento: 'VESTUÁRIO', turno: 'T01', pecas: 1, movimentos: 1 }], function (m) { avisosSemTabela.push(m); });
+  ok(avisosSemTabela.some(function (a) { return /Aviso: não deu pra gravar o histórico diário/.test(a); }),
+     'tabela ausente vira aviso claro, não derruba o processamento');
+
+  console.log('\n=== upsertHistoricoDiario — nada pra gravar não chama o banco ===');
+  const chamadasVazio = [];
+  await ctx.upsertHistoricoDiario({ from: function (n) { chamadasVazio.push(n); return { upsert: async function () { return { error: null }; } }; } }, [], function () {});
+  eq(chamadasVazio.length, 0, 'historico_diario vazio não gera nenhuma chamada ao Supabase');
 })().then(function () {
   console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
   process.exit(falhas === 0 ? 0 : 1);

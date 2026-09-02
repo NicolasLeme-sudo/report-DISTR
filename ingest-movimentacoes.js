@@ -344,6 +344,11 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
   const rotas = new Map();        // "ZONA -> ZONA" -> { pecas, movimentos }
   const operadores = new Map();   // login -> { nome, pecas, movimentos }
   const pecasPorFamiliaDia = new Map(); // "familia|dia" -> peças ressupridas
+  // dia+segmento+turno -> { pecas, movimentos } — é essa quebra que vira
+  // ressuprimento_historico_diario (upsert por dia/segmento/turno), pra
+  // manter um histórico contínuo entre uploads de Kardex, já que cada
+  // arquivo cobre só um período e some quando o próximo é processado.
+  const porDiaSegmentoTurno = new Map();
 
   let pecasRessupridas = 0, movimentosRessuprimento = 0;
   let pecasEmTransito = 0, movimentosEmTransito = 0;
@@ -379,6 +384,13 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
     if (!porSegmento.has(rotSeg)) porSegmento.set(rotSeg, { segmento: rotSeg, pecas: 0, movimentos: 0 });
     const sInfo = porSegmento.get(rotSeg);
     sInfo.pecas += m.qtd; sInfo.movimentos += 1;
+
+    const chaveDST = m.dia + '|' + rotSeg + '|' + m.turno;
+    if (!porDiaSegmentoTurno.has(chaveDST)) {
+      porDiaSegmentoTurno.set(chaveDST, { dia: m.dia, segmento: rotSeg, turno: m.turno, pecas: 0, movimentos: 0 });
+    }
+    const dst = porDiaSegmentoTurno.get(chaveDST);
+    dst.pecas += m.qtd; dst.movimentos += 1;
 
     if (!porDia.has(m.dia)) {
       porDia.set(m.dia, { dia: m.dia, pecas: 0, movimentos: 0, turnos: {}, operadores: new Set() });
@@ -491,6 +503,10 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
     operadores: Array.from(operadores.values()).sort(function (a, b) { return b.pecas - a.pecas; }),
     planejamento: planejamentoClassificado,
     ressuprimento_sem_planejamento: ressuprimentoSemPlanejamento,
+    // Vira linhas de ressuprimento_historico_diario (uma por dia+segmento+
+    // turno) pra alimentar o histórico contínuo de "Ressuprimento por dia"
+    // na tela — ver processarMovimentacoes.
+    historico_diario: Array.from(porDiaSegmentoTurno.values()),
     // Artigo que nunca apareceu num upload de Picking/Pulmão não tem entrada
     // no dicionário artigo→família ainda — fica de fora da quebra por
     // segmento e do cruzamento de planejamento, mas visível aqui, nunca
@@ -563,11 +579,43 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
   });
   if (error) throw error;
 
+  await upsertHistoricoDiario(supabaseClient, payload.historico_diario, avisar);
+
   avisar('Concluído.');
   return payload;
 }
 
+/* ============================================================================
+   HISTÓRICO DIÁRIO — grava dia+segmento+turno em ressuprimento_historico_diario
+   pra que a tela consiga montar um intervalo de datas (ex: últimos 7 dias)
+   cruzando VÁRIOS uploads de Kardex, não só o último processado. Upsert por
+   (dia, segmento, turno): reprocessar um Kardex cujo período já foi gravado
+   antes sobrescreve os dias daquele período — o arquivo mais recente sempre
+   vence, sem duplicar nem exigir limpeza manual.
+   ============================================================================ */
+const LOTE_HISTORICO_DIARIO = 500;
+async function upsertHistoricoDiario(supabaseClient, linhas, onAviso) {
+  const avisar = onAviso || function () {};
+  if (!linhas || linhas.length === 0) return;
+  const lotes = [];
+  for (let i = 0; i < linhas.length; i += LOTE_HISTORICO_DIARIO) {
+    lotes.push(linhas.slice(i, i + LOTE_HISTORICO_DIARIO));
+  }
+  try {
+    for (const lote of lotes) {
+      const { error } = await supabaseClient.from('ressuprimento_historico_diario')
+        .upsert(lote, { onConflict: 'dia,segmento,turno' });
+      if (error) throw error;
+    }
+    avisar(linhas.length.toLocaleString('pt-BR') + ' linha(s) gravadas no histórico diário.');
+  } catch (e) {
+    avisar('Aviso: não deu pra gravar o histórico diário (' + (e && e.message) + ') — rodou migracao_historico_ressuprimento.sql? ' +
+      'O restante do processamento seguiu normal, só o intervalo de datas na tela é que não vai enxergar este Kardex.');
+  }
+}
+
 window.processarMovimentacoes = processarMovimentacoes;
+window.upsertHistoricoDiario = upsertHistoricoDiario;
 window.parsearKardex = parsearKardex;
 window.casarMovimentos = casarMovimentos;
 window.construirSnapshotMovimentacoes = construirSnapshotMovimentacoes;
