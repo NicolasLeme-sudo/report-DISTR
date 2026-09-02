@@ -1036,6 +1036,7 @@ tr.total > th, tr.total > td {
           Clique para selecionar o arquivo .txt
           <input type="file" id="inputArquivo" accept=".txt,text/plain" style="display:none">
         </div>
+        <div class="aviso ok" id="okIngest" style="display:none;margin-top:10px"></div>
         <div class="log" id="logIngest"></div>
       </div>
 
@@ -1057,6 +1058,7 @@ tr.total > th, tr.total > td {
         <button class="btn-mini" id="btnProcessarRessuprimento" style="margin-top:12px" disabled>
           Processar Ressuprimento
         </button>
+        <div class="aviso ok" id="okIngestRessuprimento" style="display:none;margin-top:10px"></div>
         <div class="log" id="logIngestRessuprimento"></div>
       </div>
 
@@ -1075,6 +1077,7 @@ tr.total > th, tr.total > td {
         <button class="btn-mini" id="btnProcessarKardex" style="margin-top:12px" disabled>
           Processar Kardex
         </button>
+        <div class="aviso ok" id="okIngestKardex" style="display:none;margin-top:10px"></div>
         <div class="log" id="logIngestKardex"></div>
       </div>
 
@@ -2648,13 +2651,19 @@ document.getElementById('inputArquivo').addEventListener('change', async functio
   const file = ev.target.files && ev.target.files[0];
   if (!file) return;
   const log = document.getElementById('logIngest');
+  const ok = document.getElementById('okIngest');
+  ok.style.display = 'none';
   log.textContent = '';
   const escrever = function (msg) { log.textContent += msg + '\n'; log.scrollTop = log.scrollHeight; };
   try {
     await window.processarEstoque(supabaseClient, file, escrever);
-    escrever('Recarregando o dashboard…');
+    escrever('Recarregando o dashboard em segundo plano…');
     await carregarEstoque();
-    mostrarSecao('estoque');
+    // Fica na tela de Abastecimento (não navega pro Balanço de Estoque) —
+    // só avisa que deu certo, pra dar pra encadear o próximo arquivo sem
+    // precisar voltar pra essa tela toda vez.
+    ok.textContent = '✔ Processado com sucesso — pode selecionar o próximo arquivo.';
+    ok.style.display = '';
   } catch (e) {
     escrever('ERRO: ' + (e && e.message ? e.message : String(e)));
     console.error(e);
@@ -2710,16 +2719,21 @@ document.getElementById('inputKardex').addEventListener('change', function (ev) 
 });
 document.getElementById('btnProcessarKardex').addEventListener('click', async function () {
   const log = document.getElementById('logIngestKardex');
+  const ok = document.getElementById('okIngestKardex');
+  ok.style.display = 'none';
   log.textContent = '';
   const escrever = function (msg) { log.textContent += msg + '\n'; log.scrollTop = log.scrollHeight; };
   const btn = document.getElementById('btnProcessarKardex');
   btn.disabled = true;
   try {
     await window.processarMovimentacoes(supabaseClient, arquivoKardexSelecionado, escrever);
-    escrever('Recarregando o dashboard…');
+    escrever('Recarregando o dashboard em segundo plano…');
     ressuprimentoCarregado = true;
     await carregarRessuprimento();
-    mostrarSecao('ressuprimento');
+    // Fica na tela de Abastecimento — só avisa que deu certo, sem navegar
+    // pro Ressuprimento, pra dar pra encadear o próximo arquivo direto.
+    ok.textContent = '✔ Processado com sucesso — pode selecionar o próximo arquivo.';
+    ok.style.display = '';
     arquivoKardexSelecionado = null;
     document.getElementById('inputKardex').value = '';
     atualizarEstadoDropzoneKardex();
@@ -2774,16 +2788,21 @@ document.getElementById('btnSalvarPlanejamentoPfa').addEventListener('click', as
 
 document.getElementById('btnProcessarRessuprimento').addEventListener('click', async function () {
   const log = document.getElementById('logIngestRessuprimento');
+  const ok = document.getElementById('okIngestRessuprimento');
+  ok.style.display = 'none';
   log.textContent = '';
   const escrever = function (msg) { log.textContent += msg + '\n'; log.scrollTop = log.scrollHeight; };
   const btn = document.getElementById('btnProcessarRessuprimento');
   btn.disabled = true;
   try {
     await window.processarRessuprimento(supabaseClient, arquivoPickingSelecionado, arquivoPulmaoSelecionado, escrever);
-    escrever('Recarregando o dashboard…');
+    escrever('Recarregando o dashboard em segundo plano…');
     ressuprimentoCarregado = true;
     await carregarRessuprimento();
-    mostrarSecao('ressuprimento');
+    // Fica na tela de Abastecimento — só avisa que deu certo, sem navegar
+    // pro Ressuprimento, pra dar pra encadear o próximo arquivo direto.
+    ok.textContent = '✔ Processado com sucesso — pode selecionar o próximo arquivo.';
+    ok.style.display = '';
     arquivoPickingSelecionado = null; arquivoPulmaoSelecionado = null;
     document.getElementById('inputPicking').value = '';
     document.getElementById('inputPulmao').value = '';
