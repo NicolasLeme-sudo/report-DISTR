@@ -1952,15 +1952,16 @@ function alternarNoPlanejamento(chave) {
 }
 let dataSnapshotRessuprimento = null;
 
-/* "Ressuprido sem planejamento" — agrupado por família (uma linha por
-   família, expande pra ver dia a dia), com busca e cabeçalho clicável pra
-   ordenar. Pedido explícito (04/09/2026): a lista flat família+dia repetia
-   a mesma família várias vezes e ficava difícil de ler. */
+/* "Ressuprido sem planejamento" — agrupado por DATA (uma linha por data,
+   expande pra ver quais famílias ressupriram naquele dia), com busca e
+   cabeçalho clicável pra ordenar. Começou agrupado por família (04/09/2026)
+   e foi invertido a pedido do usuário (05/09/2026): a data é a informação
+   principal agora, a família só aparece dentro de uma data expandida. */
 const abertosSemPlano = new Set();
 let filtroTextoSemPlano = '';
 let ordemSemPlano = { campo: 'pecas', direcao: 'desc' };
-function alternarAbertoSemPlano(familiaCod) {
-  if (abertosSemPlano.has(familiaCod)) abertosSemPlano.delete(familiaCod); else abertosSemPlano.add(familiaCod);
+function alternarAbertoSemPlano(chave) {
+  if (abertosSemPlano.has(chave)) abertosSemPlano.delete(chave); else abertosSemPlano.add(chave);
   renderizarRessuprimento();
 }
 function filtrarSemPlano(texto) {
@@ -1983,7 +1984,10 @@ function ordenarSemPlano(campo) {
   if (ordemSemPlano.campo === campo) {
     ordemSemPlano.direcao = ordemSemPlano.direcao === 'asc' ? 'desc' : 'asc';
   } else {
-    ordemSemPlano = { campo: campo, direcao: campo === 'familia' ? 'asc' : 'desc' };
+    // desc de cara em qualquer coluna: pra Peças/Famílias é "maior primeiro"
+    // (o que pesa mais), pra Datas é "mais recente primeiro" — a leitura
+    // mais natural pra um problema operacional (o que aconteceu por último).
+    ordemSemPlano = { campo: campo, direcao: 'desc' };
   }
   renderizarRessuprimento();
 }
@@ -2704,50 +2708,51 @@ function blocoMovimentacoes() {
         });
     });
 
-    /* ---------- agrupa por família (uma linha por família, dias dentro) ---------- */
-    // Busca livre: casa com família (código/nome), qualquer data (dd/mm/aaaa
-    // ou aaaa-mm-dd) ou quantidade de peças de QUALQUER dia daquela família —
-    // não só o nome. Acha a família inteira (com todos os dias) sempre que
-    // algo dentro dela bater, pra não mostrar um total que não fecha com os
-    // dias visíveis.
+    /* ---------- agrupa por DATA (uma linha por data, famílias dentro) ----------
+       Invertido a pedido do usuário (05/09/2026): a data virou a informação
+       principal (coluna "Datas", à esquerda), não mais a família. Expande
+       uma data pra ver quais famílias ressupriram sem planejamento naquele
+       dia, cada uma com o % que ESSE dia representa do total sem
+       planejamento DAQUELA família (não do dia) — continua sendo a mesma
+       pergunta de antes ("esse dia foi grande pra essa família?"), só que
+       agora agrupada por data em vez de por família. */
     const buscaSemPlano = filtroTextoSemPlano.trim().toLowerCase();
-    const porFamiliaSemPlanoTotal = new Set(semPlano.map(function (r) { return r.familia_codigo; })).size;
-    const porFamiliaSemPlano = new Map();
+    const porDataSemPlanoTotal = new Set(semPlano.map(function (r) { return r.dia; })).size;
+    const totalPorFamiliaSemPlano = new Map(); // familia_codigo -> total sem planejamento em TODAS as datas
     semPlano.forEach(function (r) {
-      if (!porFamiliaSemPlano.has(r.familia_codigo)) {
-        porFamiliaSemPlano.set(r.familia_codigo, { familia_codigo: r.familia_codigo, familia_nome: r.familia_nome, pecas: 0, dias: [], busca: '' });
-      }
-      const grupo = porFamiliaSemPlano.get(r.familia_codigo);
+      totalPorFamiliaSemPlano.set(r.familia_codigo, (totalPorFamiliaSemPlano.get(r.familia_codigo) || 0) + r.pecas);
+    });
+    const porDataSemPlano = new Map();
+    semPlano.forEach(function (r) {
+      if (!porDataSemPlano.has(r.dia)) porDataSemPlano.set(r.dia, { dia: r.dia, pecas: 0, familias: [], busca: '' });
+      const grupo = porDataSemPlano.get(r.dia);
       grupo.pecas += r.pecas;
-      grupo.dias.push({ dia: r.dia, pecas: r.pecas });
+      grupo.familias.push({ familia_codigo: r.familia_codigo, familia_nome: r.familia_nome, pecas: r.pecas });
       grupo.busca += ' ' + r.familia_codigo + ' ' + r.familia_nome + ' ' + formatarDataSimples(r.dia) + ' ' +
         r.dia + ' ' + r.pecas + ' ' + fmtInt(r.pecas);
     });
-    let gruposSemPlano = Array.from(porFamiliaSemPlano.values());
+    let gruposSemPlano = Array.from(porDataSemPlano.values());
     if (buscaSemPlano) {
       gruposSemPlano = gruposSemPlano.filter(function (g) { return g.busca.toLowerCase().indexOf(buscaSemPlano) !== -1; });
     }
 
     const sinalSemPlano = ordemSemPlano.direcao === 'asc' ? 1 : -1;
-    // Os dias de dentro de uma família aberta seguem o MESMO critério
-    // escolhido no cabeçalho, não uma ordem fixa: por Peças, o dia que mais
-    // pesou aparece primeiro/último igual a família; por Família (não varia
-    // dentro do grupo) ou por Dias (contagem, também não varia por dia), o
-    // critério que sobra pra ordenar CADA dia é a própria data — pedido
-    // explícito do usuário (05/09/2026).
+    // As famílias de dentro de uma data aberta seguem o MESMO critério
+    // escolhido no cabeçalho: por Peças, a família que mais pesou naquele
+    // dia aparece primeiro/último; por Data ou Famílias (nenhum dos dois
+    // varia por família individual dentro do grupo), o critério que sobra
+    // pra ordenar é o nome da família, na mesma direção.
     gruposSemPlano.forEach(function (g) {
-      g.dias.sort(function (a, b) {
+      g.familias.sort(function (a, b) {
         if (ordemSemPlano.campo === 'pecas') return (a.pecas - b.pecas) * sinalSemPlano;
-        return (a.dia < b.dia ? -1 : a.dia > b.dia ? 1 : 0) * sinalSemPlano;
+        const na = a.familia_codigo + ' ' + a.familia_nome, nb = b.familia_codigo + ' ' + b.familia_nome;
+        return (na < nb ? -1 : na > nb ? 1 : 0) * sinalSemPlano;
       });
     });
 
     gruposSemPlano.sort(function (a, b) {
-      if (ordemSemPlano.campo === 'familia') {
-        const na = a.familia_codigo + ' ' + a.familia_nome, nb = b.familia_codigo + ' ' + b.familia_nome;
-        return na < nb ? -sinalSemPlano : na > nb ? sinalSemPlano : 0;
-      }
-      if (ordemSemPlano.campo === 'dias') return (a.dias.length - b.dias.length) * sinalSemPlano;
+      if (ordemSemPlano.campo === 'data') return (a.dia < b.dia ? -1 : a.dia > b.dia ? 1 : 0) * sinalSemPlano;
+      if (ordemSemPlano.campo === 'familias') return (a.familias.length - b.familias.length) * sinalSemPlano;
       return (a.pecas - b.pecas) * sinalSemPlano; // 'pecas' (default)
     });
 
@@ -2762,21 +2767,23 @@ function blocoMovimentacoes() {
 
     let linhasSemPlano = '';
     gruposSemPlano.forEach(function (g) {
-      const chave = 'F|' + g.familia_codigo;
+      const chave = 'D|' + g.dia;
       const aberto = abertosSemPlano.has(chave);
       const btn = '<span class="toggle" onclick="alternarAbertoSemPlano(\'' + escaparJs(chave) + '\')">' + (aberto ? '−' : '+') + '</span>';
       linhasSemPlano += '<tr class="n1"><th class="esq"><span class="desc">' + btn + '<span>' +
-          escapar(g.familia_codigo) + ' — ' + escapar(g.familia_nome) + '</span></span></th>' +
-        '<td>' + fmtInt(g.dias.length) + ' dia' + (g.dias.length > 1 ? 's' : '') + '</td>' +
+          formatarDataSimples(g.dia) + '</span></span></th>' +
+        '<td>' + fmtInt(g.familias.length) + ' família' + (g.familias.length > 1 ? 's' : '') + '</td>' +
         '<td><strong>' + fmtInt(g.pecas) + '</strong></td></tr>';
       if (!aberto) return;
-      g.dias.forEach(function (d) {
-        // % do total sem planejamento DESSA família — mostra quanto aquele
-        // dia específico pesou dentro do problema da família (ex: "40%" diz
-        // que aquele dia sozinho respondeu por quase metade do total).
-        const pctDoTotal = g.pecas > 0 ? (d.pecas / g.pecas) * 100 : 0;
-        linhasSemPlano += '<tr class="n2"><th class="esq ind-2">' + fmtPct(pctDoTotal) + ' do total da família</th>' +
-          '<td>' + formatarDataSimples(d.dia) + '</td><td>' + fmtInt(d.pecas) + '</td></tr>';
+      g.familias.forEach(function (f) {
+        // % do total sem planejamento DESSA família (em todas as datas) —
+        // mostra quanto ESTE dia pesou dentro do problema da família (ex:
+        // "40%" diz que este dia sozinho respondeu por quase metade dela).
+        const totalFamilia = totalPorFamiliaSemPlano.get(f.familia_codigo) || 0;
+        const pctDaFamilia = totalFamilia > 0 ? (f.pecas / totalFamilia) * 100 : 0;
+        linhasSemPlano += '<tr class="n2"><th class="esq ind-2">' + escapar(f.familia_codigo) + ' — ' +
+            escapar(f.familia_nome) + ' · ' + fmtPct(pctDaFamilia) + ' da família</th>' +
+          '<td>—</td><td>' + fmtInt(f.pecas) + '</td></tr>';
       });
     });
     const totalPecasSemPlanoFiltrado = gruposSemPlano.reduce(function (s, g) { return s + g.pecas; }, 0);
@@ -2795,19 +2802,19 @@ function blocoMovimentacoes() {
       '</tr></thead><tbody>' + linhasPlano + '</tbody></table></div>' : '') +
       (semPlano.length ? '<div style="margin-top:18px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
           '<div class="section-title" style="margin:0;font-size:13px">Ressuprido sem planejamento</div>' +
-          '<input type="text" id="buscaSemPlano" placeholder="Buscar (família, dia, peças…)" value="' + escapar(filtroTextoSemPlano) + '" ' +
+          '<input type="text" id="buscaSemPlano" placeholder="Buscar (data, família, peças…)" value="' + escapar(filtroTextoSemPlano) + '" ' +
             'oninput="filtrarSemPlano(this.value)" style="padding:5px 9px;border-radius:6px;background:var(--bg-input);' +
             'color:var(--text);border:1px solid var(--border);font-size:12px;width:220px">' +
         '</div>' +
         '<p style="font-size:11px;color:var(--text-muted);margin:4px 0 8px">' +
-          fmtInt(gruposSemPlano.length) + ' família(s)' +
-          (buscaSemPlano ? ' (filtrado de ' + fmtInt(porFamiliaSemPlanoTotal) + ')' : '') + ' · ' +
-          fmtInt(totalPecasSemPlanoFiltrado) + ' peças no total — clique numa família pra ver dia a dia; ' +
+          fmtInt(gruposSemPlano.length) + ' data(s)' +
+          (buscaSemPlano ? ' (filtrado de ' + fmtInt(porDataSemPlanoTotal) + ')' : '') + ' · ' +
+          fmtInt(totalPecasSemPlanoFiltrado) + ' peças no total — clique numa data pra ver as famílias; ' +
           'clique num título de coluna pra ordenar.</p>' +
         (gruposSemPlano.length ? '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
-            thOrdenavel('familia', 'Família', 'esq') + thOrdenavel('dias', 'Dias') + thOrdenavel('pecas', 'Peças') +
+            thOrdenavel('data', 'Datas', 'esq') + thOrdenavel('familias', 'Famílias') + thOrdenavel('pecas', 'Peças') +
           '</tr></thead><tbody>' + linhasSemPlano + '</tbody></table></div>' :
-          '<div class="aviso">Nenhuma família bate com "' + escapar(filtroTextoSemPlano) + '".</div>') +
+          '<div class="aviso">Nenhum resultado bate com "' + escapar(filtroTextoSemPlano) + '".</div>') +
       '' : '') +
     '</div>';
   }
