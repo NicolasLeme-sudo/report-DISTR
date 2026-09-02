@@ -1907,6 +1907,11 @@ let filtroSegmentoRessuprimento = null;     // null = Todos | um dos 6 segmentos
 let filtroTurnoRessuprimento = null;        // null = todos os turnos | T01 | T02 | T02_T03 | T03
 let dadosMovimentacoes = null;              // snapshot do Kardex (pagina='ressuprimento_mov')
 const abertosRessuprimento = new Set();
+const abertosPlanejamento = new Set();      // árvore Turno › Família › PFAs, mesmo padrão de abertosRessuprimento
+function alternarNoPlanejamento(chave) {
+  if (abertosPlanejamento.has(chave)) abertosPlanejamento.delete(chave); else abertosPlanejamento.add(chave);
+  renderizarRessuprimento();
+}
 let dataSnapshotRessuprimento = null;
 
 async function carregarRessuprimento() {
@@ -2432,6 +2437,7 @@ function blocoMovimentacoes() {
     const d0 = plano.filter(function (p) { return p.status === 'D0'; });
     const d1 = plano.filter(function (p) { return p.status === 'D-1'; });
     const naoRessup = plano.filter(function (p) { return p.status === 'planejado_nao_ressuprido'; });
+    const aguardando = plano.filter(function (p) { return p.status === 'aguardando'; });
     const pecasSemPlano = semPlano.reduce(function (s, r) { return s + r.pecas; }, 0);
 
     const kpisPlano = '<div class="kpi-row">' +
@@ -2443,22 +2449,84 @@ function blocoMovimentacoes() {
         '<div class="sub">ressuprido no dia anterior</div></div>' +
       '<div class="kpi"><div class="rot">Planejado, não ressuprido</div>' +
         '<div class="val forte" style="color:var(--red)">' + fmtInt(naoRessup.length) + '</div>' +
-        '<div class="sub">PFA sem nenhum movimento no Kardex</div></div>' +
+        '<div class="sub">' + (aguardando.length ? '+ ' + fmtInt(aguardando.length) + ' aguardando o turno' : 'PFA sem nenhum movimento no Kardex') + '</div></div>' +
       '<div class="kpi"><div class="rot">Sem planejamento</div>' +
         '<div class="val forte" style="color:var(--amber)">' + fmtInt(pecasSemPlano) + '</div>' +
         '<div class="sub">' + fmtInt(semPlano.length) + ' família(s) ressupridas à toa</div></div>' +
     '</div>';
 
+    /* ---------- árvore Turno › Família › PFA ----------
+       Minimiza espaço: turno e família mostram só a contagem por status,
+       colapsados por padrão. A PFA individual (a que mais ocupa espaço) só
+       aparece expandindo — é o nível que o usuário pediu pra jogar pro fim. */
+    function resumoStatus(lista) {
+      const c = { D0: 0, 'D-1': 0, planejado_nao_ressuprido: 0, aguardando: 0 };
+      lista.forEach(function (p) { c[p.status] = (c[p.status] || 0) + 1; });
+      const partes = [];
+      if (c.D0) partes.push('<span style="color:var(--olive)">' + c.D0 + ' D0</span>');
+      if (c['D-1']) partes.push('<span style="color:var(--accent)">' + c['D-1'] + ' D-1</span>');
+      if (c.planejado_nao_ressuprido) partes.push('<span style="color:var(--red)">' + c.planejado_nao_ressuprido + ' pendente' + (c.planejado_nao_ressuprido > 1 ? 's' : '') + '</span>');
+      if (c.aguardando) partes.push('<span style="color:var(--text-muted)">' + c.aguardando + ' aguardando</span>');
+      return partes.length ? partes.join(' · ') : '—';
+    }
+    function linhaPlanejamento(opts) {
+      const aberto = opts.temFilhos && abertosPlanejamento.has(opts.chave);
+      const btn = opts.temFilhos
+        ? '<span class="toggle" onclick="alternarNoPlanejamento(\'' + escaparJs(opts.chave) + '\')">' + (aberto ? '−' : '+') + '</span>'
+        : '<span class="toggle vazio">·</span>';
+      return '<tr class="' + opts.classe + '">' +
+        '<th class="' + (opts.indent || '') + '"><span class="desc">' + btn + '<span>' + opts.rotulo + '</span></span></th>' +
+        '<td>' + opts.status + '</td>' +
+        '<td>' + (opts.pecas ? fmtInt(opts.pecas) : '—') + '</td>' +
+      '</tr>';
+    }
+
     let linhasPlano = '';
-    plano.forEach(function (p) {
-      const corStatus = p.status === 'D0' ? 'var(--olive)' : p.status === 'D-1' ? 'var(--accent)' : 'var(--red)';
-      const rotStatus = p.status === 'D0' ? 'D0' : p.status === 'D-1' ? 'D-1' : 'Não ressuprido';
-      linhasPlano += '<tr><th class="esq">' + escapar(p.pfa) + '</th>' +
-        '<td>' + escapar(p.familia_codigo) + '</td>' +
-        '<td>' + ROT_TURNO[p.turno] + '</td>' +
-        '<td>' + formatarDataSimples(p.data) + '</td>' +
-        '<td style="color:' + corStatus + ';font-weight:600">' + rotStatus + '</td>' +
-        '<td>' + (p.pecas ? fmtInt(p.pecas) : '—') + '</td></tr>';
+    ORDEM_TURNO.forEach(function (t) {
+      const doTurno = plano.filter(function (p) { return p.turno === t; });
+      const chaveT = 'T|' + t;
+      if (doTurno.length === 0) {
+        linhasPlano += linhaPlanejamento({ classe: 'n1', chave: chaveT, temFilhos: false, rotulo: '<strong>' + ROT_TURNO[t] + '</strong>', status: '—', pecas: 0 });
+        return;
+      }
+      const pecasTurno = doTurno.reduce(function (s, p) { return s + p.pecas; }, 0);
+      linhasPlano += linhaPlanejamento({
+        classe: 'n1', chave: chaveT, temFilhos: true,
+        rotulo: '<strong>' + ROT_TURNO[t] + '</strong>', status: resumoStatus(doTurno), pecas: pecasTurno,
+      });
+      if (!abertosPlanejamento.has(chaveT)) return;
+
+      const porFamilia = new Map();
+      doTurno.forEach(function (p) {
+        if (!porFamilia.has(p.familia_codigo)) porFamilia.set(p.familia_codigo, []);
+        porFamilia.get(p.familia_codigo).push(p);
+      });
+      Array.from(porFamilia.entries())
+        .sort(function (a, b) { return b[1].length - a[1].length; })
+        .forEach(function (par) {
+          const familiaCod = par[0], pfasDaFamilia = par[1];
+          const nomeFamilia = escapar(familiaCod) + ' — ' + escapar(pfasDaFamilia[0].familia_nome);
+          const chaveF = chaveT + '|F|' + familiaCod;
+          const pecasFamilia = pfasDaFamilia.reduce(function (s, p) { return s + p.pecas; }, 0);
+          linhasPlano += linhaPlanejamento({
+            classe: 'n2', chave: chaveF, temFilhos: true, indent: 'ind-2',
+            rotulo: nomeFamilia, status: resumoStatus(pfasDaFamilia), pecas: pecasFamilia,
+          });
+          if (!abertosPlanejamento.has(chaveF)) return;
+
+          pfasDaFamilia.forEach(function (p) {
+            let statusHtml;
+            if (p.status === 'D0') statusHtml = '<span style="color:var(--olive);font-weight:600">D0</span>';
+            else if (p.status === 'D-1') statusHtml = '<span style="color:var(--accent);font-weight:600">D-1</span>';
+            else if (p.status === 'aguardando') statusHtml = '<span style="color:var(--text-muted)">Aguardando o turno</span>';
+            else statusHtml = '<span style="color:var(--red);font-weight:600">Pendente — desde ' + formatarDataSimples(p.data) +
+              (p.dias_pendente ? ' (' + p.dias_pendente + ' dia' + (p.dias_pendente > 1 ? 's' : '') + ')' : ' (hoje)') + '</span>';
+            linhasPlano += linhaPlanejamento({
+              classe: 'n3', chave: chaveF + '|P|' + p.pfa, temFilhos: false, indent: 'ind-3',
+              rotulo: 'PFA ' + escapar(p.pfa), status: statusHtml, pecas: p.pecas,
+            });
+          });
+        });
     });
 
     let linhasSemPlano = '';
@@ -2472,10 +2540,11 @@ function blocoMovimentacoes() {
       '<div class="section-title">Ressuprimento planejado × realizado</div>' +
       '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
         'Cruza as PFAs lançadas em <strong>Admin › Planejamento</strong> com o que o Kardex mostra ' +
-        'chegando no Picking, por família — D0 no próprio dia, D-1 quando o turno da noite adianta.</p>' +
+        'chegando no Picking — D0 no próprio dia, D-1 quando o turno da noite adianta. Turno sem ' +
+        'nenhuma PFA lançada aparece com "—" (não é falha, é ausência de lançamento).</p>' +
       kpisPlano +
       (plano.length ? '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
-        '<th class="esq">PFA</th><th>Família</th><th>Turno</th><th>Data planejada</th><th>Status</th><th>Peças</th>' +
+        '<th class="esq">Turno › Família › PFA</th><th>Status</th><th>Peças</th>' +
       '</tr></thead><tbody>' + linhasPlano + '</tbody></table></div>' : '') +
       (semPlano.length ? '<div class="section-title" style="margin-top:18px;font-size:13px">Ressuprido sem planejamento</div>' +
         '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +

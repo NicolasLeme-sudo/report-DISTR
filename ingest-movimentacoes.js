@@ -307,6 +307,21 @@ function diaISO(delta, isoBase) {
   return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
 }
 
+/* "DD/MM/AAAA" (como vem no cabeçalho do Kardex, campo "ate:") -> "AAAA-MM-DD". */
+function dataBrParaIso(dataBr) {
+  const m = String(dataBr || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  return m[3] + '-' + m[2] + '-' + m[1];
+}
+
+/* Quantos dias de "de" até "ate" (ambos AAAA-MM-DD) — usado só pra exibir há
+   quanto tempo uma PFA está pendente (FIFO), nunca em soma de negócio. */
+function diferencaDias(deIso, ateIso) {
+  const p1 = String(deIso).split('-').map(Number), p2 = String(ateIso).split('-').map(Number);
+  const d1 = Date.UTC(p1[0], p1[1] - 1, p1[2]), d2 = Date.UTC(p2[0], p2[1] - 1, p2[2]);
+  return Math.round((d2 - d1) / 86400000);
+}
+
 /* Resolve segmento_macro de uma família sem depender de ingest-ressuprimento.js
    ter sido carregado (não é garantido na ordem de testes) — se a função global
    não existir, o segmento fica null em vez de quebrar o Kardex inteiro. */
@@ -408,14 +423,29 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
      ou no dia seguinte) fica em `ressuprimento_sem_planejamento` — é o
      "ressupriu à toa" que a operação pediu pra enxergar.
      ============================================================================ */
+  // Último dia coberto pelo Kardex — uma PFA planejada pra DEPOIS disso ainda
+  // não teve chance de ser ressuprida (o turno "ainda não chegou" no arquivo
+  // que temos), então não é "não ressuprida" (que soa a falha), é "aguardando".
+  const ultimoDiaKardex = dataBrParaIso(parsed.periodo.ate);
+
   const planejamentoClassificado = planejamento.map(function (p) {
     const pecasD0 = pecasPorFamiliaDia.get(p.familia_codigo + '|' + p.data) || 0;
     const pecasD1 = pecasPorFamiliaDia.get(p.familia_codigo + '|' + diaISO(-1, p.data)) || 0;
-    let status, pecas;
+    let status, pecas, diasPendente = null;
     if (pecasD0 > 0) { status = 'D0'; pecas = pecasD0; }
     else if (pecasD1 > 0) { status = 'D-1'; pecas = pecasD1; }
-    else { status = 'planejado_nao_ressuprido'; pecas = 0; }
-    return { pfa: p.pfa, familia_codigo: p.familia_codigo, turno: p.turno, data: p.data, status: status, pecas: pecas };
+    else if (ultimoDiaKardex && p.data > ultimoDiaKardex) { status = 'aguardando'; pecas = 0; }
+    else {
+      status = 'planejado_nao_ressuprido'; pecas = 0;
+      // FIFO: há quantos dias essa PFA está pendente, contado até o último
+      // dia que o Kardex já cobre (não "hoje" — o arquivo pode ser de ontem).
+      if (ultimoDiaKardex) diasPendente = Math.max(0, diferencaDias(p.data, ultimoDiaKardex));
+    }
+    const famPlano = mapaFamilias.get(p.familia_codigo);
+    return {
+      pfa: p.pfa, familia_codigo: p.familia_codigo, familia_nome: famPlano ? famPlano.categoria : p.familia_codigo,
+      turno: p.turno, data: p.data, status: status, pecas: pecas, dias_pendente: diasPendente,
+    };
   });
 
   // Famílias planejadas pra cada dia (a própria data, e o dia seguinte — pra
@@ -492,11 +522,23 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
 
   avisar('Carregando dicionário artigo→família, famílias e planejamento…');
   const [linhasArtigoFamilia, linhasFam, linhasPlanejamento] = await Promise.all([
-    window.lerTudoPaginado(supabaseClient, 'dim_artigo_familia', 'artigo_codigo, familia_codigo')
-      .catch(function () { return []; }), // tabela nova — some sem quebrar quem não rodou a migração
+    // ordenarPor='artigo_codigo': o default de lerTudoPaginado ('codigo') é a
+    // PK de dim_armazens/dim_familias, não a de dim_artigo_familia — sem isso
+    // a consulta quebrava com "coluna codigo não existe" e o catch abaixo
+    // engolia o erro em silêncio, fazendo o dicionário parecer sempre vazio
+    // mesmo depois de populado (bug real, achado 03/09/2026 com dado real).
+    window.lerTudoPaginado(supabaseClient, 'dim_artigo_familia', 'artigo_codigo, familia_codigo', null, 'artigo_codigo')
+      .catch(function (e) {
+        avisar('Aviso: não deu pra ler o dicionário artigo→família (' + (e && e.message) + ') — rodou migracao_planejamento.sql?');
+        return [];
+      }),
     window.lerTudoPaginado(supabaseClient, 'dim_familias', 'codigo, marca, categoria, segmento'),
     supabaseClient.from('ressuprimento_planejamento').select('pfa, familia_codigo, turno, data')
-      .then(function (r) { return r.data || []; }).catch(function () { return []; }),
+      .then(function (r) { return r.data || []; })
+      .catch(function (e) {
+        avisar('Aviso: não deu pra ler o planejamento (' + (e && e.message) + ') — rodou migracao_planejamento.sql?');
+        return [];
+      }),
   ]);
   const mapaArtigoFamilia = new Map(linhasArtigoFamilia.map(function (a) { return [a.artigo_codigo, a.familia_codigo]; }));
   const mapaFamilias = new Map(linhasFam.map(function (f) { return [f.codigo, f]; }));

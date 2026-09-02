@@ -237,6 +237,7 @@ eq(porPfa.PFA1.pecas, 10, 'D0 registra as peças do dia certo');
 eq(porPfa.PFA2.status, 'D-1', 'PFA2 (família 043, planejada pro dia 11) ressuprida no dia 10 = D-1 (adiantado)');
 eq(porPfa.PFA2.pecas, 20, 'D-1 registra as peças do dia anterior');
 eq(porPfa.PFA4.status, 'planejado_nao_ressuprido', 'PFA4 (família 999) nunca apareceu no Kardex — planejada e não ressuprida');
+eq(porPfa.PFA4.dias_pendente, 21, 'PFA4 planejada pro dia 10, Kardex cobre até 31 -> 21 dias pendente (FIFO)');
 const semPlanoMap = {};
 snapPlano.ressuprimento_sem_planejamento.forEach(function (r) { semPlanoMap[r.familia_codigo] = r.pecas; });
 eq(semPlanoMap['068'], 7, 'família 068 ressuprida sem nenhuma PFA planejada pra ela = sem planejamento');
@@ -244,5 +245,72 @@ ok(semPlanoMap['060'] === undefined, 'família 060 (tem PFA1 pro mesmo dia) NÃO
 ok(semPlanoMap['043'] === undefined, 'família 043 (tem PFA2 pro dia seguinte, cobre o D-1) NÃO aparece em sem_planejamento');
 
 /* ------------------------------------------------------------------ */
-console.log(falhas === 0 ? '\nTODOS OS TESTES PASSARAM' : '\n' + falhas + ' TESTE(S) FALHARAM');
-process.exit(falhas === 0 ? 0 : 1);
+console.log('\n=== status "aguardando" — PFA planejada pra depois do fim do Kardex ===');
+const planejamentoFuturo = [
+  { pfa: 'PFA9', familia_codigo: '060', turno: 'T01', data: '2026-09-15' }, // bem depois do fim do arquivo (31/08)
+];
+const snapFuturo = ctx.construirSnapshotMovimentacoes(
+  ctx.parsearKardex(arquivoPlano), { arquivo: 't.txt' }, mapaArtigoFamiliaPlano, mapaFamiliasPlano, planejamentoFuturo
+);
+eq(snapFuturo.planejamento[0].status, 'aguardando', 'PFA planejada pra data futura ao Kardex vira "aguardando", não "não ressuprida"');
+eq(snapFuturo.planejamento[0].dias_pendente, null, 'aguardando não tem contagem de FIFO — ainda não é atraso');
+
+/* ------------------------------------------------------------------ */
+console.log('\n=== processarMovimentacoes — dim_artigo_familia NÃO tem coluna "codigo" ===');
+/* Bug real achado em produção (03/09/2026): lerTudoPaginado ordena por
+   'codigo' por padrão (é a PK de dim_armazens/dim_familias), mas a PK de
+   dim_artigo_familia é artigo_codigo. Sem passar ordenarPor='artigo_codigo'
+   explicitamente, a consulta quebra no Postgres real com "column codigo does
+   not exist" — e o catch (colocado pra tabela nova sumir sem quebrar quem
+   não rodou a migração) engolia esse erro em silêncio, fazendo o dicionário
+   parecer sempre vazio mesmo depois de populado. Este fake reproduz o
+   comportamento exato do Postgres: erro se a ordenação pedida não é uma
+   coluna que existe na tabela. */
+(async function () {
+  function supabaseFake() {
+    const tabelas = {
+      dim_artigo_familia: { colunas: ['artigo_codigo', 'familia_codigo'], linhas: [{ artigo_codigo: 'K1', familia_codigo: '060' }] },
+      dim_familias: { colunas: ['codigo', 'marca', 'categoria', 'segmento'], linhas: [{ codigo: '060', marca: 'OLYMPIKUS', categoria: 'VESTUÁRIO OLYMPIKUS', segmento: 'TÊXTIL/ACESSÓRIOS OLYMPIKUS' }] },
+    };
+    return {
+      from: function (nome) {
+        if (nome === 'ressuprimento_planejamento') {
+          return { select: function () { return this; }, then: function (res) { return Promise.resolve({ data: [], error: null }).then(res); } };
+        }
+        if (nome === 'dashboard_snapshots') {
+          return { insert: async function () { return { error: null }; } };
+        }
+        const t = tabelas[nome];
+        const q = {
+          select: function () { return q; },
+          order: function (col) { q._ordenarPor = col; return q; },
+          range: async function (de) {
+            // Coluna de ordenação pedida precisa existir na tabela — é o que
+            // o Postgres real faz (rejeita ORDER BY numa coluna inexistente).
+            if (t.colunas.indexOf(q._ordenarPor) === -1) return { data: null, error: { message: 'column "' + q._ordenarPor + '" does not exist' } };
+            return { data: de === 0 ? t.linhas : [], error: null };
+          },
+        };
+        return q;
+      },
+    };
+  }
+
+  const arquivoKardexArtigo = [
+    'VULSP|MOVIMENTOS|de:03/08/2026|ate:31/08/2026', CAB,
+    linha('K1', 'PT', '40', '10/08/26 08:00', 'TL-', 'RK', '10,000', ' 02,08,001', 'VK', 'EX1', 'OP 1'),
+    linha('K1', 'PT', '40', '10/08/26 08:00', 'TL+', 'RK', '10,000', ' 02,01,001', 'VK', 'EX1', 'OP 1'),
+  ].join('\r\n');
+  const avisos = [];
+  const fakeFile = { name: 'kardex.txt', text: async function () { return arquivoKardexArtigo; } };
+  const payload = await ctx.processarMovimentacoes(supabaseFake(), fakeFile, function (m) { avisos.push(m); });
+
+  const porSeg = {}; (payload.por_segmento || []).forEach(function (s) { porSeg[s.segmento] = s.pecas; });
+  eq(porSeg.VESTUÁRIO, 10, 'dicionário lido com sucesso (ordenarPor correto) — K1 resolve pra segmento VESTUÁRIO');
+  eq(payload.sem_familia.pecas, 0, 'nada cai em "sem família" quando o dicionário é lido com sucesso');
+  ok(!avisos.some(function (a) { return /Aviso: não deu pra ler o dicionário/.test(a); }),
+     'não emite aviso de falha de leitura quando a consulta funciona');
+})().then(function () {
+  console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
+  process.exit(falhas === 0 ? 0 : 1);
+});
