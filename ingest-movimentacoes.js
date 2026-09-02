@@ -299,17 +299,41 @@ function ehBaixaPendente(mov) {
   return mov.origem.zona === 'PULMAO' && mov.destino.zona === 'TRANSITO';
 }
 
-function construirSnapshotMovimentacoes(parsed, meta) {
+/* Dia seguinte/anterior a partir de "AAAA-MM-DD", em UTC — nunca escorrega de
+   dia por fuso, mesmo padrão de parsearDataHora acima. */
+function diaISO(delta, isoBase) {
+  const p = String(isoBase).split('-').map(Number);
+  const d = new Date(Date.UTC(p[0], p[1] - 1, p[2] + delta, 12));
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+}
+
+/* Resolve segmento_macro de uma família sem depender de ingest-ressuprimento.js
+   ter sido carregado (não é garantido na ordem de testes) — se a função global
+   não existir, o segmento fica null em vez de quebrar o Kardex inteiro. */
+function segmentoMacroSeDisponivel(fam) {
+  if (!fam || typeof window.segmentoMacro !== 'function') return null;
+  return window.segmentoMacro(fam.segmento, fam.categoria);
+}
+
+function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFamilias, planejamento) {
+  mapaArtigoFamilia = mapaArtigoFamilia || new Map();
+  mapaFamilias = mapaFamilias || new Map();
+  planejamento = planejamento || [];
+
   const casado = casarMovimentos(parsed.pernas);
   const movs = casado.movimentos;
 
   const porDia = new Map();       // dia -> agregado do dia
   const porTurno = new Map();     // turno -> { pecas, movimentos }
+  const porSegmento = new Map();  // segmento_macro -> { pecas, movimentos }
   const rotas = new Map();        // "ZONA -> ZONA" -> { pecas, movimentos }
   const operadores = new Map();   // login -> { nome, pecas, movimentos }
+  const pecasPorFamiliaDia = new Map(); // "familia|dia" -> peças ressupridas
 
   let pecasRessupridas = 0, movimentosRessuprimento = 0;
   let pecasEmTransito = 0, movimentosEmTransito = 0;
+  let semFamiliaPecas = 0, semFamiliaMovimentos = 0;
+  const artigosSemFamilia = new Set();
 
   movs.forEach(function (m) {
     const rota = m.origem.zona + ' -> ' + m.destino.zona;
@@ -322,6 +346,24 @@ function construirSnapshotMovimentacoes(parsed, meta) {
 
     pecasRessupridas += m.qtd;
     movimentosRessuprimento += 1;
+
+    // Família/segmento — resolvidos pelo dicionário artigo→família (populado
+    // a cada upload de Picking/Pulmão; ver upsertArtigoFamilia). Artigo sem
+    // entrada ainda no dicionário (nunca apareceu num upload de Picking/
+    // Pulmão) fica sinalizado, nunca some do total em silêncio.
+    const familiaCod = mapaArtigoFamilia.get(m.artigo);
+    const fam = familiaCod ? mapaFamilias.get(familiaCod) : null;
+    const segMacro = segmentoMacroSeDisponivel(fam);
+    if (!familiaCod) {
+      semFamiliaPecas += m.qtd; semFamiliaMovimentos += 1; artigosSemFamilia.add(m.artigo);
+    } else {
+      const chaveFD = familiaCod + '|' + m.dia;
+      pecasPorFamiliaDia.set(chaveFD, (pecasPorFamiliaDia.get(chaveFD) || 0) + m.qtd);
+    }
+    const rotSeg = segMacro || 'SEM FAMÍLIA';
+    if (!porSegmento.has(rotSeg)) porSegmento.set(rotSeg, { segmento: rotSeg, pecas: 0, movimentos: 0 });
+    const sInfo = porSegmento.get(rotSeg);
+    sInfo.pecas += m.qtd; sInfo.movimentos += 1;
 
     if (!porDia.has(m.dia)) {
       porDia.set(m.dia, { dia: m.dia, pecas: 0, movimentos: 0, turnos: {}, operadores: new Set() });
@@ -348,6 +390,57 @@ function construirSnapshotMovimentacoes(parsed, meta) {
     })
     .sort(function (a, b) { return a.dia < b.dia ? -1 : 1; });
 
+  /* ============================================================================
+     CRUZAMENTO COM O PLANEJAMENTO — D0 / D-1 / sem planejamento
+     ============================================================================
+     Cada linha de `planejamento` é {pfa, familia_codigo, turno, data}, lançada
+     manualmente pela assistente (tela Admin > Planejamento). O cruzamento é
+     por FAMÍLIA (não por artigo — ver comentário em ingest-ressuprimento.js
+     sobre por que família em vez de depender do CSV de PFA sempre atualizado):
+
+       D0                    -> ressuprido na PRÓPRIA data planejada.
+       D-1                   -> ressuprido no dia ANTERIOR (turno da noite
+                                adiantando o que o turno seguinte vai separar).
+       planejado_nao_ressuprido -> nem D0 nem D-1: a família não teve nenhum
+                                    ressuprimento nas duas datas relevantes.
+
+     O inverso (família ressuprida sem nenhuma PFA planejada pra ela, na data
+     ou no dia seguinte) fica em `ressuprimento_sem_planejamento` — é o
+     "ressupriu à toa" que a operação pediu pra enxergar.
+     ============================================================================ */
+  const planejamentoClassificado = planejamento.map(function (p) {
+    const pecasD0 = pecasPorFamiliaDia.get(p.familia_codigo + '|' + p.data) || 0;
+    const pecasD1 = pecasPorFamiliaDia.get(p.familia_codigo + '|' + diaISO(-1, p.data)) || 0;
+    let status, pecas;
+    if (pecasD0 > 0) { status = 'D0'; pecas = pecasD0; }
+    else if (pecasD1 > 0) { status = 'D-1'; pecas = pecasD1; }
+    else { status = 'planejado_nao_ressuprido'; pecas = 0; }
+    return { pfa: p.pfa, familia_codigo: p.familia_codigo, turno: p.turno, data: p.data, status: status, pecas: pecas };
+  });
+
+  // Famílias planejadas pra cada dia (a própria data, e o dia seguinte — pra
+  // achar quem ressuprida hoje é, na verdade, D-1 de amanhã).
+  const familiasPlanejadasPorDia = new Map(); // dia -> Set(familia_codigo)
+  planejamento.forEach(function (p) {
+    if (!familiasPlanejadasPorDia.has(p.data)) familiasPlanejadasPorDia.set(p.data, new Set());
+    familiasPlanejadasPorDia.get(p.data).add(p.familia_codigo);
+  });
+  const ressuprimentoSemPlanejamento = [];
+  pecasPorFamiliaDia.forEach(function (pecas, chave) {
+    const partes = chave.split('|');
+    const familiaCod = partes[0], dia = partes[1];
+    const planejadoHoje = familiasPlanejadasPorDia.has(dia) && familiasPlanejadasPorDia.get(dia).has(familiaCod);
+    const diaSeguinte = diaISO(1, dia);
+    const planejadoAmanha = familiasPlanejadasPorDia.has(diaSeguinte) && familiasPlanejadasPorDia.get(diaSeguinte).has(familiaCod);
+    if (!planejadoHoje && !planejadoAmanha) {
+      const fam = mapaFamilias.get(familiaCod);
+      ressuprimentoSemPlanejamento.push({
+        familia_codigo: familiaCod, familia_nome: fam ? fam.categoria : familiaCod, dia: dia, pecas: pecas,
+      });
+    }
+  });
+  ressuprimentoSemPlanejamento.sort(function (a, b) { return b.pecas - a.pecas; });
+
   return {
     versao: 1,
     gerado_em: new Date().toISOString(),
@@ -363,8 +456,19 @@ function construirSnapshotMovimentacoes(parsed, meta) {
     },
     por_dia: dias,
     por_turno: Array.from(porTurno.values()).sort(function (a, b) { return b.pecas - a.pecas; }),
+    por_segmento: Array.from(porSegmento.values()).sort(function (a, b) { return b.pecas - a.pecas; }),
     rotas: Array.from(rotas.values()).sort(function (a, b) { return b.pecas - a.pecas; }),
     operadores: Array.from(operadores.values()).sort(function (a, b) { return b.pecas - a.pecas; }),
+    planejamento: planejamentoClassificado,
+    ressuprimento_sem_planejamento: ressuprimentoSemPlanejamento,
+    // Artigo que nunca apareceu num upload de Picking/Pulmão não tem entrada
+    // no dicionário artigo→família ainda — fica de fora da quebra por
+    // segmento e do cruzamento de planejamento, mas visível aqui, nunca
+    // somado em silêncio nem escondido.
+    sem_familia: {
+      pecas: semFamiliaPecas, movimentos: semFamiliaMovimentos,
+      artigos_distintos: artigosSemFamilia.size,
+    },
     // Nada é descartado em silêncio: a tela mostra estes números pra que a
     // operação consiga bater o total do relatório com o que aparece aqui.
     descartados: casado.descartados,
@@ -386,8 +490,23 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
   const parsed = parsearKardex(texto);
   avisar(parsed.pernas.length.toLocaleString('pt-BR') + ' linhas TL+/TL- lidas.');
 
+  avisar('Carregando dicionário artigo→família, famílias e planejamento…');
+  const [linhasArtigoFamilia, linhasFam, linhasPlanejamento] = await Promise.all([
+    window.lerTudoPaginado(supabaseClient, 'dim_artigo_familia', 'artigo_codigo, familia_codigo')
+      .catch(function () { return []; }), // tabela nova — some sem quebrar quem não rodou a migração
+    window.lerTudoPaginado(supabaseClient, 'dim_familias', 'codigo, marca, categoria, segmento'),
+    supabaseClient.from('ressuprimento_planejamento').select('pfa, familia_codigo, turno, data')
+      .then(function (r) { return r.data || []; }).catch(function () { return []; }),
+  ]);
+  const mapaArtigoFamilia = new Map(linhasArtigoFamilia.map(function (a) { return [a.artigo_codigo, a.familia_codigo]; }));
+  const mapaFamilias = new Map(linhasFam.map(function (f) { return [f.codigo, f]; }));
+  if (mapaArtigoFamilia.size === 0) {
+    avisar('Aviso: dicionário artigo→família está vazio — processe Picking/Pulmão pelo menos uma vez ' +
+      'pra habilitar a quebra por segmento e o cruzamento com o planejamento.');
+  }
+
   avisar('Casando pares e classificando zonas…');
-  const payload = construirSnapshotMovimentacoes(parsed, { arquivo: file.name });
+  const payload = construirSnapshotMovimentacoes(parsed, { arquivo: file.name }, mapaArtigoFamilia, mapaFamilias, linhasPlanejamento);
   avisar(
     payload.total.movimentos_ressuprimento.toLocaleString('pt-BR') + ' movimentos de ressuprimento · ' +
     payload.total.pecas_ressupridas.toLocaleString('pt-BR') + ' peças em ' +
@@ -413,3 +532,4 @@ window.construirSnapshotMovimentacoes = construirSnapshotMovimentacoes;
 window.classificarZona = classificarZona;
 window.turnoDe = turnoDe;
 window.TURNOS = TURNOS;
+window.diaISO = diaISO;

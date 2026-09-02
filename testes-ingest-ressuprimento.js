@@ -260,5 +260,58 @@ const grupoCalc = marcaOly.segmentos.filter(function (s) { return s.codigo === '
 eq(grupoCalc.qtd, 10, 'grupo CALÇADOS soma tênis(7) + chinelo(3)');
 eq(grupoCalc.familias.length, 2, 'grupo CALÇADOS tem as 2 famílias (tênis e chinelo) por baixo');
 
-console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
-process.exit(falhas === 0 ? 0 : 1);
+/* -------------------------------------------------------------------------- */
+secao('upsertArtigoFamilia — dicionário artigo→família pro Kardex resolver');
+(async function () {
+  const upserts = [];
+  const supabaseFake = {
+    from: function (tabela) {
+      return {
+        upsert: async function (linhas, opts) {
+          upserts.push({ tabela: tabela, linhas: linhas, opts: opts });
+          return { error: null };
+        },
+      };
+    },
+  };
+  const avisos = [];
+  const avisar = function (msg) { avisos.push(msg); };
+
+  const pickingFake = { registros: [
+    { artigo_codigo: 'A1', familia_codigo: '101' },
+    { artigo_codigo: 'A2', familia_codigo: '102' },
+    { artigo_codigo: 'A1', familia_codigo: '101' }, // repetido, não deve duplicar
+  ] };
+  const pulmaoFake = { registros: [
+    { artigo_codigo: 'A3', familia_codigo: '103' },
+    { artigo_codigo: 'A2', familia_codigo: '102' }, // já veio do picking, mesma família
+  ] };
+
+  await upsertArtigoFamilia(supabaseFake, pickingFake, pulmaoFake, avisar);
+
+  eq(upserts.length, 1, 'faz 1 chamada de upsert (poucos artigos, cabe num lote só)');
+  eq(upserts[0].tabela, 'dim_artigo_familia', 'upsert vai pra tabela certa');
+  eq(upserts[0].opts.onConflict, 'artigo_codigo', 'upsert por artigo_codigo (não duplica, atualiza)');
+  eq(upserts[0].linhas.length, 3, 'A1 repetido vira 1 linha só — dedup por artigo (3 artigos distintos)');
+  const porArtigo = {};
+  upserts[0].linhas.forEach(function (l) { porArtigo[l.artigo_codigo] = l.familia_codigo; });
+  eq(porArtigo.A1, '101', 'A1 -> família 101');
+  eq(porArtigo.A2, '102', 'A2 -> família 102');
+  eq(porArtigo.A3, '103', 'A3 -> família 103');
+  ok(avisos.some(function (a) { return /3.*artigos/.test(a); }), 'avisa quantos artigos foram atualizados');
+
+  // Tabela ainda não existe (quem não rodou a migração) -- não pode travar o upload.
+  const supabaseSemTabela = {
+    from: function () { return { upsert: async function () { return { error: { message: 'relation "dim_artigo_familia" does not exist' } }; } }; },
+  };
+  const avisos2 = [];
+  let jogouErro = false;
+  try {
+    await upsertArtigoFamilia(supabaseSemTabela, pickingFake, pulmaoFake, function (m) { avisos2.push(m); });
+  } catch (e) { jogouErro = true; }
+  ok(!jogouErro, 'tabela ausente vira aviso, não derruba o upload de Picking/Pulmão');
+  ok(avisos2.some(function (a) { return /Aviso/.test(a); }), 'o aviso explica o que não funcionou');
+})().then(function () {
+  console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
+  process.exit(falhas === 0 ? 0 : 1);
+});

@@ -1077,6 +1077,36 @@ tr.total > th, tr.total > td {
         </button>
         <div class="log" id="logIngestKardex"></div>
       </div>
+
+      <div class="section-title" style="margin-top:24px">Planejamento de Ressuprimento (PFA por turno)</div>
+      <div class="card">
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+          O que a assistente de planejamento está delegando pra operação ressuprir — uma linha por
+          PFA, com a família (pra cruzar por segmento) e o turno/data que deve atender. Cola direto
+          da planilha (PFA e Família, uma dupla por linha, separadas por tab, ; ou ,).
+          Cruzado com o Kardex pra classificar D0 (ressuprido no dia certo), D-1 (adiantado) ou sem
+          planejamento (ressuprido sem ninguém ter pedido).
+        </p>
+        <textarea id="textoPlanejamentoPfa" rows="6" style="width:100%;font-family:monospace;font-size:12px"
+          placeholder="196830;103&#10;197293;068&#10;197330;043"></textarea>
+        <div style="display:flex;gap:12px;align-items:flex-end;margin-top:10px;flex-wrap:wrap">
+          <div>
+            <label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Turno</label>
+            <select id="turnoPlanejamentoPfa" style="padding:7px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)">
+              <option value="T01">T01 (05:00–14:47)</option>
+              <option value="T02">T02 (14:48–19:59)</option>
+              <option value="T02_T03">T02/T03 (20:00–00:15)</option>
+              <option value="T03">T03 (00:16–04:59)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Data (ressuprir para)</label>
+            <input type="date" id="dataPlanejamentoPfa" style="padding:6px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)">
+          </div>
+          <button class="btn-mini" id="btnSalvarPlanejamentoPfa">Salvar lançamento</button>
+        </div>
+        <div class="log" id="logPlanejamentoPfa"></div>
+      </div>
     </section>
   </main>
 </div>
@@ -2369,6 +2399,93 @@ function blocoMovimentacoes() {
     ? m.periodo.de + ' a ' + m.periodo.ate
     : 'período não identificado no arquivo';
 
+  /* ---------- composição por segmento (resolvida pelo dicionário artigo→família) ---------- */
+  const porSegmento = m.por_segmento || [];
+  const totalSegMov = porSegmento.reduce(function (s, x) { return s + x.pecas; }, 0);
+  const maxSegMov = porSegmento.reduce(function (mx, x) { return Math.max(mx, x.pecas); }, 0);
+  let barrasSegMov = '';
+  porSegmento.forEach(function (s) {
+    const larg = maxSegMov > 0 ? s.pecas / maxSegMov * 100 : 0;
+    const cor = s.segmento === 'SEM FAMÍLIA' ? 'var(--laranja)' : 'var(--accent)';
+    barrasSegMov += '<div class="bar-item">' +
+      '<div class="nome">' + escapar(s.segmento) + '</div>' +
+      '<div class="trilho"><div class="preench" style="width:' + larg + '%;background:' + cor + '"></div></div>' +
+      '<div class="num">' + fmtInt(s.pecas) + ' · ' + fmtPct(totalSegMov ? s.pecas / totalSegMov * 100 : 0) + '</div>' +
+    '</div>';
+  });
+  const avisoSemFamilia = (m.sem_familia && m.sem_familia.pecas > 0)
+    ? '<p style="font-size:11px;color:var(--amber);margin-top:8px">' + fmtInt(m.sem_familia.artigos_distintos) +
+      ' artigo(s) ainda sem entrada no dicionário artigo→família (' + fmtInt(m.sem_familia.pecas) +
+      ' peças) — processe Picking/Pulmão de novo pra completar.</p>' : '';
+
+  /* ---------- planejamento: D0 / D-1 / sem planejamento ---------- */
+  const plano = m.planejamento || [];
+  const semPlano = m.ressuprimento_sem_planejamento || [];
+  let blocoPlanejamento = '';
+  if (plano.length === 0 && semPlano.length === 0) {
+    blocoPlanejamento = '<div class="card">' +
+      '<div class="section-title">Ressuprimento planejado × realizado</div>' +
+      '<div class="aviso">Nenhuma PFA lançada ainda pro período deste Kardex. Lance pela tela ' +
+      '<strong>Admin › Planejamento de Ressuprimento</strong>.</div>' +
+    '</div>';
+  } else {
+    const d0 = plano.filter(function (p) { return p.status === 'D0'; });
+    const d1 = plano.filter(function (p) { return p.status === 'D-1'; });
+    const naoRessup = plano.filter(function (p) { return p.status === 'planejado_nao_ressuprido'; });
+    const pecasSemPlano = semPlano.reduce(function (s, r) { return s + r.pecas; }, 0);
+
+    const kpisPlano = '<div class="kpi-row">' +
+      '<div class="kpi"><div class="rot">D0 — ressuprido no dia</div>' +
+        '<div class="val forte" style="color:var(--olive)">' + fmtInt(d0.length) + '</div>' +
+        '<div class="sub">de ' + fmtInt(plano.length) + ' PFAs planejadas</div></div>' +
+      '<div class="kpi"><div class="rot">D-1 — adiantado</div>' +
+        '<div class="val forte" style="color:var(--accent)">' + fmtInt(d1.length) + '</div>' +
+        '<div class="sub">ressuprido no dia anterior</div></div>' +
+      '<div class="kpi"><div class="rot">Planejado, não ressuprido</div>' +
+        '<div class="val forte" style="color:var(--red)">' + fmtInt(naoRessup.length) + '</div>' +
+        '<div class="sub">PFA sem nenhum movimento no Kardex</div></div>' +
+      '<div class="kpi"><div class="rot">Sem planejamento</div>' +
+        '<div class="val forte" style="color:var(--amber)">' + fmtInt(pecasSemPlano) + '</div>' +
+        '<div class="sub">' + fmtInt(semPlano.length) + ' família(s) ressupridas à toa</div></div>' +
+    '</div>';
+
+    let linhasPlano = '';
+    plano.forEach(function (p) {
+      const corStatus = p.status === 'D0' ? 'var(--olive)' : p.status === 'D-1' ? 'var(--accent)' : 'var(--red)';
+      const rotStatus = p.status === 'D0' ? 'D0' : p.status === 'D-1' ? 'D-1' : 'Não ressuprido';
+      linhasPlano += '<tr><th class="esq">' + escapar(p.pfa) + '</th>' +
+        '<td>' + escapar(p.familia_codigo) + '</td>' +
+        '<td>' + ROT_TURNO[p.turno] + '</td>' +
+        '<td>' + formatarDataSimples(p.data) + '</td>' +
+        '<td style="color:' + corStatus + ';font-weight:600">' + rotStatus + '</td>' +
+        '<td>' + (p.pecas ? fmtInt(p.pecas) : '—') + '</td></tr>';
+    });
+
+    let linhasSemPlano = '';
+    semPlano.slice(0, 100).forEach(function (r) {
+      linhasSemPlano += '<tr><th class="esq">' + escapar(r.familia_codigo) + ' — ' + escapar(r.familia_nome) + '</th>' +
+        '<td>' + formatarDataSimples(r.dia) + '</td>' +
+        '<td>' + fmtInt(r.pecas) + '</td></tr>';
+    });
+
+    blocoPlanejamento = '<div class="card">' +
+      '<div class="section-title">Ressuprimento planejado × realizado</div>' +
+      '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
+        'Cruza as PFAs lançadas em <strong>Admin › Planejamento</strong> com o que o Kardex mostra ' +
+        'chegando no Picking, por família — D0 no próprio dia, D-1 quando o turno da noite adianta.</p>' +
+      kpisPlano +
+      (plano.length ? '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
+        '<th class="esq">PFA</th><th>Família</th><th>Turno</th><th>Data planejada</th><th>Status</th><th>Peças</th>' +
+      '</tr></thead><tbody>' + linhasPlano + '</tbody></table></div>' : '') +
+      (semPlano.length ? '<div class="section-title" style="margin-top:18px;font-size:13px">Ressuprido sem planejamento</div>' +
+        '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
+          '<th class="esq">Família</th><th>Dia</th><th>Peças</th>' +
+        '</tr></thead><tbody>' + linhasSemPlano + '</tbody></table>' +
+        (semPlano.length > 100 ? '<p style="font-size:11px;color:var(--text-muted);margin-top:6px">mostrando as 100 maiores de ' + fmtInt(semPlano.length) + '</p>' : '') +
+        '</div>' : '') +
+    '</div>';
+  }
+
   return '<div class="card">' +
     '<div class="section-title" style="display:flex;align-items:center;justify-content:space-between">' +
       '<span>Ressuprimento por dia — ' + escapar(periodo) + '</span>' +
@@ -2392,7 +2509,13 @@ function blocoMovimentacoes() {
       fmtInt(m.descartados.sem_volume) + ' sem volume, ' +
       fmtInt(m.descartados.sem_par_exato) + ' pernas sem par no período.' +
     '</div>' +
-  '</div>';
+  '</div>' +
+  '<div class="card">' +
+    '<div class="section-title">Composição do ressuprimento por segmento</div>' +
+    '<div class="bar-list">' + barrasSegMov + '</div>' +
+    avisoSemFamilia +
+  '</div>' +
+  blocoPlanejamento;
 }
 
 function exportarCSVMovimentacoes() {
@@ -2534,6 +2657,48 @@ document.getElementById('btnProcessarKardex').addEventListener('click', async fu
   } catch (e) {
     escrever('ERRO: ' + (e && e.message ? e.message : String(e)));
     console.error(e);
+    btn.disabled = false;
+  }
+});
+
+/* ---------- Planejamento de Ressuprimento (PFA por turno) ---------- */
+document.getElementById('btnSalvarPlanejamentoPfa').addEventListener('click', async function () {
+  const log = document.getElementById('logPlanejamentoPfa');
+  const escrever = function (msg) { log.textContent += msg + '\n'; log.scrollTop = log.scrollHeight; };
+  log.textContent = '';
+  const btn = document.getElementById('btnSalvarPlanejamentoPfa');
+  const turno = document.getElementById('turnoPlanejamentoPfa').value;
+  const data = document.getElementById('dataPlanejamentoPfa').value;
+  if (!data) { escrever('Escolha a data antes de salvar.'); return; }
+
+  // Cada linha vira "PFA;FAMILIA" — aceita tab, ; ou , como separador (cola
+  // direto de duas colunas de planilha sem precisar reformatar).
+  const texto = document.getElementById('textoPlanejamentoPfa').value;
+  const linhas = [];
+  let linhasInvalidas = 0;
+  texto.split(/\r?\n/).forEach(function (l) {
+    if (!l.trim()) return;
+    const partes = l.split(/[\t;,]+/).map(function (p) { return p.trim(); }).filter(Boolean);
+    if (partes.length < 2) { linhasInvalidas++; return; }
+    linhas.push({ pfa: partes[0], familia_codigo: partes[1], turno: turno, data: data, criado_em: new Date().toISOString() });
+  });
+  if (linhas.length === 0) {
+    escrever('Nenhuma linha reconhecida. Formato esperado: PFA;FAMÍLIA, uma dupla por linha.');
+    return;
+  }
+
+  btn.disabled = true;
+  try {
+    const { error } = await supabaseClient.from('ressuprimento_planejamento').insert(linhas);
+    if (error) throw error;
+    escrever(linhas.length + ' PFA(s) lançadas pro turno ' + turno + ' em ' + formatarDataSimples(data) + '.' +
+      (linhasInvalidas ? ' (' + linhasInvalidas + ' linha(s) ignorada(s) — faltou a família.)' : ''));
+    document.getElementById('textoPlanejamentoPfa').value = '';
+    if (ressuprimentoCarregado) await carregarRessuprimento();
+  } catch (e) {
+    escrever('ERRO: ' + (e && e.message ? e.message : String(e)));
+    console.error(e);
+  } finally {
     btn.disabled = false;
   }
 });

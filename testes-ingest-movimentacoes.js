@@ -12,6 +12,7 @@ const ctx = { window: {}, console };
 ctx.window = ctx;
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(__dirname, 'ingest.js'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(__dirname, 'ingest-ressuprimento.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(__dirname, 'ingest-movimentacoes.js'), 'utf8'), ctx);
 
 let falhas = 0;
@@ -167,6 +168,80 @@ try {
   ].join('\r\n'));
 } catch (e) { mensagem = e.message; }
 ok(/qtde_movto/i.test(mensagem), 'erro diz QUAL coluna faltou, em vez de somar zero em silêncio');
+
+/* ------------------------------------------------------------------ */
+console.log('\n=== diaISO — dia seguinte/anterior sem escorregar por fuso ===');
+eq(ctx.diaISO(1, '2026-08-31'), '2026-09-01', 'dia seguinte cruza o mês');
+eq(ctx.diaISO(-1, '2026-09-01'), '2026-08-31', 'dia anterior cruza o mês pra trás');
+eq(ctx.diaISO(1, '2025-12-31'), '2026-01-01', 'dia seguinte cruza o ano');
+eq(ctx.diaISO(0, '2026-08-15'), '2026-08-15', 'delta 0 devolve o mesmo dia');
+
+/* ------------------------------------------------------------------ */
+console.log('\n=== quebra por segmento — resolvida pelo dicionário artigo→família ===');
+const mapaFamiliasSeg = new Map([
+  ['060', { marca: 'OLYMPIKUS', categoria: 'VESTUÁRIO OLYMPIKUS', segmento: 'TÊXTIL/ACESSÓRIOS OLYMPIKUS' }],
+  ['043', { marca: 'OLYMPIKUS', categoria: 'TÊNIS OLYMPIKUS', segmento: 'TÊNIS OLYMPIKUS' }],
+]);
+const arquivoSeg = [
+  'VULSP|MOVIMENTOS|de:03/08/2026|ate:31/08/2026', CAB,
+  linha('V1', 'PT', '40', '10/08/26 08:00', 'TL-', 'R1', '10,000', ' 02,08,001', 'V1', 'EX1', 'OP 1'),
+  linha('V1', 'PT', '40', '10/08/26 08:00', 'TL+', 'R1', '10,000', ' 02,01,001', 'V1', 'EX1', 'OP 1'),
+  linha('T1', 'PT', '40', '10/08/26 09:00', 'TL-', 'R2', '5,000', ' 02,08,002', 'V2', 'EX1', 'OP 1'),
+  linha('T1', 'PT', '40', '10/08/26 09:00', 'TL+', 'R2', '5,000', ' 02,01,002', 'V2', 'EX1', 'OP 1'),
+  // Z1 nunca apareceu num upload de Picking/Pulmão -- sem entrada no dicionário.
+  linha('Z1', 'PT', '40', '10/08/26 10:00', 'TL-', 'R3', '3,000', ' 02,08,003', 'V3', 'EX1', 'OP 1'),
+  linha('Z1', 'PT', '40', '10/08/26 10:00', 'TL+', 'R3', '3,000', ' 02,01,003', 'V3', 'EX1', 'OP 1'),
+].join('\r\n');
+const mapaArtigoFamiliaSeg = new Map([['V1', '060'], ['T1', '043']]);
+const snapSeg = ctx.construirSnapshotMovimentacoes(ctx.parsearKardex(arquivoSeg), { arquivo: 't.txt' }, mapaArtigoFamiliaSeg, mapaFamiliasSeg, []);
+const porSegMap = {};
+snapSeg.por_segmento.forEach(function (s) { porSegMap[s.segmento] = s.pecas; });
+eq(porSegMap.VESTUÁRIO, 10, 'V1 (família 060) vira segmento VESTUÁRIO');
+eq(porSegMap.CALÇADO, 5, 'T1 (família 043, tênis) vira segmento CALÇADO');
+eq(snapSeg.sem_familia.pecas, 3, 'Z1 (sem entrada no dicionário) fica sinalizado em sem_familia, não some');
+eq(snapSeg.sem_familia.artigos_distintos, 1, 'conta 1 artigo distinto sem família');
+
+/* ------------------------------------------------------------------ */
+console.log('\n=== cruzamento com planejamento — D0, D-1 e sem planejamento ===');
+const arquivoPlano = [
+  'VULSP|MOVIMENTOS|de:03/08/2026|ate:31/08/2026', CAB,
+  // família 060 ressuprida no dia 10 -- planejada pro dia 10 = D0
+  linha('P1', 'PT', '40', '10/08/26 08:00', 'TL-', 'RA', '10,000', ' 02,08,001', 'VA', 'EX1', 'OP 1'),
+  linha('P1', 'PT', '40', '10/08/26 08:00', 'TL+', 'RA', '10,000', ' 02,01,001', 'VA', 'EX1', 'OP 1'),
+  // família 043 ressuprida no dia 10 -- planejada pro dia 11 = D-1 (adiantado)
+  linha('P2', 'PT', '41', '10/08/26 09:00', 'TL-', 'RB', '20,000', ' 02,08,002', 'VB', 'EX1', 'OP 1'),
+  linha('P2', 'PT', '41', '10/08/26 09:00', 'TL+', 'RB', '20,000', ' 02,01,002', 'VB', 'EX1', 'OP 1'),
+  // família 068 ressuprida no dia 10 -- SEM nenhuma PFA planejada = sem planejamento
+  linha('P3', 'PT', '42', '10/08/26 10:00', 'TL-', 'RC', '7,000', ' 02,08,003', 'VC', 'EX1', 'OP 1'),
+  linha('P3', 'PT', '42', '10/08/26 10:00', 'TL+', 'RC', '7,000', ' 02,01,003', 'VC', 'EX1', 'OP 1'),
+].join('\r\n');
+const mapaArtigoFamiliaPlano = new Map([['P1', '060'], ['P2', '043'], ['P3', '068']]);
+const mapaFamiliasPlano = new Map([
+  ['060', { marca: 'OLYMPIKUS', categoria: 'VESTUÁRIO OLYMPIKUS', segmento: 'TÊXTIL/ACESSÓRIOS OLYMPIKUS' }],
+  ['043', { marca: 'OLYMPIKUS', categoria: 'TÊNIS OLYMPIKUS', segmento: 'TÊNIS OLYMPIKUS' }],
+  ['068', { marca: 'OLYMPIKUS', categoria: 'MEIAS OLYMPIKUS', segmento: 'TÊXTIL/ACESSÓRIOS OLYMPIKUS' }],
+  // 043-B: uma família planejada pro período mas NUNCA ressuprida
+]);
+const planejamentoTeste = [
+  { pfa: 'PFA1', familia_codigo: '060', turno: 'T01', data: '2026-08-10' },
+  { pfa: 'PFA2', familia_codigo: '043', turno: 'T02', data: '2026-08-11' },
+  { pfa: 'PFA4', familia_codigo: '999', turno: 'T01', data: '2026-08-10' }, // nunca ressuprida
+];
+const snapPlano = ctx.construirSnapshotMovimentacoes(
+  ctx.parsearKardex(arquivoPlano), { arquivo: 't.txt' }, mapaArtigoFamiliaPlano, mapaFamiliasPlano, planejamentoTeste
+);
+const porPfa = {};
+snapPlano.planejamento.forEach(function (p) { porPfa[p.pfa] = p; });
+eq(porPfa.PFA1.status, 'D0', 'PFA1 (família 060) ressuprida no próprio dia planejado = D0');
+eq(porPfa.PFA1.pecas, 10, 'D0 registra as peças do dia certo');
+eq(porPfa.PFA2.status, 'D-1', 'PFA2 (família 043, planejada pro dia 11) ressuprida no dia 10 = D-1 (adiantado)');
+eq(porPfa.PFA2.pecas, 20, 'D-1 registra as peças do dia anterior');
+eq(porPfa.PFA4.status, 'planejado_nao_ressuprido', 'PFA4 (família 999) nunca apareceu no Kardex — planejada e não ressuprida');
+const semPlanoMap = {};
+snapPlano.ressuprimento_sem_planejamento.forEach(function (r) { semPlanoMap[r.familia_codigo] = r.pecas; });
+eq(semPlanoMap['068'], 7, 'família 068 ressuprida sem nenhuma PFA planejada pra ela = sem planejamento');
+ok(semPlanoMap['060'] === undefined, 'família 060 (tem PFA1 pro mesmo dia) NÃO aparece em sem_planejamento');
+ok(semPlanoMap['043'] === undefined, 'família 043 (tem PFA2 pro dia seguinte, cobre o D-1) NÃO aparece em sem_planejamento');
 
 /* ------------------------------------------------------------------ */
 console.log(falhas === 0 ? '\nTODOS OS TESTES PASSARAM' : '\n' + falhas + ' TESTE(S) FALHARAM');

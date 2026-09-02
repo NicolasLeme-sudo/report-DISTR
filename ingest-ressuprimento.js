@@ -596,6 +596,46 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
 /* ============================================================================
    ORQUESTRAÇÃO — chamado pelo index.html (tela de Abastecimento)
    ============================================================================ */
+/* ============================================================================
+   DICIONÁRIO ARTIGO → FAMÍLIA (dim_artigo_familia)
+   ============================================================================
+   O Kardex de movimentações (ingest-movimentacoes.js) só traz o código do
+   ARTIGO, nunca a família — sem ela não dá pra quebrar o ressuprimento por
+   segmento. Picking e Pulmão já resolvem família por artigo linha a linha
+   (é o `familia_codigo` de cada registro); esta função só GRAVA isso, em vez
+   de deixar se perder depois que a árvore agrega tudo. Roda em todo upload de
+   Picking/Pulmão — o dicionário vai ficando mais completo sozinho, sem passo
+   manual e sem depender de nenhum outro arquivo estar em dia.
+
+   upsert (não insert): o mesmo artigo aparece em todo upload; sobrescrever é
+   o comportamento certo (o SKU não muda de família de um dia pro outro, mas
+   se mudasse, upsert reflete o valor mais recente em vez de acumular lixo).
+   ============================================================================ */
+const LOTE_ARTIGO_FAMILIA = 500;
+
+async function upsertArtigoFamilia(supabaseClient, picking, pulmao, avisar) {
+  const mapa = new Map();
+  picking.registros.forEach(function (r) {
+    if (r.artigo_codigo && r.familia_codigo) mapa.set(r.artigo_codigo, r.familia_codigo);
+  });
+  pulmao.registros.forEach(function (r) {
+    if (r.artigo_codigo && r.familia_codigo) mapa.set(r.artigo_codigo, r.familia_codigo);
+  });
+  const linhas = Array.from(mapa.entries()).map(function (par) {
+    return { artigo_codigo: par[0], familia_codigo: par[1], atualizado_em: new Date().toISOString() };
+  });
+
+  for (let i = 0; i < linhas.length; i += LOTE_ARTIGO_FAMILIA) {
+    const lote = linhas.slice(i, i + LOTE_ARTIGO_FAMILIA);
+    const { error } = await supabaseClient.from('dim_artigo_familia').upsert(lote, { onConflict: 'artigo_codigo' });
+    // Tabela nova (migracao_planejamento.sql) pode ainda não existir em quem
+    // não rodou a migração — não pode travar o Ressuprimento por causa disso,
+    // mesmo raciocínio do dim_capacidade_zonas ausente. Só avisa e segue.
+    if (error) { avisar('Aviso: não deu pra atualizar o dicionário artigo→família (' + error.message + ').'); return; }
+  }
+  avisar(linhas.length.toLocaleString('pt-BR') + ' artigos no dicionário artigo→família atualizados.');
+}
+
 async function processarRessuprimento(supabaseClient, filePicking, filePulmao, onProgresso) {
   const avisar = onProgresso || function () {};
 
@@ -642,11 +682,15 @@ async function processarRessuprimento(supabaseClient, filePicking, filePulmao, o
   });
   if (error) throw error;
 
+  avisar('Atualizando dicionário artigo→família…');
+  await upsertArtigoFamilia(supabaseClient, picking, pulmao, avisar);
+
   avisar('Concluído.');
   return payload;
 }
 
 window.processarRessuprimento = processarRessuprimento;
+window.upsertArtigoFamilia = upsertArtigoFamilia;
 window.parsearPicking = parsearPicking;
 window.parsearPulmao = parsearPulmao;
 window.construirSnapshotRessuprimento = construirSnapshotRessuprimento;
