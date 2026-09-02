@@ -1,0 +1,173 @@
+/* ============================================================================
+   TESTES — ingest-movimentacoes.js  (rode com: node testes-ingest-movimentacoes.js)
+   ============================================================================
+   Cobre as três armadilhas confirmadas contra o arquivo real e as regras de
+   turno. Sai com código 1 se qualquer caso falhar, pra poder entrar em CI.
+   ============================================================================ */
+const fs = require('fs');
+const vm = require('vm');
+const path = require('path');
+
+const ctx = { window: {}, console };
+ctx.window = ctx;
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync(path.join(__dirname, 'ingest.js'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(__dirname, 'ingest-movimentacoes.js'), 'utf8'), ctx);
+
+let falhas = 0;
+function ok(cond, nome) {
+  console.log((cond ? '  ok  ' : '  FALHOU  ') + nome);
+  if (!cond) falhas++;
+}
+function eq(a, b, nome) {
+  const bateu = JSON.stringify(a) === JSON.stringify(b);
+  if (!bateu) console.log('        esperado ' + JSON.stringify(b) + ', veio ' + JSON.stringify(a));
+  ok(bateu, nome);
+}
+
+/* ------------------------------------------------------------------ */
+console.log('\n=== classificarZona — nível manda, não a rua ===');
+eq(ctx.classificarZona('02', '01'), 'PICKING', 'rua 02 nível 01 -> Picking (estanteria)');
+eq(ctx.classificarZona('02', '07'), 'PICKING', 'rua 02 nível 07 -> Picking (último nível de estanteria)');
+eq(ctx.classificarZona('02', '08'), 'PULMAO', 'rua 02 nível 08 -> Pulmão (primeiro porta-pallet)');
+eq(ctx.classificarZona('02', '12'), 'PULMAO', 'rua 02 nível 12 -> Pulmão');
+eq(ctx.classificarZona('15', '10'), 'PULMAO', 'rua 15 (inativa, migrada pra rua 1) nível alto -> Pulmão');
+eq(ctx.classificarZona('102', '01'), 'PICKING', 'rua 102 (picking calçado Mizuno) -> Picking');
+eq(ctx.classificarZona('500', '01'), 'TRANSITO', 'rua 500 (baixar ressuprimento) -> Trânsito');
+eq(ctx.classificarZona('600', '01'), 'TRANSITO', 'rua 600 (subir ressuprimento) -> Trânsito');
+eq(ctx.classificarZona('98', '02'), 'TRANSITO', 'rua 98 (transitório) -> Trânsito');
+eq(ctx.classificarZona('27', '01'), 'TRANSITO', 'rua 27 (perca) -> Trânsito');
+
+/* ------------------------------------------------------------------ */
+console.log('\n=== turnoDe — inclusive as bordas e a janela sobreposta ===');
+eq(ctx.turnoDe(5 * 60), 'T01', '05:00 -> T01 (início)');
+eq(ctx.turnoDe(14 * 60 + 47), 'T01', '14:47 -> T01 (última minuto)');
+eq(ctx.turnoDe(14 * 60 + 48), 'T02', '14:48 -> T02 (início)');
+eq(ctx.turnoDe(19 * 60 + 59), 'T02', '19:59 -> T02 (último minuto)');
+eq(ctx.turnoDe(20 * 60), 'T02_T03', '20:00 -> T02/T03 (início da sobreposição)');
+eq(ctx.turnoDe(23 * 60 + 59), 'T02_T03', '23:59 -> T02/T03');
+eq(ctx.turnoDe(0), 'T02_T03', '00:00 -> T02/T03 (a janela vira o dia)');
+eq(ctx.turnoDe(15), 'T02_T03', '00:15 -> T02/T03 (último minuto da sobreposição)');
+eq(ctx.turnoDe(16), 'T03', '00:16 -> T03 (início)');
+eq(ctx.turnoDe(4 * 60 + 59), 'T03', '04:59 -> T03 (último minuto)');
+
+/* ------------------------------------------------------------------ */
+console.log('\n=== parsearKardex — só TL+/TL-, conta o que descarta ===');
+const CAB = 'ARTIGO|DESCRICAO|COR|TAMANHO|DATA|TIPO_MOVTO|REF|QTDE_ANT|QTDE_MOVTO|RESERVA|ARMAZ|SUB_ARMAZ|ENDERECO|VOLUME|LOGIN|NOME|';
+function linha(artigo, cor, tam, data, tipo, ref, qtd, endereco, volume, login, nome) {
+  return [artigo, 'DESC', cor, tam, data, tipo, ref, '0,000', qtd, '*', 'EXTRE', 'AC190', endereco, volume, login, nome, ''].join('|');
+}
+const arquivoBase = [
+  'VULSP|MOVIMENTOS DE ESTOQUE (ENDERECOS/VOLUMES)||de:03/08/2026|ate:31/08/2026|||em:Set.2 ,26||b15s250998',
+  CAB,
+  // par válido: Pulmão (nível 08) -> Picking (nível 01) às 10:00 = T01
+  linha('A1', 'PTO', '40', '05/08/26 10:00', 'TL-', 'R1', '10,000', ' 02,08,001', 'V001', 'EX1', 'OPERADOR 1'),
+  linha('A1', 'PTO', '40', '05/08/26 10:00', 'TL+', 'R1', '10,000', ' 02,01,001', 'V001', 'EX1', 'OPERADOR 1'),
+  // outro tipo de movimento: tem que ser ignorado
+  linha('A1', 'PTO', '40', '05/08/26 11:00', 'TRS', 'R9', '5,000', ' 02,01,001', 'V001', 'EX1', 'OPERADOR 1'),
+].join('\r\n');
+
+const parsedBase = ctx.parsearKardex(arquivoBase);
+eq(parsedBase.pernas.length, 2, 'lê as 2 pernas TL+/TL- e ignora a linha TRS');
+eq(parsedBase.ignoradas_outro_tipo, 1, 'conta a linha de outro tipo em vez de sumir com ela');
+eq(parsedBase.periodo, { de: '03/08/2026', ate: '31/08/2026' }, 'lê o período do cabeçalho do relatório');
+
+/* ------------------------------------------------------------------ */
+console.log('\n=== casarMovimentos — as 3 armadilhas ===');
+const arquivoArmadilhas = [
+  'VULSP|MOVIMENTOS|de:03/08/2026|ate:31/08/2026', CAB,
+  // 1) par legítimo Pulmão -> Picking
+  linha('A1', 'PTO', '40', '05/08/26 10:00', 'TL-', 'R1', '10,000', ' 02,08,001', 'V001', 'EX1', 'OPERADOR 1'),
+  linha('A1', 'PTO', '40', '05/08/26 10:00', 'TL+', 'R1', '10,000', ' 02,01,001', 'V001', 'EX1', 'OPERADOR 1'),
+  // 2) fiscal: MESMO endereço nas duas pontas -> descartado
+  linha('A2', 'PTO', '41', '05/08/26 12:00', 'TL-', 'R2', '99,000', ' 02,01,002', 'V002', 'EXFISCAL', 'FISCAL'),
+  linha('A2', 'PTO', '41', '05/08/26 12:00', 'TL+', 'R2', '99,000', ' 02,01,002', 'V002', 'EXFATUR', 'FATURAMENTO'),
+  // 3) sem volume -> descartado (ajuste fiscal / importação)
+  linha('A3', 'PTO', '42', '05/08/26 13:00', 'TL-', 'R3', '50,000', ' 02,08,003', '                  ', 'EX1', 'OPERADOR 1'),
+  linha('A3', 'PTO', '42', '05/08/26 13:00', 'TL+', 'R3', '50,000', ' 02,01,003', '                  ', 'EX1', 'OPERADOR 1'),
+  // 4) perna solta (só TL-, o par caiu fora da janela do relatório) -> descartado e contado
+  linha('A4', 'PTO', '43', '05/08/26 14:00', 'TL-', 'R4', '7,000', ' 02,08,004', 'V004', 'EX1', 'OPERADOR 1'),
+].join('\r\n');
+
+const casado = ctx.casarMovimentos(ctx.parsearKardex(arquivoArmadilhas).pernas);
+eq(casado.movimentos.length, 1, 'só o par legítimo vira movimento');
+eq(casado.descartados.fiscal_mesmo_endereco, 1, 'par de mesmo endereço é descartado como fiscal');
+eq(casado.descartados.sem_volume, 1, 'par sem volume é descartado');
+eq(casado.descartados.sem_par_exato, 1, 'perna solta é descartada e contada');
+eq(casado.movimentos[0].origem.zona, 'PULMAO', 'origem do movimento é a ponta TL- (nível 08 = Pulmão)');
+eq(casado.movimentos[0].destino.zona, 'PICKING', 'destino do movimento é a ponta TL+ (nível 01 = Picking)');
+eq(casado.movimentos[0].turno, 'T01', 'movimento das 10:00 cai no T01');
+
+/* ------------------------------------------------------------------ */
+console.log('\n=== dois saltos NÃO contam a mesma peça duas vezes ===');
+const arquivoDoisSaltos = [
+  'VULSP|MOVIMENTOS|de:03/08/2026|ate:31/08/2026', CAB,
+  // salto 1: Pulmão -> corredor 500 (baixa; ainda não chegou no picking)
+  linha('B1', 'AZU', '38', '06/08/26 09:00', 'TL-', 'RA', '100,000', ' 05,09,010', 'V100', 'EX2', 'OPERADOR 2'),
+  linha('B1', 'AZU', '38', '06/08/26 09:00', 'TL+', 'RA', '100,000', ' 500,01,001', 'V100', 'EX2', 'OPERADOR 2'),
+  // salto 2: corredor 500 -> Picking (é AQUI que conta como ressuprido)
+  linha('B1', 'AZU', '38', '06/08/26 09:30', 'TL-', 'RB', '100,000', ' 500,01,001', 'V100', 'EX2', 'OPERADOR 2'),
+  linha('B1', 'AZU', '38', '06/08/26 09:30', 'TL+', 'RB', '100,000', ' 05,01,010', 'V100', 'EX2', 'OPERADOR 2'),
+].join('\r\n');
+
+const snapDoisSaltos = ctx.construirSnapshotMovimentacoes(ctx.parsearKardex(arquivoDoisSaltos), { arquivo: 't.txt' });
+eq(snapDoisSaltos.total.pecas_ressupridas, 100, 'peça que passou pelo trânsito conta UMA vez (100, não 200)');
+eq(snapDoisSaltos.total.movimentos_ressuprimento, 1, 'só o salto que chega no Picking conta como ressuprimento');
+eq(snapDoisSaltos.total.pecas_em_transito, 100, 'o salto Pulmão -> trânsito aparece como fila em andamento');
+
+/* ------------------------------------------------------------------ */
+console.log('\n=== o que NÃO é ressuprimento ===');
+const arquivoNaoRessup = [
+  'VULSP|MOVIMENTOS|de:03/08/2026|ate:31/08/2026', CAB,
+  // Picking -> Picking (realocação interna): não conta, a peça já estava lá
+  linha('C1', 'VER', '39', '07/08/26 16:00', 'TL-', 'RC', '5,000', ' 02,01,001', 'V200', 'EX3', 'OPERADOR 3'),
+  linha('C1', 'VER', '39', '07/08/26 16:00', 'TL+', 'RC', '5,000', ' 02,02,002', 'V200', 'EX3', 'OPERADOR 3'),
+  // Picking -> Pulmão (subida/devolução): não conta
+  linha('C2', 'VER', '39', '07/08/26 17:00', 'TL-', 'RD', '8,000', ' 02,01,003', 'V201', 'EX3', 'OPERADOR 3'),
+  linha('C2', 'VER', '39', '07/08/26 17:00', 'TL+', 'RD', '8,000', ' 02,09,003', 'V201', 'EX3', 'OPERADOR 3'),
+  // Pulmão -> Pulmão (remanejamento): não conta
+  linha('C3', 'VER', '39', '07/08/26 18:00', 'TL-', 'RE', '9,000', ' 03,08,001', 'V202', 'EX3', 'OPERADOR 3'),
+  linha('C3', 'VER', '39', '07/08/26 18:00', 'TL+', 'RE', '9,000', ' 03,10,001', 'V202', 'EX3', 'OPERADOR 3'),
+].join('\r\n');
+
+const snapNaoRessup = ctx.construirSnapshotMovimentacoes(ctx.parsearKardex(arquivoNaoRessup), { arquivo: 't.txt' });
+eq(snapNaoRessup.total.pecas_ressupridas, 0, 'Picking->Picking, Picking->Pulmão e Pulmão->Pulmão não são ressuprimento');
+eq(snapNaoRessup.total.movimentos_ressuprimento, 0, 'nenhum movimento de ressuprimento contado');
+eq(snapNaoRessup.rotas.length, 3, 'mas as 3 rotas continuam visíveis no mapa de movimentações');
+
+/* ------------------------------------------------------------------ */
+console.log('\n=== agregação por dia e turno ===');
+const arquivoDias = [
+  'VULSP|MOVIMENTOS|de:03/08/2026|ate:31/08/2026', CAB,
+  linha('D1', 'PTO', '40', '10/08/26 08:00', 'TL-', 'R1', '10,000', ' 02,08,001', 'V1', 'EX1', 'OP 1'),
+  linha('D1', 'PTO', '40', '10/08/26 08:00', 'TL+', 'R1', '10,000', ' 02,01,001', 'V1', 'EX1', 'OP 1'),
+  linha('D2', 'PTO', '40', '10/08/26 22:00', 'TL-', 'R2', '20,000', ' 02,08,002', 'V2', 'EX2', 'OP 2'),
+  linha('D2', 'PTO', '40', '10/08/26 22:00', 'TL+', 'R2', '20,000', ' 02,01,002', 'V2', 'EX2', 'OP 2'),
+  linha('D3', 'PTO', '40', '11/08/26 03:00', 'TL-', 'R3', '30,000', ' 02,08,003', 'V3', 'EX1', 'OP 1'),
+  linha('D3', 'PTO', '40', '11/08/26 03:00', 'TL+', 'R3', '30,000', ' 02,01,003', 'V3', 'EX1', 'OP 1'),
+].join('\r\n');
+
+const snapDias = ctx.construirSnapshotMovimentacoes(ctx.parsearKardex(arquivoDias), { arquivo: 't.txt' });
+eq(snapDias.por_dia.length, 2, 'agrupa em 2 dias');
+eq(snapDias.por_dia[0].dia, '2026-08-10', 'dias vêm em ordem cronológica');
+eq(snapDias.por_dia[0].pecas, 30, 'dia 10 soma 10 + 20 peças');
+eq(snapDias.por_dia[0].operadores, 2, 'dia 10 teve 2 operadores distintos');
+eq(snapDias.por_dia[0].turnos.T01.pecas, 10, '08:00 do dia 10 cai no T01');
+eq(snapDias.por_dia[0].turnos.T02_T03.pecas, 20, '22:00 do dia 10 cai na janela sobreposta T02/T03');
+eq(snapDias.por_dia[1].turnos.T03.pecas, 30, '03:00 do dia 11 cai no T03');
+eq(snapDias.total.operadores_distintos, 2, 'total de operadores distintos no período');
+
+/* ------------------------------------------------------------------ */
+console.log('\n=== cabeçalho com coluna renomeada falha nomeando a coluna ===');
+let mensagem = '';
+try {
+  ctx.parsearKardex([
+    'VULSP|MOVIMENTOS|de:01/01/2026|ate:02/01/2026',
+    'ARTIGO|DESCRICAO|COR|TAMANHO|DATA|TIPO_MOVTO|REF|QTDE_ANT|QUANTIDADE|RESERVA|ARMAZ|SUB_ARMAZ|ENDERECO|VOLUME|LOGIN|NOME|',
+  ].join('\r\n'));
+} catch (e) { mensagem = e.message; }
+ok(/qtde_movto/i.test(mensagem), 'erro diz QUAL coluna faltou, em vez de somar zero em silêncio');
+
+/* ------------------------------------------------------------------ */
+console.log(falhas === 0 ? '\nTODOS OS TESTES PASSARAM' : '\n' + falhas + ' TESTE(S) FALHARAM');
+process.exit(falhas === 0 ? 0 : 1);

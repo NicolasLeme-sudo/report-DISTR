@@ -322,6 +322,28 @@ html { overflow-x: hidden; }
 .bar-item .preench { height: 100%; border-radius: 3px; }
 .bar-item .num { font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
 .bar-item.on .nome { color: var(--accent); }
+/* Barras por dia do Ressuprimento — empilhadas por turno. Colunas de largura
+   fixa com rolagem horizontal: um mês de dados não pode espremer a barra até
+   ela virar um fio. */
+.barras-dia {
+  display: flex; align-items: flex-end; gap: 5px; height: 190px;
+  overflow-x: auto; padding: 8px 0 0;
+}
+.barras-dia .col-dia {
+  /* cresce pra ocupar a largura quando são poucos dias, e vira rolagem quando
+     são muitos — em vez de espremer a barra até ela virar um fio. */
+  flex: 1 1 26px; min-width: 22px; max-width: 64px; height: 100%;
+  display: flex; flex-direction: column; justify-content: flex-end;
+}
+.barras-dia .pilha {
+  display: flex; flex-direction: column-reverse;
+  border-radius: 3px; overflow: hidden; min-height: 2px;
+}
+.barras-dia .rot-dia {
+  font-size: 9px; text-align: center; color: var(--text-muted);
+  margin-top: 5px; font-variant-numeric: tabular-nums;
+}
+
 .bar-item.on .trilho { box-shadow: 0 0 0 1px var(--accent) inset; }
 
 /* ============================================================
@@ -1026,12 +1048,31 @@ tr.total > th, tr.total > td {
         </button>
         <div class="log" id="logIngestRessuprimento"></div>
       </div>
+
+      <div class="section-title" style="margin-top:24px">Atualizar Ressuprimento por dia (Kardex)</div>
+      <div class="card">
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+          Envie a extração de <strong>Movimentos de Estoque (endereços/volumes)</strong> — o Kardex.
+          É de onde sai o ressuprimento por dia e turno. Só entram os movimentos TL+/TL- com volume
+          que <strong>chegam no Picking</strong>: par de mesmo endereço é entrada fiscal e fica de fora.
+          Sobe separado dos arquivos de posição porque é um relatório de período, não do dia.
+        </p>
+        <div class="dropzone" id="dropzoneKardex">
+          <span id="dropzoneKardexTexto">Clique para selecionar o .txt do <strong>Kardex</strong></span>
+          <input type="file" id="inputKardex" accept=".txt,text/plain" style="display:none">
+        </div>
+        <button class="btn-mini" id="btnProcessarKardex" style="margin-top:12px" disabled>
+          Processar Kardex
+        </button>
+        <div class="log" id="logIngestKardex"></div>
+      </div>
     </section>
   </main>
 </div>
 
 <script src="ingest.js"></script>
 <script src="ingest-ressuprimento.js"></script>
+<script src="ingest-movimentacoes.js"></script>
 <script src="distr-fluxo.js"></script>
 <script>
 /* ============================================================
@@ -1813,18 +1854,27 @@ function exportarCSV() {
    material em validação (FIFO).
    ============================================================ */
 let filtroRessuprimento = 'picking';        // 'picking' | 'pulmao' | 'todos'
-let filtroSegmentoRessuprimento = null;     // null = Todos | um segmento_macro (ex. "TÊNIS")
+let filtroSegmentoRessuprimento = null;     // null = Todos | um dos 6 segmentos da gestão
+let filtroTurnoRessuprimento = null;        // null = todos os turnos | T01 | T02 | T02_T03 | T03
+let dadosMovimentacoes = null;              // snapshot do Kardex (pagina='ressuprimento_mov')
 const abertosRessuprimento = new Set();
 let dataSnapshotRessuprimento = null;
 
 async function carregarRessuprimento() {
   const alvo = document.getElementById('ressuprimento-conteudo');
-  const { data, error } = await supabaseClient
-    .from('dashboard_snapshots')
-    .select('payload, gerado_em')
-    .eq('pagina', 'ressuprimento')
-    .order('gerado_em', { ascending: false })
-    .limit(1);
+  // Os dois snapshots vêm juntos, mas são independentes: posição (Picking+Pulmão)
+  // é do dia, Kardex é de período. Um pode existir sem o outro — a tela mostra o
+  // que houver e avisa sobre o que falta, em vez de ficar em branco.
+  const [resPosicao, resMov] = await Promise.all([
+    supabaseClient.from('dashboard_snapshots')
+      .select('payload, gerado_em').eq('pagina', 'ressuprimento')
+      .order('gerado_em', { ascending: false }).limit(1),
+    supabaseClient.from('dashboard_snapshots')
+      .select('payload, gerado_em').eq('pagina', 'ressuprimento_mov')
+      .order('gerado_em', { ascending: false }).limit(1),
+  ]);
+  const { data, error } = resPosicao;
+  dadosMovimentacoes = (!resMov.error && resMov.data && resMov.data.length) ? resMov.data[0].payload : null;
 
   if (error) {
     alvo.innerHTML = '<div class="aviso erro">Erro ao carregar o snapshot: ' + escapar(error.message) + '</div>';
@@ -1918,7 +1968,6 @@ function linhaArvoreRessuprimento(opts) {
   '</tr>';
 }
 
-const ROT_BUCKET = { meia: 'Meia', vestuario: 'Vestuário', calcado: 'Calçado' };
 const ROT_ZONA = { pulmao: 'Pulmão', picking_meia: 'Picking — Meia', picking_vestuario: 'Picking — Vestuário', picking_calcado: 'Picking — Calçado' };
 const ROT_FILTRO_RESSUP = { picking: 'Picking', pulmao: 'Pulmão', todos: 'Todos' };
 
@@ -1978,15 +2027,15 @@ function renderizarRessuprimento(p) {
   /* ---------- cards de SKU/endereço — respeitam Picking/Pulmão/Todos + segmento ---------- */
   const statsBase = p['stats_' + filtroRessuprimento] || { geral: {}, por_segmento: {} };
   const stats = filtroSegmentoRessuprimento
-    ? (statsBase.por_segmento[filtroSegmentoRessuprimento] || { skus_distintos: 0, enderecos_distintos: 0, media_skus_por_endereco: 0 })
+    ? (statsBase.por_segmento[filtroSegmentoRessuprimento] || { skus_distintos: 0, enderecos_distintos: 0, pecas: 0, media_pecas_por_endereco: 0 })
     : (statsBase.geral || {});
   const kpisSku = '<div class="kpi-row">' +
     '<div class="kpi"><div class="rot">SKUs distintos com estoque</div>' +
       '<div class="val forte">' + fmtInt(stats.skus_distintos) + '</div>' +
       '<div class="sub">' + fmtInt(stats.enderecos_distintos) + ' endereços ocupados</div></div>' +
-    '<div class="kpi"><div class="rot">Média de SKUs por endereço</div>' +
-      '<div class="val forte">' + fmtDec1(stats.media_skus_por_endereco) + '</div>' +
-      '<div class="sub">diversidade de SKUs por posição</div></div>' +
+    '<div class="kpi"><div class="rot">Média de peças por endereço</div>' +
+      '<div class="val forte">' + fmtDec1(stats.media_pecas_por_endereco) + '</div>' +
+      '<div class="sub">' + fmtInt(stats.pecas) + ' peças no recorte</div></div>' +
   '</div>';
 
   /* ---------- ocupação × capacidade: Total + as 4 zonas — sempre global, não segue o filtro ----------
@@ -2098,18 +2147,6 @@ function renderizarRessuprimento(p) {
     '<td>' + fmtInt(totalGeral) + '</td><td>100,0%</td><td>' + fmtInt(skusGeral) + '</td>' +
   '</tr>';
 
-  /* ---------- painel de ressuprimento por segmento (não filtra — cruza os dois arquivos sempre) ---------- */
-  const rps = p.ressuprimento_por_segmento || {};
-  let linhasRessup = '';
-  ['meia', 'vestuario', 'calcado'].forEach(function (b) {
-    const d = rps[b]; if (!d) return;
-    linhasRessup += '<tr><th>' + ROT_BUCKET[b] + '</th>' +
-      '<td>' + fmtInt(d.saldo_picking) + '</td>' +
-      '<td>' + fmtInt(d.enderecos_com_apoio_pulmao) + '</td>' +
-      '<td>' + fmtInt(d.apoio_pulmao_disponivel) + '</td>' +
-      '<td>' + (d.gap_reservado_nao_contado ? fmtInt(d.gap_reservado_nao_contado) : '—') + '</td></tr>';
-  });
-
   /* ---------- material em validação (só faz sentido olhando o Pulmão) ---------- */
   let blocoValidacao = '';
   if (filtroRessuprimento !== 'picking' && (p.validacao || []).length) {
@@ -2165,20 +2202,201 @@ function renderizarRessuprimento(p) {
         '<th class="esq">Descrição</th><th>Qtd</th><th>% do nível</th><th>SKUs</th>' +
       '</tr></thead><tbody>' + linhasArvore + '</tbody></table></div>' +
     '</div>' +
-    '<div class="card">' +
-      '<div class="section-title">Ressuprimento por segmento — Picking × apoio no Pulmão</div>' +
-      '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
-        'Não depende dos filtros acima — cruza os dois arquivos sempre. "Apoio no Pulmão" só conta ' +
-        'material confiável (Pulmão real + reclassificado por segurança/capacidade, nunca sujeira de sistema).</p>' +
-      '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
-        '<th class="esq">Segmento</th><th>Saldo no Picking</th><th>Endereços c/ apoio</th>' +
-        '<th>Apoio disponível no Pulmão</th><th>GAP reservado (não contado)</th>' +
-      '</tr></thead><tbody>' + linhasRessup + '</tbody></table></div>' +
-    '</div>' +
+    blocoMovimentacoes() +
     blocoValidacao +
     '<div style="font-size:11px;color:var(--text-muted);margin-top:12px">' +
       'Picking: ' + escapar(p.arquivo_picking || '—') + ' · Pulmão: ' + escapar(p.arquivo_pulmao || '—') +
     '</div>';
+}
+
+/* ============================================================
+   RESSUPRIMENTO POR DIA E TURNO — vem do Kardex (ingest-movimentacoes.js)
+   ------------------------------------------------------------
+   Mora dentro da tela de Ressuprimento, no lugar do antigo painel
+   "Picking × apoio no Pulmão". Snapshot próprio (pagina='ressuprimento_mov'),
+   carregado junto com o de posição: são relatórios de periodicidade diferente
+   (posição é do dia, Kardex é de período), então cada um sobe no seu tempo e a
+   tela mostra o que existir.
+   ============================================================ */
+const ROT_TURNO = { T01: 'T01', T02: 'T02', T02_T03: 'T02/T03', T03: 'T03' };
+const JANELA_TURNO = { T01: '05:00–14:47', T02: '14:48–19:59', T02_T03: '20:00–00:15', T03: '00:16–04:59' };
+const COR_TURNO = { T01: '--accent', T02: '--brand-miz', T02_T03: '--laranja', T03: '--olive' };
+const ORDEM_TURNO = ['T01', 'T02', 'T02_T03', 'T03'];
+
+function alternarFiltroTurnoRessuprimento(t) {
+  filtroTurnoRessuprimento = (filtroTurnoRessuprimento === t) ? null : t;
+  renderizarRessuprimento();
+}
+
+/* Peças do dia respeitando o filtro de turno (null = soma todos). */
+function pecasDoDia(d) {
+  if (!filtroTurnoRessuprimento) return d.pecas;
+  const t = d.turnos[filtroTurnoRessuprimento];
+  return t ? t.pecas : 0;
+}
+function movimentosDoDia(d) {
+  if (!filtroTurnoRessuprimento) return d.movimentos;
+  const t = d.turnos[filtroTurnoRessuprimento];
+  return t ? t.movimentos : 0;
+}
+
+function blocoMovimentacoes() {
+  const m = dadosMovimentacoes;
+  if (!m) {
+    return '<div class="card">' +
+      '<div class="section-title">Ressuprimento por dia</div>' +
+      '<div class="aviso">Nenhum Kardex publicado ainda. Envie a extração de ' +
+      '<strong>Movimentos de Estoque (endereços/volumes)</strong> pela tela ' +
+      '<strong>Admin › Abastecimento</strong> para ver o ressuprimento por dia e turno.</div>' +
+      '</div>';
+  }
+
+  const dias = m.por_dia || [];
+  const pecas = dias.reduce(function (s, d) { return s + pecasDoDia(d); }, 0);
+  const movimentos = dias.reduce(function (s, d) { return s + movimentosDoDia(d); }, 0);
+  const diasComMovimento = dias.filter(function (d) { return pecasDoDia(d) > 0; }).length;
+  const mediaDia = diasComMovimento > 0 ? pecas / diasComMovimento : 0;
+
+  /* ---------- chips de turno ---------- */
+  let chipsTurno = '<div class="filtros">' +
+    '<span class="rot-filtro">Turno</span>' +
+    '<span class="chip' + (!filtroTurnoRessuprimento ? ' on' : '') +
+      '" onclick="alternarFiltroTurnoRessuprimento(null)">Todos</span>';
+  ORDEM_TURNO.forEach(function (t) {
+    const dados = (m.por_turno || []).filter(function (x) { return x.turno === t; })[0];
+    if (!dados) return;
+    chipsTurno += '<span class="chip' + (filtroTurnoRessuprimento === t ? ' on' : '') +
+      '" title="' + JANELA_TURNO[t] + '" onclick="alternarFiltroTurnoRessuprimento(\'' + t + '\')">' +
+      ROT_TURNO[t] + '</span>';
+  });
+  chipsTurno += '</div>';
+
+  /* ---------- cards ---------- */
+  const kpis = '<div class="kpi-row">' +
+    '<div class="kpi"><div class="rot">Peças ressupridas</div>' +
+      '<div class="val forte">' + fmtInt(pecas) + '</div>' +
+      '<div class="sub">' + (filtroTurnoRessuprimento ? ROT_TURNO[filtroTurnoRessuprimento] + ' · ' : '') +
+      fmtInt(diasComMovimento) + ' dias com movimento</div></div>' +
+    '<div class="kpi"><div class="rot">Movimentos</div>' +
+      '<div class="val forte">' + fmtInt(movimentos) + '</div>' +
+      '<div class="sub">' + (movimentos > 0 ? fmtDec1(pecas / movimentos) + ' peças por movimento' : '—') + '</div></div>' +
+    '<div class="kpi"><div class="rot">Média por dia</div>' +
+      '<div class="val forte">' + fmtInt(mediaDia) + '</div>' +
+      '<div class="sub">peças/dia no período</div></div>' +
+    '<div class="kpi"><div class="rot">Fila em andamento</div>' +
+      '<div class="val forte" style="color:var(--amber)">' + fmtInt(m.total.pecas_em_transito) + '</div>' +
+      '<div class="sub">baixado do Pulmão, ainda no corredor</div></div>' +
+  '</div>';
+
+  /* ---------- gráfico: barras por dia, empilhadas por turno ----------
+     Empilhada porque a pergunta da operação é dupla: "quanto entrou no dia" e
+     "qual turno puxou o peso" — as duas na mesma barra. Com filtro de turno
+     ativo a pilha vira barra simples só daquele turno. */
+  const maxDia = dias.reduce(function (mx, d) { return Math.max(mx, pecasDoDia(d)); }, 0);
+  let barras = '';
+  dias.forEach(function (d) {
+    const totalDia = pecasDoDia(d);
+    const alturaTotal = maxDia > 0 ? (totalDia / maxDia) * 100 : 0;
+    let pilha = '';
+    ORDEM_TURNO.forEach(function (t) {
+      if (filtroTurnoRessuprimento && t !== filtroTurnoRessuprimento) return;
+      const dt = d.turnos[t];
+      if (!dt || dt.pecas <= 0) return;
+      const parte = totalDia > 0 ? (dt.pecas / totalDia) * 100 : 0;
+      pilha += '<div class="seg" style="height:' + parte + '%;background:var(' + COR_TURNO[t] + ')" ' +
+        'title="' + ROT_TURNO[t] + ' · ' + fmtInt(dt.pecas) + ' peças em ' + fmtInt(dt.movimentos) + ' movimentos"></div>';
+    });
+    barras += '<div class="col-dia" title="' + formatarDataSimples(d.dia) + ' · ' + fmtInt(totalDia) + ' peças">' +
+      '<div class="pilha" style="height:' + alturaTotal + '%">' + pilha + '</div>' +
+      '<div class="rot-dia">' + d.dia.slice(8, 10) + '</div>' +
+    '</div>';
+  });
+
+  let legendaTurno = '';
+  ORDEM_TURNO.forEach(function (t) {
+    const dados = (m.por_turno || []).filter(function (x) { return x.turno === t; })[0];
+    if (!dados) return;
+    legendaTurno += '<span><i style="background:var(' + COR_TURNO[t] + ')"></i>' +
+      ROT_TURNO[t] + ' <span style="color:var(--text-muted)">(' + JANELA_TURNO[t] + ')</span> · ' +
+      fmtInt(dados.pecas) + '</span>';
+  });
+
+  /* ---------- tabela dia a dia ---------- */
+  let linhasDias = '';
+  dias.forEach(function (d) {
+    let cels = '';
+    ORDEM_TURNO.forEach(function (t) {
+      const dt = d.turnos[t];
+      cels += '<td>' + (dt && dt.pecas ? fmtInt(dt.pecas) : '—') + '</td>';
+    });
+    linhasDias += '<tr><th class="esq">' + formatarDataSimples(d.dia) + '</th>' + cels +
+      '<td><strong>' + fmtInt(d.pecas) + '</strong></td>' +
+      '<td>' + fmtInt(d.movimentos) + '</td>' +
+      '<td>' + fmtInt(d.operadores) + '</td></tr>';
+  });
+  let totCels = '';
+  ORDEM_TURNO.forEach(function (t) {
+    const dados = (m.por_turno || []).filter(function (x) { return x.turno === t; })[0];
+    totCels += '<td>' + (dados ? fmtInt(dados.pecas) : '—') + '</td>';
+  });
+  linhasDias += '<tr class="total"><th class="esq">TOTAL</th>' + totCels +
+    '<td>' + fmtInt(m.total.pecas_ressupridas) + '</td>' +
+    '<td>' + fmtInt(m.total.movimentos_ressuprimento) + '</td>' +
+    '<td>' + fmtInt(m.total.operadores_distintos) + '</td></tr>';
+
+  const periodo = m.periodo && m.periodo.de
+    ? m.periodo.de + ' a ' + m.periodo.ate
+    : 'período não identificado no arquivo';
+
+  return '<div class="card">' +
+    '<div class="section-title" style="display:flex;align-items:center;justify-content:space-between">' +
+      '<span>Ressuprimento por dia — ' + escapar(periodo) + '</span>' +
+      '<button class="btn-mini" onclick="exportarCSVMovimentacoes()">⬇ CSV</button>' +
+    '</div>' +
+    '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
+      'Conta o movimento que <strong>chega no Picking</strong> — direto do Pulmão ou pelo corredor de ' +
+      'ressuprimento (ruas 500/600). É assim que cada peça é contada uma vez só: o ressuprimento ' +
+      'costuma acontecer em dois saltos, e somar as duas pernas contaria a mesma peça duas vezes.</p>' +
+    chipsTurno +
+    kpis +
+    '<div class="barras-dia">' + barras + '</div>' +
+    '<div class="legenda" style="margin-top:10px">' + legendaTurno + '</div>' +
+    '<div style="overflow-x:auto;margin-top:16px"><table class="arvore"><thead><tr>' +
+      '<th class="esq">Dia</th><th>T01</th><th>T02</th><th>T02/T03</th><th>T03</th>' +
+      '<th>Total peças</th><th>Movimentos</th><th>Operadores</th>' +
+    '</tr></thead><tbody>' + linhasDias + '</tbody></table></div>' +
+    '<div style="font-size:11px;color:var(--text-muted);margin-top:12px">' +
+      'Kardex: ' + escapar(m.arquivo || '—') + ' · descartados como fiscal/importação: ' +
+      fmtInt(m.descartados.fiscal_mesmo_endereco) + ' pares de mesmo endereço, ' +
+      fmtInt(m.descartados.sem_volume) + ' sem volume, ' +
+      fmtInt(m.descartados.sem_par_exato) + ' pernas sem par no período.' +
+    '</div>' +
+  '</div>';
+}
+
+function exportarCSVMovimentacoes() {
+  const m = dadosMovimentacoes;
+  if (!m) return;
+  const linhas = [['Dia', 'T01', 'T02', 'T02/T03', 'T03', 'Total pecas', 'Movimentos', 'Operadores']];
+  (m.por_dia || []).forEach(function (d) {
+    linhas.push([
+      d.dia,
+      d.turnos.T01 ? d.turnos.T01.pecas : 0,
+      d.turnos.T02 ? d.turnos.T02.pecas : 0,
+      d.turnos.T02_T03 ? d.turnos.T02_T03.pecas : 0,
+      d.turnos.T03 ? d.turnos.T03.pecas : 0,
+      d.pecas, d.movimentos, d.operadores,
+    ]);
+  });
+  const csv = linhas.map(function (l) {
+    return l.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(';');
+  }).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ressuprimento-por-dia-distribuidora.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 function exportarCSVRessuprimento() {
@@ -2261,6 +2479,44 @@ document.getElementById('inputPulmao').addEventListener('change', function (ev) 
   arquivoPulmaoSelecionado = ev.target.files && ev.target.files[0] || null;
   atualizarEstadoDropzoneRessuprimento();
 });
+/* ---------- Kardex: um arquivo só, sobe separado dos de posição ---------- */
+let arquivoKardexSelecionado = null;
+function atualizarEstadoDropzoneKardex() {
+  document.getElementById('btnProcessarKardex').disabled = !arquivoKardexSelecionado;
+  // Escreve no <span> do rótulo, nunca no <div> pai: o <input type="file"> mora
+  // dentro dele e .textContent no pai apagaria o input do DOM.
+  document.getElementById('dropzoneKardexTexto').textContent = arquivoKardexSelecionado
+    ? '✓ ' + arquivoKardexSelecionado.name : 'Clique para selecionar o .txt do Kardex';
+}
+document.getElementById('dropzoneKardex').addEventListener('click', function () {
+  document.getElementById('inputKardex').click();
+});
+document.getElementById('inputKardex').addEventListener('change', function (ev) {
+  arquivoKardexSelecionado = (ev.target.files && ev.target.files[0]) || null;
+  atualizarEstadoDropzoneKardex();
+});
+document.getElementById('btnProcessarKardex').addEventListener('click', async function () {
+  const log = document.getElementById('logIngestKardex');
+  log.textContent = '';
+  const escrever = function (msg) { log.textContent += msg + '\n'; log.scrollTop = log.scrollHeight; };
+  const btn = document.getElementById('btnProcessarKardex');
+  btn.disabled = true;
+  try {
+    await window.processarMovimentacoes(supabaseClient, arquivoKardexSelecionado, escrever);
+    escrever('Recarregando o dashboard…');
+    ressuprimentoCarregado = true;
+    await carregarRessuprimento();
+    mostrarSecao('ressuprimento');
+    arquivoKardexSelecionado = null;
+    document.getElementById('inputKardex').value = '';
+    atualizarEstadoDropzoneKardex();
+  } catch (e) {
+    escrever('ERRO: ' + (e && e.message ? e.message : String(e)));
+    console.error(e);
+    btn.disabled = false;
+  }
+});
+
 document.getElementById('btnProcessarRessuprimento').addEventListener('click', async function () {
   const log = document.getElementById('logIngestRessuprimento');
   log.textContent = '';

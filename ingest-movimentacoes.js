@@ -1,0 +1,415 @@
+/* ============================================================================
+   REPORT DISTRIBUIDORA — ingest-movimentacoes.js
+   ============================================================================
+   RESPONSABILIDADE ÚNICA: ler o Kardex de endereços/volumes (EX000796 —
+   "MOVIMENTOS DE ESTOQUE") e devolver o snapshot de RESSUPRIMENTO POR DIA E
+   TURNO. Mesma regra do ingest.js (README seção 1): nenhum document.*, nenhum
+   innerHTML — se é sobre COMO aparece, é do index.html; se é sobre COMO o
+   número é calculado, é daqui.
+
+   ----------------------------------------------------------------------------
+   O RELATÓRIO
+   ----------------------------------------------------------------------------
+   Uma linha por PERNA de movimento, delimitado por "|":
+     ARTIGO|DESCRICAO|COR|TAMANHO|DATA|TIPO_MOVTO|REF|QTDE_ANT|QTDE_MOVTO|
+     RESERVA|ARMAZ|SUB_ARMAZ|ENDERECO|VOLUME|LOGIN|NOME
+   ENDERECO = "rua,nivel,box". DATA = "DD/MM/AA HH:MM".
+
+   ----------------------------------------------------------------------------
+   AS TRÊS ARMADILHAS — todas confirmadas contra o arquivo real de 03–31/08/2026
+   ----------------------------------------------------------------------------
+   1. ZONA NÃO SE DEDUZ DA RUA, SE DEDUZ DO NÍVEL.
+      As ruas 01–15 aparecem TANTO no relatório de Picking quanto no de Pulmão.
+      O que separa é o nível: 1–7 é estanteria de Picking, 8–12 é porta-pallet
+      de Pulmão. Conferido endereço a endereço nos dois arquivos do dia
+      02/09/2026: 17.481 endereços de Picking, 5.170 de Pulmão, ZERO em comum.
+      Classificar por rua (como o gabarito antigo fazia) mistura as duas zonas.
+
+   2. O RESSUPRIMENTO ACONTECE EM DOIS SALTOS.
+      As ruas 500 ("Baixar Ressuprimento") e 600 ("Subir Ressuprimento") são
+      corredor de passagem: o operador baixa Pulmão -> 500 e depois leva
+      500 -> Picking. Somar todos os pares conta a mesma peça duas vezes —
+      7.421 volumes entraram E saíram do trânsito no período medido.
+      Por isso o que conta como "ressuprido" é o movimento que CHEGA no
+      Picking, nunca o que sai do Pulmão: cada peça é contada uma vez só, e
+      não depende de a primeira perna estar dentro da janela do arquivo.
+
+   3. TL+ / TL- NO MESMO ENDEREÇO É FISCAL, NÃO É RESSUPRIMENTO.
+      75.525 dos 120.564 pares do arquivo real têm o mesmo endereço nas duas
+      pontas, com login de faturamento no TL+ e do fiscal no TL- (confirmado
+      pela operação em 02/09/2026): é entrada/importação de material, não
+      movimentação física. Some-se a isso as linhas sem VOLUME (ajuste fiscal),
+      e sobram os pares que representam peça andando pelo armazém.
+   ============================================================================ */
+
+/* Ruas que não são nem Picking nem Pulmão: corredor de passagem e endereços de
+   sinalização (sujeira/perca/trânsito). Gabarito da operação — rua fora desta
+   lista é classificada pelo nível. */
+const RUAS_TRANSITO = { 21: 1, 24: 1, 26: 1, 27: 1, 98: 1, 100: 1, 500: 1, 600: 1 };
+
+/* Nível a partir do qual o endereço é porta-pallet (Pulmão). Abaixo disso é
+   estanteria de Picking. Medido nos dois relatórios de posição, não chutado. */
+const NIVEL_MINIMO_PULMAO = 8;
+
+function classificarZona(rua, nivel) {
+  const r = Number(rua) || 0;
+  if (RUAS_TRANSITO[r]) return 'TRANSITO';
+  return (Number(nivel) || 0) >= NIVEL_MINIMO_PULMAO ? 'PULMAO' : 'PICKING';
+}
+
+/* ============================================================================
+   TURNOS — gabarito da operação (02/09/2026)
+   ============================================================================
+   T01      05:00–14:47
+   T02      14:48–19:59
+   T02/T03  20:00–00:15  <- o T03 entra às 20h ainda dentro do T02, de propósito
+                            (reforço noturno). Como o Kardex não diz a qual
+                            turno o operador pertence, essa janela é um balde
+                            próprio em vez de ser chutada pra um dos dois —
+                            decisão da operação. Vira atribuição exata no dia em
+                            que existir o cadastro login -> turno.
+   T03      00:16–04:59
+   ============================================================================ */
+const TURNOS = [
+  { id: 'T01',     rotulo: 'T01',     janela: '05:00–14:47' },
+  { id: 'T02',     rotulo: 'T02',     janela: '14:48–19:59' },
+  { id: 'T02_T03', rotulo: 'T02/T03', janela: '20:00–00:15' },
+  { id: 'T03',     rotulo: 'T03',     janela: '00:16–04:59' },
+];
+
+function turnoDe(minutosDoDia) {
+  const m = Number(minutosDoDia) || 0;
+  if (m >= 300 && m < 888) return 'T01';
+  if (m >= 888 && m < 1200) return 'T02';
+  if (m >= 1200 || m < 16) return 'T02_T03';
+  return 'T03';
+}
+
+/* "20/08/26 13:40" -> { dia: '2026-08-20', minutos: 820 }
+   Devolve null quando não casa — a linha é descartada e contada, nunca
+   silenciosamente somada com data errada. */
+function parsearDataHora(texto) {
+  const m = String(texto || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  const dia = Number(m[1]), mes = Number(m[2]), ano = 2000 + Number(m[3]);
+  const hh = Number(m[4]), mm = Number(m[5]);
+  if (mes < 1 || mes > 12 || dia < 1 || dia > 31 || hh > 23 || mm > 59) return null;
+  const iso = ano + '-' + String(mes).padStart(2, '0') + '-' + String(dia).padStart(2, '0');
+  // Movimento entre 00:00 e 00:15 pertence ao turno T02/T03 que começou no dia
+  // anterior, mas fica no dia de calendário mesmo: são 150 linhas em 340.503 no
+  // arquivo real (0,04%), não compensa inventar "dia operacional" por isso.
+  return { dia: iso, minutos: hh * 60 + mm };
+}
+
+/* Cabeçalho lido pelo NOME da coluna, não por posição — mesma decisão do
+   parser de Balanço: se o sistema reordenar ou incluir coluna, continua
+   achando cada campo. */
+const ALIAS_COLUNAS_KARDEX = {
+  artigo:    ['artigo'],
+  descricao: ['descricao', 'descrição'],
+  cor:       ['cor'],
+  tamanho:   ['tamanho'],
+  data:      ['data'],
+  tipo:      ['tipo_movto', 'tipo movto', 'tipo'],
+  ref:       ['ref'],
+  qtd:       ['qtde_movto', 'qtde movto', 'qtd_movto'],
+  endereco:  ['endereco', 'endereço'],
+  volume:    ['volume'],
+  login:     ['login'],
+  nome:      ['nome'],
+};
+
+const COLUNAS_KARDEX_OBRIGATORIAS = ['artigo', 'cor', 'tamanho', 'data', 'tipo', 'ref', 'qtd', 'endereco', 'volume'];
+
+function mapearColunasKardex(linhaCabecalho) {
+  const nomes = linhaCabecalho.split('|').map(function (s) {
+    return String(s).trim().toLowerCase().replace(/\s+/g, ' ');
+  });
+  const idx = {};
+  Object.keys(ALIAS_COLUNAS_KARDEX).forEach(function (campo) {
+    const aliases = ALIAS_COLUNAS_KARDEX[campo];
+    for (let i = 0; i < nomes.length; i++) {
+      if (aliases.indexOf(nomes[i]) !== -1) { idx[campo] = i; return; }
+    }
+  });
+  const faltando = COLUNAS_KARDEX_OBRIGATORIAS.filter(function (c) { return idx[c] === undefined; });
+  if (faltando.length) {
+    throw new Error(
+      'Coluna' + (faltando.length > 1 ? 's' : '') + ' não encontrada' + (faltando.length > 1 ? 's' : '') +
+      ' no cabeçalho do Kardex: ' + faltando.map(function (c) { return '"' + ALIAS_COLUNAS_KARDEX[c][0] + '"'; }).join(', ') +
+      '. O cabeçalho lido foi: ' + nomes.filter(Boolean).join(' | ') +
+      '. Se o sistema renomeou alguma coluna, o alias precisa ser adicionado em ' +
+      'ALIAS_COLUNAS_KARDEX (ingest-movimentacoes.js).'
+    );
+  }
+  return idx;
+}
+
+/* ============================================================================
+   PARSE — devolve as PERNAS brutas (uma por linha TL+/TL-), sem casar par ainda
+   ============================================================================ */
+function parsearKardex(textoArquivo) {
+  const linhas = textoArquivo.split(/\r?\n/);
+  const pernas = [];
+  let idx = null;
+  const periodo = { de: null, ate: null };
+  let ignoradasOutroTipo = 0;
+  let ignoradasDataInvalida = 0;
+
+  for (let i = 0; i < linhas.length; i++) {
+    const linha = linhas[i];
+    if (!linha.trim()) continue;
+
+    if (!idx) {
+      // Cabeçalho do relatório: "...|de:03/08/2026|ate:31/08/2026|..."
+      const mDe = linha.match(/de:\s*(\d{2}\/\d{2}\/\d{4})/i);
+      const mAte = linha.match(/ate:\s*(\d{2}\/\d{2}\/\d{4})/i);
+      if (mDe) periodo.de = mDe[1];
+      if (mAte) periodo.ate = mAte[1];
+      if (/(^|\|)\s*artigo\s*\|/i.test(linha)) idx = mapearColunasKardex(linha);
+      continue;
+    }
+
+    const p = linha.split('|');
+    if (p.length < 10) continue;
+
+    const tipo = (p[idx.tipo] || '').trim().toUpperCase();
+    if (tipo !== 'TL+' && tipo !== 'TL-') { ignoradasOutroTipo++; continue; }
+
+    const dh = parsearDataHora(p[idx.data]);
+    if (!dh) { ignoradasDataInvalida++; continue; }
+
+    const endereco = (p[idx.endereco] || '').trim();
+    const partes = endereco.split(',');
+
+    pernas.push({
+      artigo: (p[idx.artigo] || '').trim(),
+      descricao: idx.descricao !== undefined ? (p[idx.descricao] || '').trim() : '',
+      cor: (p[idx.cor] || '').trim(),
+      tamanho: (p[idx.tamanho] || '').trim(),
+      dia: dh.dia,
+      minutos: dh.minutos,
+      data_bruta: (p[idx.data] || '').trim(),
+      tipo: tipo,
+      ref: (p[idx.ref] || '').trim(),
+      qtd: window.numeroBR(p[idx.qtd]),
+      endereco: endereco,
+      rua: (partes[0] || '').trim(),
+      nivel: (partes[1] || '').trim(),
+      box: (partes[2] || '').trim(),
+      volume: (p[idx.volume] || '').trim(),
+      login: idx.login !== undefined ? (p[idx.login] || '').trim() : '',
+      nome: idx.nome !== undefined ? (p[idx.nome] || '').trim() : '',
+    });
+  }
+
+  if (!idx) {
+    throw new Error(
+      'Cabeçalho de colunas não encontrado no Kardex. A linha de cabeçalho é ' +
+      'localizada por uma coluna chamada "ARTIGO" — se o sistema renomeou essa ' +
+      'coluna, o alias precisa ser ajustado em ingest-movimentacoes.js.'
+    );
+  }
+
+  return {
+    pernas: pernas,
+    periodo: periodo,
+    ignoradas_outro_tipo: ignoradasOutroTipo,
+    ignoradas_data_invalida: ignoradasDataInvalida,
+  };
+}
+
+/* ============================================================================
+   CASAMENTO DAS PERNAS EM MOVIMENTOS
+   ============================================================================
+   Chave do par: Artigo + Cor + Tamanho + Data/hora + REF (confirmada pela
+   operação em 02/09/2026). A REF sozinha NÃO serve: ela se repete em milhares
+   de linhas não relacionadas (é número de pedido/lote, não do movimento).
+
+   Grupo que não tem exatamente 1 TL+ e 1 TL- fica de fora e é CONTADO — pode
+   ser movimento cuja outra perna caiu fora da janela do relatório. Sumir com
+   ele em silêncio esconderia volume real.
+   ============================================================================ */
+const SEP = '|#|';
+
+function casarMovimentos(pernas) {
+  const grupos = new Map();
+  pernas.forEach(function (p) {
+    const chave = [p.artigo, p.cor, p.tamanho, p.data_bruta, p.ref].join(SEP);
+    if (!grupos.has(chave)) grupos.set(chave, []);
+    grupos.get(chave).push(p);
+  });
+
+  const movimentos = [];
+  let semParExato = 0, fiscalMesmoEndereco = 0, semVolume = 0;
+
+  grupos.forEach(function (g) {
+    if (g.length !== 2) { semParExato += g.length; return; }
+    const saida = g[0].tipo === 'TL-' ? g[0] : g[1];
+    const entrada = g[0].tipo === 'TL-' ? g[1] : g[0];
+    if (saida.tipo !== 'TL-' || entrada.tipo !== 'TL+') { semParExato += 2; return; }
+
+    // Armadilha 3: mesmo endereço nas duas pontas = fiscal/importação.
+    if (saida.endereco === entrada.endereco) { fiscalMesmoEndereco++; return; }
+    // Sem volume = ajuste fiscal / importação de material (regra da operação).
+    if (!saida.volume || !entrada.volume) { semVolume++; return; }
+
+    movimentos.push({
+      artigo: entrada.artigo,
+      descricao: entrada.descricao,
+      cor: entrada.cor,
+      tamanho: entrada.tamanho,
+      dia: entrada.dia,
+      minutos: entrada.minutos,
+      turno: turnoDe(entrada.minutos),
+      qtd: entrada.qtd,
+      volume: entrada.volume,
+      login: entrada.login,
+      nome: entrada.nome,
+      origem: { endereco: saida.endereco, zona: classificarZona(saida.rua, saida.nivel) },
+      destino: { endereco: entrada.endereco, zona: classificarZona(entrada.rua, entrada.nivel) },
+    });
+  });
+
+  return {
+    movimentos: movimentos,
+    descartados: {
+      sem_par_exato: semParExato,
+      fiscal_mesmo_endereco: fiscalMesmoEndereco,
+      sem_volume: semVolume,
+    },
+  };
+}
+
+/* ============================================================================
+   AGREGAÇÃO
+   ============================================================================
+   RESSUPRIDO = movimento cujo DESTINO é o Picking, vindo de fora do Picking
+   (direto do Pulmão ou pelo corredor de trânsito). Definição fechada com a
+   operação em 02/09/2026 — ver armadilha 2 no topo do arquivo. Realocação
+   Picking -> Picking não conta: a peça já estava na estanteria.
+
+   EM TRÂNSITO = saiu do Pulmão e parou no corredor (500/600). É a fila de
+   ressuprimento em andamento: já foi baixado, ainda não chegou na estanteria.
+   ============================================================================ */
+function ehRessuprimento(mov) {
+  return mov.destino.zona === 'PICKING' && mov.origem.zona !== 'PICKING';
+}
+function ehBaixaPendente(mov) {
+  return mov.origem.zona === 'PULMAO' && mov.destino.zona === 'TRANSITO';
+}
+
+function construirSnapshotMovimentacoes(parsed, meta) {
+  const casado = casarMovimentos(parsed.pernas);
+  const movs = casado.movimentos;
+
+  const porDia = new Map();       // dia -> agregado do dia
+  const porTurno = new Map();     // turno -> { pecas, movimentos }
+  const rotas = new Map();        // "ZONA -> ZONA" -> { pecas, movimentos }
+  const operadores = new Map();   // login -> { nome, pecas, movimentos }
+
+  let pecasRessupridas = 0, movimentosRessuprimento = 0;
+  let pecasEmTransito = 0, movimentosEmTransito = 0;
+
+  movs.forEach(function (m) {
+    const rota = m.origem.zona + ' -> ' + m.destino.zona;
+    if (!rotas.has(rota)) rotas.set(rota, { rota: rota, pecas: 0, movimentos: 0 });
+    const r = rotas.get(rota);
+    r.pecas += m.qtd; r.movimentos += 1;
+
+    if (ehBaixaPendente(m)) { pecasEmTransito += m.qtd; movimentosEmTransito += 1; }
+    if (!ehRessuprimento(m)) return;
+
+    pecasRessupridas += m.qtd;
+    movimentosRessuprimento += 1;
+
+    if (!porDia.has(m.dia)) {
+      porDia.set(m.dia, { dia: m.dia, pecas: 0, movimentos: 0, turnos: {}, operadores: new Set() });
+    }
+    const d = porDia.get(m.dia);
+    d.pecas += m.qtd; d.movimentos += 1;
+    d.operadores.add(m.login);
+    if (!d.turnos[m.turno]) d.turnos[m.turno] = { pecas: 0, movimentos: 0 };
+    d.turnos[m.turno].pecas += m.qtd;
+    d.turnos[m.turno].movimentos += 1;
+
+    if (!porTurno.has(m.turno)) porTurno.set(m.turno, { turno: m.turno, pecas: 0, movimentos: 0 });
+    const t = porTurno.get(m.turno);
+    t.pecas += m.qtd; t.movimentos += 1;
+
+    if (!operadores.has(m.login)) operadores.set(m.login, { login: m.login, nome: m.nome, pecas: 0, movimentos: 0 });
+    const o = operadores.get(m.login);
+    o.pecas += m.qtd; o.movimentos += 1;
+  });
+
+  const dias = Array.from(porDia.values())
+    .map(function (d) {
+      return { dia: d.dia, pecas: d.pecas, movimentos: d.movimentos, turnos: d.turnos, operadores: d.operadores.size };
+    })
+    .sort(function (a, b) { return a.dia < b.dia ? -1 : 1; });
+
+  return {
+    versao: 1,
+    gerado_em: new Date().toISOString(),
+    arquivo: meta.arquivo,
+    periodo: parsed.periodo,
+    total: {
+      pecas_ressupridas: pecasRessupridas,
+      movimentos_ressuprimento: movimentosRessuprimento,
+      pecas_em_transito: pecasEmTransito,
+      movimentos_em_transito: movimentosEmTransito,
+      dias_com_movimento: dias.length,
+      operadores_distintos: operadores.size,
+    },
+    por_dia: dias,
+    por_turno: Array.from(porTurno.values()).sort(function (a, b) { return b.pecas - a.pecas; }),
+    rotas: Array.from(rotas.values()).sort(function (a, b) { return b.pecas - a.pecas; }),
+    operadores: Array.from(operadores.values()).sort(function (a, b) { return b.pecas - a.pecas; }),
+    // Nada é descartado em silêncio: a tela mostra estes números pra que a
+    // operação consiga bater o total do relatório com o que aparece aqui.
+    descartados: casado.descartados,
+    ignoradas_outro_tipo: parsed.ignoradas_outro_tipo,
+    ignoradas_data_invalida: parsed.ignoradas_data_invalida,
+  };
+}
+
+/* ============================================================================
+   ORQUESTRAÇÃO — chamado pelo index.html (tela de Abastecimento)
+   ============================================================================ */
+async function processarMovimentacoes(supabaseClient, file, onProgresso) {
+  const avisar = onProgresso || function () {};
+
+  avisar('Lendo o Kardex…');
+  const texto = await file.text();
+
+  avisar('Interpretando as movimentações…');
+  const parsed = parsearKardex(texto);
+  avisar(parsed.pernas.length.toLocaleString('pt-BR') + ' linhas TL+/TL- lidas.');
+
+  avisar('Casando pares e classificando zonas…');
+  const payload = construirSnapshotMovimentacoes(parsed, { arquivo: file.name });
+  avisar(
+    payload.total.movimentos_ressuprimento.toLocaleString('pt-BR') + ' movimentos de ressuprimento · ' +
+    payload.total.pecas_ressupridas.toLocaleString('pt-BR') + ' peças em ' +
+    payload.total.dias_com_movimento + ' dias.'
+  );
+
+  avisar('Publicando o snapshot…');
+  const { error } = await supabaseClient.from('dashboard_snapshots').insert({
+    pagina: 'ressuprimento_mov',
+    payload: payload,
+    gerado_em: new Date().toISOString(),
+  });
+  if (error) throw error;
+
+  avisar('Concluído.');
+  return payload;
+}
+
+window.processarMovimentacoes = processarMovimentacoes;
+window.parsearKardex = parsearKardex;
+window.casarMovimentos = casarMovimentos;
+window.construirSnapshotMovimentacoes = construirSnapshotMovimentacoes;
+window.classificarZona = classificarZona;
+window.turnoDe = turnoDe;
+window.TURNOS = TURNOS;

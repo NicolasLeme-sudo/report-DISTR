@@ -101,25 +101,47 @@ function classificarBucket(segmento, categoria) {
 }
 
 /* ============================================================================
-   SEGMENTO MACRO — visão "geral do negócio", sem marca.
-   ------------------------------------------------------------
-   O campo `segmento` de dim_familias já vem com a marca embutida no texto
-   (ex.: "TÊNIS MIZUNO", "TÊXTIL/ACESSÓRIOS OLYMPIKUS") porque é assim que a
-   operação organiza a família. Isso é ótimo pro detalhamento por marca, mas
-   pedido explícito da gestão foi ter uma visão de segmento que cruze TODAS as
-   marcas (ex.: "TÊNIS" somando Mizuno + Olympikus + Under Armour) — daí essa
-   função só remove o nome da marca (já resolvido por dim_familias pra essa
-   família) do texto do segmento. Sem lista de marcas fixa: usa a própria
-   marca já resolvida, então funciona pra qualquer marca cadastrada.
+   SEGMENTO MACRO — os 6 segmentos que a gestão usa, cruzando TODAS as marcas
+   ============================================================================
+   Nem `segmento` nem `categoria` de dim_familias servem direto: os dois trazem
+   a marca embutida no texto ("TÊNIS MIZUNO", "TÊXTIL/ACESSÓRIOS OLYMPIKUS"),
+   porque é assim que a operação organiza a FAMÍLIA. A gestão pediu a visão de
+   negócio, que é marca-agnóstica e tem 6 baldes fixos (02/09/2026):
+
+     CALÇADO · CHINELO · CHUTEIRA · VESTUÁRIO · MEIA · ACESSÓRIO
+
+   A classificação sai da `categoria` (é ela que tem a granularidade certa:
+   "MEIAS MIZUNO" e "VESTUÁRIO MIZUNO" caem no mesmo `segmento`
+   "TÊXTIL/ACESSÓRIOS MIZUNO", então segmento sozinho não separaria meia de
+   vestuário). A ORDEM das regras importa:
+
+     - CHUTEIRA e CHINELO vêm ANTES de CALÇADO: os dois são calçado no sentido
+       amplo, mas a gestão quer chip próprio pra cada um.
+     - VESTUÁRIO vem antes de CALÇADO por causa de "BOTAFOGO MIZUNO", que
+       casaria com /BOTA/ da regra de calçado — é camisa de time, não bota.
+
+   'OUTROS' é sinalizado de propósito, nunca silencioso: hoje só deveriam cair
+   ali insumos operacionais (embalagem, químico, MIP) e semi-acabado. Família
+   de produto caindo em OUTROS é família nova que a operação ainda não
+   classificou nesse eixo — a tela mostra, não esconde.
    ============================================================================ */
-function segmentoMacro(segmento, marca) {
-  const seg = String(segmento || '').trim();
-  if (!seg) return '—';
-  const m = String(marca || '').trim();
-  if (!m) return seg;
-  const re = new RegExp('\\s*\\b' + m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b\\s*', 'gi');
-  const limpo = seg.replace(re, ' ').replace(/\s{2,}/g, ' ').trim();
-  return limpo || seg; // se sobrar vazio (ex.: segmento === marca, caso "MELISSA"), mantém o original
+const SEGMENTOS_MACRO = ['CALÇADO', 'CHINELO', 'CHUTEIRA', 'VESTUÁRIO', 'MEIA', 'ACESSÓRIO'];
+
+function segmentoMacro(segmento, categoria) {
+  // Usa a CATEGORIA sozinha, nunca categoria + segmento concatenados: o
+  // segmento de uma família de vestuário é "TÊXTIL/ACESSÓRIOS <marca>", então
+  // concatenar faria "VESTUÁRIO MIZUNO" casar com /ACESS/ e o segmento
+  // VESTUÁRIO inteiro sumiria dentro de ACESSÓRIO. O segmento só entra como
+  // rede de segurança quando a família não tem categoria cadastrada.
+  const base = String(categoria || '').trim() || String(segmento || '');
+  const t = base.toUpperCase();
+  if (/CHUTEIRA/.test(t)) return 'CHUTEIRA';
+  if (/CHINELO|OPANKA/.test(t)) return 'CHINELO';
+  if (/MEIA/.test(t)) return 'MEIA';
+  if (/ACESS/.test(t)) return 'ACESSÓRIO';
+  if (/VESTU|BOTAFOGO|FUTEBOL|CAMISA/.test(t)) return 'VESTUÁRIO';
+  if (/TENIS|TÊNIS|SAPATO|TAMANCO|BOTA|CALCAD|CALÇAD/.test(t)) return 'CALÇADO';
+  return 'OUTROS';
 }
 
 /* ----------------------------------------------------------------------------
@@ -286,7 +308,7 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     const fam = infoFamilia(r.familia_codigo);
     const enriquecido = Object.assign({}, r, {
       marca: fam.marca, segmento: fam.segmento, categoria: fam.categoria,
-      segmento_macro: segmentoMacro(fam.segmento, fam.marca),
+      segmento_macro: segmentoMacro(fam.segmento, fam.categoria),
     });
 
     let reclass = RECLASSIFICA_PICKING_PARA_PULMAO[r.rua];
@@ -308,7 +330,7 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     const classif = classificarRuaPulmao(r.rua);
     return Object.assign({}, r, {
       marca: fam.marca, segmento: fam.segmento, categoria: fam.categoria,
-      segmento_macro: segmentoMacro(fam.segmento, fam.marca),
+      segmento_macro: segmentoMacro(fam.segmento, fam.categoria),
       origem: 'pulmao', motivo: null,
       apoio_confiavel: classif.grupo === 'PULMAO',
       em_validacao: classif.grupo !== 'PULMAO',
@@ -322,16 +344,21 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     });
   }));
 
-  /* ---------- posições ocupadas (endereço com soma de qtd > 0) ---------- */
+  /* ---------- posições ocupadas = endereços ALOCADOS, não "com saldo" ----------
+     Um endereço de Picking com o SKU endereçado e saldo zero continua OCUPADO:
+     a posição está reservada pra aquele SKU, ela só está vazia — e é
+     exatamente essa a posição que precisa de ressuprimento. Contar só quem tem
+     saldo > 0 dizia que o armazém estava mais vazio do que está.
+
+     Confirmado contra a planilha de Ocupação da gestão (02/09/2026): pelo
+     critério de alocação, o Picking de meia bate EXATO (361 endereços dos dois
+     lados); pelo critério de saldo dava 240. Ver testes-ingest-ressuprimento.js. */
   function posicoesOcupadas(lista) {
-    const porEndereco = new Map();
+    const enderecos = new Set();
     lista.forEach(function (r) {
-      const chave = r.rua + '|' + r.nivel + '|' + r.box;
-      porEndereco.set(chave, (porEndereco.get(chave) || 0) + r.qtd);
+      enderecos.add(r.rua + '|' + r.nivel + '|' + r.box);
     });
-    let n = 0;
-    porEndereco.forEach(function (qtd) { if (qtd > 0) n++; });
-    return n;
+    return enderecos.size;
   }
   function zona(nome, ocupado) {
     const capacidade = cap[nome] || Math.round(ocupado * 1.2);
@@ -342,11 +369,27 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
       capacidade_estimada: !cap[nome], // true = ainda é ocupado×1.2, não o número real da gestão
     };
   }
+  /* OCUPAÇÃO É POSIÇÃO FÍSICA, não classificação de uso.
+     As ruas 20/70/80/81-02 são tratadas como Pulmão no CRUZAMENTO de
+     ressuprimento (é material de apoio, não de picking), mas fisicamente elas
+     ficam dentro do prédio do Picking — ocupam prateleira de Picking, não
+     posição de porta-pallet. Contá-las no Pulmão inflava a zona em 339
+     endereços e era o que fazia a ocupação estourar 100% contra a capacidade
+     real da gestão. Aqui, portanto, a ocupação do Pulmão usa só o Pulmão
+     físico (`pulmao.registros`), e o material reclassificado volta a pesar na
+     zona de Picking do seu próprio bucket, que é onde ele realmente está. */
+  const pulmaoFisico = pulmaoTudo.filter(function (r) { return r.origem === 'pulmao'; });
+  const pickingFisico = pickingReal.concat(pulmaoViaPicking.map(function (r) {
+    return Object.assign({}, r, { bucket: classificarBucket(r.segmento, r.categoria) });
+  }));
+  function ocupadoDoBucket(b) {
+    return posicoesOcupadas(pickingFisico.filter(function (r) { return r.bucket === b; }));
+  }
   const ocupacao = {
-    pulmao: zona('pulmao', posicoesOcupadas(pulmaoTudo)),
-    picking_meia: zona('picking_meia', posicoesOcupadas(pickingReal.filter(function (r) { return r.bucket === 'meia'; }))),
-    picking_vestuario: zona('picking_vestuario', posicoesOcupadas(pickingReal.filter(function (r) { return r.bucket === 'vestuario'; }))),
-    picking_calcado: zona('picking_calcado', posicoesOcupadas(pickingReal.filter(function (r) { return r.bucket === 'calcado'; }))),
+    pulmao: zona('pulmao', posicoesOcupadas(pulmaoFisico)),
+    picking_meia: zona('picking_meia', ocupadoDoBucket('meia')),
+    picking_vestuario: zona('picking_vestuario', ocupadoDoBucket('vestuario')),
+    picking_calcado: zona('picking_calcado', ocupadoDoBucket('calcado')),
   };
 
   /* ---------- árvore Marca › Segmento › Família, uma por filtro (picking / pulmão / todos) ----------
@@ -431,22 +474,23 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
   function estatisticas(lista) {
     function calcular(sub) {
       const skus = new Set();
-      const skusPorEndereco = new Map(); // endereco -> Set de skus (pra tirar a média certa)
+      const enderecos = new Set();
+      let pecas = 0;
       sub.forEach(function (r) {
         if (r.qtd <= 0) return;
-        const sku = chaveSku(r.artigo_codigo, r.cor, r.tamanho);
-        const end = r.rua + '|' + r.nivel + '|' + r.box;
-        skus.add(sku);
-        if (!skusPorEndereco.has(end)) skusPorEndereco.set(end, new Set());
-        skusPorEndereco.get(end).add(sku);
+        skus.add(chaveSku(r.artigo_codigo, r.cor, r.tamanho));
+        enderecos.add(r.rua + '|' + r.nivel + '|' + r.box);
+        pecas += r.qtd;
       });
-      let somaSkusPorEndereco = 0;
-      skusPorEndereco.forEach(function (s) { somaSkusPorEndereco += s.size; });
-      const nEnd = skusPorEndereco.size;
+      const nEnd = enderecos.size;
       return {
         skus_distintos: skus.size,
         enderecos_distintos: nEnd,
-        media_skus_por_endereco: nEnd > 0 ? somaSkusPorEndereco / nEnd : 0,
+        pecas: pecas,
+        // Peças por endereço, não SKUs por endereço (pedido da gestão,
+        // 02/09/2026): o que interessa é quanta MERCADORIA cabe/está em cada
+        // posição, não quantos códigos diferentes dividem a posição.
+        media_pecas_por_endereco: nEnd > 0 ? pecas / nEnd : 0,
       };
     }
     const porSegmento = {};

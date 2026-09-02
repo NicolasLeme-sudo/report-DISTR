@@ -147,5 +147,82 @@ eq(payload.ressuprimento_por_segmento.calcado.apoio_pulmao_disponivel, 200,
 const emValidacao = payload.validacao.map(function (v) { return v.artigo_codigo; }).sort();
 ok(emValidacao.indexOf('A3') !== -1, 'A3 (sujeira, rua 24 real + reclassificado rua 70) aparece em validação');
 
+/* -------------------------------------------------------------------------- */
+secao('ocupação — endereço ALOCADO conta, saldo zero não esvazia a posição');
+// Confirmado contra a planilha de Ocupação da gestão (02/09/2026): pelo critério
+// de alocação o Picking de meia bate EXATO (361 dos dois lados); pelo critério
+// antigo, de saldo > 0, dava 240 e o armazém parecia mais vazio do que está.
+const pickingComZerado = {
+  registros: [
+    { familia_codigo: '101', artigo_codigo: 'A5', cor: 'PT', tamanho: '40', ean: 'E5', rua: '81', nivel: '1', box: '1', qtd: 4, qtd_gap_reservado: 0 },
+    { familia_codigo: '101', artigo_codigo: 'A6', cor: 'PT', tamanho: '41', ean: 'E6', rua: '81', nivel: '1', box: '2', qtd: 0, qtd_gap_reservado: 0 },
+  ],
+  negativas_excluidas: 0, negativas_unidades: 0,
+};
+const payloadOcup = construirSnapshotRessuprimento(
+  pickingComZerado, { registros: [], colisoes_volume: 0 }, mapaFamilias, { picking_calcado: 10 },
+  { arquivo_picking: 'p.txt', arquivo_pulmao: 'x.txt' }
+);
+eq(payloadOcup.ocupacao.picking_calcado.ocupado, 2,
+   'endereço com SKU alocado e saldo zero continua contando como posição ocupada');
+eq(payloadOcup.ocupacao.picking_calcado.capacidade, 10, 'capacidade manual da gestão é respeitada');
+eq(payloadOcup.ocupacao.picking_calcado.capacidade_estimada, false,
+   'zona com capacidade cadastrada não é marcada como estimada');
+
+/* -------------------------------------------------------------------------- */
+secao('ocupação é posição FÍSICA — reclassificado do picking não infla o pulmão');
+// A2 está na rua 20 (tratada como Pulmão no CRUZAMENTO de apoio), mas fisicamente
+// é prateleira dentro do Picking: não pode ocupar posição de porta-pallet.
+const pickingRua20 = {
+  registros: [
+    { familia_codigo: '101', artigo_codigo: 'A2', cor: 'PT', tamanho: '40', ean: 'E2', rua: '20', nivel: '1', box: '1', qtd: 10, qtd_gap_reservado: 0 },
+  ],
+  negativas_excluidas: 0, negativas_unidades: 0,
+};
+const payloadFisico = construirSnapshotRessuprimento(
+  pickingRua20, { registros: [], colisoes_volume: 0 }, mapaFamilias, {},
+  { arquivo_picking: 'p.txt', arquivo_pulmao: 'x.txt' }
+);
+eq(payloadFisico.ocupacao.pulmao.ocupado, 0,
+   'rua 20 (reclassificada como apoio de pulmão) NÃO ocupa posição de pulmão');
+eq(payloadFisico.ocupacao.picking_calcado.ocupado, 1,
+   'ela ocupa a posição de picking, que é onde o material fisicamente está');
+
+/* -------------------------------------------------------------------------- */
+secao('segmentoMacro — os 6 baldes da gestão, cruzando todas as marcas');
+eq(segmentoMacro('TÊXTIL/ACESSÓRIOS MIZUNO', 'VESTUÁRIO MIZUNO'), 'VESTUÁRIO',
+   'vestuário não é engolido pelo "ACESSÓRIOS" que vem no nome do segmento');
+eq(segmentoMacro('TÊXTIL/ACESSÓRIOS MIZUNO', 'MEIAS MIZUNO'), 'MEIA', 'meia sai do mesmo segmento têxtil');
+eq(segmentoMacro('TÊXTIL/ACESSÓRIOS OLYMPIKUS', 'ACESSÓRIOS OLYMPIKUS'), 'ACESSÓRIO', 'acessório');
+eq(segmentoMacro('TÊNIS MIZUNO', 'TÊNIS MIZUNO'), 'CALÇADO', 'tênis vira CALÇADO (pedido da gestão)');
+eq(segmentoMacro('CHUTEIRA MIZUNO', 'CHUTEIRA MIZUNO'), 'CHUTEIRA', 'chuteira tem balde próprio, não cai em calçado');
+eq(segmentoMacro('CHINELO', 'CHINELO OLYMPIKUS'), 'CHINELO', 'chinelo tem balde próprio');
+eq(segmentoMacro('CHINELO', 'OPANKA'), 'CHINELO', 'OPANKA é chinelo (segmento CHINELO no gabarito)');
+eq(segmentoMacro('TÊXTIL/ACESSÓRIOS MIZUNO', 'BOTAFOGO MIZUNO'), 'VESTUÁRIO',
+   'BOTAFOGO é camisa de time — não pode cair em CALÇADO pelo /BOTA/');
+eq(segmentoMacro('FEMININO', 'SAPATO AZALEIA'), 'CALÇADO', 'sapato vira calçado');
+eq(segmentoMacro('Insumos Operacionais', 'Embalagens'), 'OUTROS', 'insumo cai em OUTROS, sinalizado');
+
+/* -------------------------------------------------------------------------- */
+secao('estatísticas — média de PEÇAS por endereço (não de SKUs)');
+const payloadStats = construirSnapshotRessuprimento(
+  {
+    registros: [
+      // dois SKUs no MESMO endereço, somando 30 peças; um terceiro sozinho com 10
+      { familia_codigo: '101', artigo_codigo: 'S1', cor: 'PT', tamanho: '40', ean: 'X1', rua: '2', nivel: '1', box: '1', qtd: 20, qtd_gap_reservado: 0 },
+      { familia_codigo: '101', artigo_codigo: 'S2', cor: 'PT', tamanho: '41', ean: 'X2', rua: '2', nivel: '1', box: '1', qtd: 10, qtd_gap_reservado: 0 },
+      { familia_codigo: '101', artigo_codigo: 'S3', cor: 'PT', tamanho: '42', ean: 'X3', rua: '2', nivel: '1', box: '2', qtd: 10, qtd_gap_reservado: 0 },
+    ],
+    negativas_excluidas: 0, negativas_unidades: 0,
+  },
+  { registros: [], colisoes_volume: 0 }, mapaFamilias, {},
+  { arquivo_picking: 'p.txt', arquivo_pulmao: 'x.txt' }
+);
+eq(payloadStats.stats_picking.geral.enderecos_distintos, 2, '2 endereços distintos');
+eq(payloadStats.stats_picking.geral.skus_distintos, 3, '3 SKUs distintos');
+eq(payloadStats.stats_picking.geral.pecas, 40, '40 peças no total');
+eq(payloadStats.stats_picking.geral.media_pecas_por_endereco, 20,
+   'média é 40 peças / 2 endereços = 20 (e não 3 SKUs / 2 endereços = 1,5)');
+
 console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
 process.exit(falhas === 0 ? 0 : 1);

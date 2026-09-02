@@ -41,13 +41,20 @@ create policy gravar_dim_capacidade_zonas on dim_capacidade_zonas
   for all to authenticated using (meu_papel() = 'admin') with check (meu_papel() = 'admin');
 
 -- ============================================================================
--- OPCIONAL: se/quando a gestão validar os números reais de capacidade, insira
--- (ou atualize) assim — os quatro nomes de zona são os únicos que a tela lê:
+-- CAPACIDADES REAIS — planilha "Ocupação Estoque" da gestão (02/09/2026)
+-- ============================================================================
+-- Até estes números existirem, a tela usava ocupado x1.2 como estimativa, o que
+-- travava TODA zona em 83,3% (é o que a divisão dá quando a capacidade é o
+-- próprio ocupado vezes 1,2 — parecia dado real e não era). Com as linhas
+-- abaixo a porcentagem passa a refletir a ocupação de verdade.
 --
--- insert into dim_capacidade_zonas (zona, capacidade) values
---   ('pulmao', 0),
---   ('picking_meia', 0),
---   ('picking_vestuario', 0),
---   ('picking_calcado', 0)
--- on conflict (zona) do update set capacidade = excluded.capacidade, atualizado_em = now();
+-- ATENÇÃO: a zona "Insumo" (714 posições) existe na planilha da gestão mas
+-- ainda NÃO tem card na tela — as famílias de insumo caem no segmento OUTROS.
+-- Deixada de fora de propósito até a operação decidir se quer o card.
+insert into dim_capacidade_zonas (zona, capacidade) values
+  ('pulmao',            5010),
+  ('picking_meia',       366),
+  ('picking_vestuario', 12980),
+  ('picking_calcado',   3933)
+on conflict (zona) do update set capacidade = excluded.capacidade, atualizado_em = now();
 -- ============================================================================
