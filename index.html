@@ -326,23 +326,34 @@ html { overflow-x: hidden; }
    fixa com rolagem horizontal: um mês de dados não pode espremer a barra até
    ela virar um fio. */
 .barras-dia {
-  display: flex; align-items: flex-end; gap: 5px; height: 190px;
-  overflow-x: auto; padding: 8px 0 0;
+  display: flex; align-items: flex-end; gap: 5px; height: 210px;
+  overflow-x: auto; padding: 20px 0 0;
 }
 .barras-dia .col-dia {
-  /* cresce pra ocupar a largura quando são poucos dias, e vira rolagem quando
-     são muitos — em vez de espremer a barra até ela virar um fio. */
-  flex: 1 1 26px; min-width: 22px; max-width: 64px; height: 100%;
+  /* cresce pra ocupar a largura quando são poucos dias (o max-width vem
+     inline, calculado pela quantidade de dias — CSS sozinho não sabe quantos
+     vão renderizar) e vira rolagem quando são muitos, em vez de espremer a
+     barra até ela virar um fio. */
+  flex: 1 1 26px; min-width: 22px; height: 100%;
   display: flex; flex-direction: column; justify-content: flex-end;
 }
 .barras-dia .pilha {
   display: flex; flex-direction: column-reverse;
   border-radius: 3px; overflow: hidden; min-height: 2px;
 }
+.barras-dia .valor-dia {
+  /* Sibling do .pilha (não filho): .pilha tem overflow:hidden pra arredondar
+     os cantos da barra, e um filho posicionado "acima" dele seria cortado
+     junto. Como sibling, o próprio flex column com justify-content:flex-end
+     do .col-dia já empilha os dois grudados, sem precisar de position. */
+  font-size: 10px; font-weight: 600; color: var(--text); white-space: nowrap;
+  text-align: center; margin-bottom: 3px; font-variant-numeric: tabular-nums;
+}
 .barras-dia .rot-dia {
   font-size: 9px; text-align: center; color: var(--text-muted);
-  margin-top: 5px; font-variant-numeric: tabular-nums;
+  margin-top: 5px; line-height: 1.5; font-variant-numeric: tabular-nums;
 }
+.barras-dia .rot-dia .dia-semana { text-transform: uppercase; letter-spacing: .02em; }
 
 .bar-item.on .trilho { box-shadow: 0 0 0 1px var(--accent) inset; }
 
@@ -1118,6 +1129,14 @@ function formatarDataSimples(yyyymmdd) {
   if (!yyyymmdd) return '—';
   const p = String(yyyymmdd).split('-');
   return p[2] + '/' + p[1] + '/' + p[0];
+}
+const DIAS_SEMANA_ABREV = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+/* Dia da semana a partir de "AAAA-MM-DD" — monta a data em UTC (meio-dia, não
+   meia-noite) pra nunca escorregar de dia por fuso do navegador do operador. */
+function diaSemanaAbrev(yyyymmdd) {
+  const p = String(yyyymmdd || '').split('-').map(Number);
+  if (p.length !== 3 || !p[0]) return '';
+  return DIAS_SEMANA_ABREV[new Date(Date.UTC(p[0], p[1] - 1, p[2], 12)).getUTCDay()];
 }
 function fmtInt(v) {
   return Math.round(Number(v) || 0).toLocaleString('pt-BR');
@@ -2307,8 +2326,10 @@ function blocoMovimentacoes() {
         'title="' + ROT_TURNO[t] + ' · ' + fmtInt(dt.pecas) + ' peças em ' + fmtInt(dt.movimentos) + ' movimentos"></div>';
     });
     barras += '<div class="col-dia" title="' + formatarDataSimples(d.dia) + ' · ' + fmtInt(totalDia) + ' peças">' +
+      '<div class="valor-dia">' + (totalDia > 0 ? fmtInt(totalDia) : '') + '</div>' +
       '<div class="pilha" style="height:' + alturaTotal + '%">' + pilha + '</div>' +
-      '<div class="rot-dia">' + d.dia.slice(8, 10) + '</div>' +
+      '<div class="rot-dia"><div>' + d.dia.slice(8, 10) + '/' + d.dia.slice(5, 7) + '</div>' +
+        '<div class="dia-semana">' + diaSemanaAbrev(d.dia) + '</div></div>' +
     '</div>';
   });
 
