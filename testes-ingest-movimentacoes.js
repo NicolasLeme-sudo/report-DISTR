@@ -117,6 +117,29 @@ eq(snapDoisSaltos.total.movimentos_ressuprimento, 1, 'só o salto que chega no P
 eq(snapDoisSaltos.total.pecas_em_transito, 100, 'o salto Pulmão -> trânsito aparece como fila em andamento');
 
 /* ------------------------------------------------------------------ */
+console.log('\n=== fila em andamento: rua 98 é staging de RECEBIMENTO, não fila de ressuprimento ===');
+// Confirmado com a operação (05/09/2026): a 98 guarda material da doca até
+// ser armazenado. No arquivo real ela sozinha respondia por 5.191 peças
+// (12%) da "Fila em andamento", inflando um número que deveria ser só o que
+// está esperando subir pro Picking. As outras ruas de trânsito continuam
+// contando, inclusive sujeira/perca (26/27) -- decisão da operação.
+const arquivoFila = [
+  'VULSP|MOVIMENTOS|de:03/08/2026|ate:31/08/2026', CAB,
+  // Pulmão -> 500 (corredor de ressuprimento): CONTA
+  linha('F1', 'AZU', '38', '06/08/26 09:00', 'TL-', 'RA', '40,000', ' 05,09,010', 'V1', 'EX2', 'OP 2'),
+  linha('F1', 'AZU', '38', '06/08/26 09:00', 'TL+', 'RA', '40,000', ' 500,01,001', 'V1', 'EX2', 'OP 2'),
+  // Pulmão -> 98 (staging de recebimento): NÃO conta
+  linha('F2', 'AZU', '39', '06/08/26 10:00', 'TL-', 'RB', '70,000', ' 05,09,011', 'V2', 'EX2', 'OP 2'),
+  linha('F2', 'AZU', '39', '06/08/26 10:00', 'TL+', 'RB', '70,000', ' 98,01,001', 'V2', 'EX2', 'OP 2'),
+  // Pulmão -> 27 (perca): CONTA (a operação pediu pra manter)
+  linha('F3', 'AZU', '40', '06/08/26 11:00', 'TL-', 'RC', '5,000', ' 05,09,012', 'V3', 'EX2', 'OP 2'),
+  linha('F3', 'AZU', '40', '06/08/26 11:00', 'TL+', 'RC', '5,000', ' 27,01,001', 'V3', 'EX2', 'OP 2'),
+].join('\r\n');
+const snapFila = ctx.construirSnapshotMovimentacoes(ctx.parsearKardex(arquivoFila), { arquivo: 't.txt' });
+eq(snapFila.total.pecas_em_transito, 45, 'fila = 40 (rua 500) + 5 (rua 27), sem as 70 da rua 98');
+eq(snapFila.total.movimentos_em_transito, 2, 'só 2 dos 3 movimentos entram na fila');
+
+/* ------------------------------------------------------------------ */
 console.log('\n=== o que NÃO é ressuprimento ===');
 const arquivoNaoRessup = [
   'VULSP|MOVIMENTOS|de:03/08/2026|ate:31/08/2026', CAB,

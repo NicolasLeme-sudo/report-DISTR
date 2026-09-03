@@ -57,6 +57,14 @@ function classificarZona(rua, nivel) {
   return (Number(nivel) || 0) >= NIVEL_MINIMO_PULMAO ? 'PULMAO' : 'PICKING';
 }
 
+/* Ruas de trânsito que NÃO são fila de ressuprimento, mesmo recebendo material
+   que saiu do Pulmão. A 98 é staging de RECEBIMENTO (material fica ali da
+   doca até ser armazenado) — confirmado com a operação em 05/09/2026. Contá-la
+   inflava a "Fila em andamento" com 5.191 peças (12% do total) que não estão
+   esperando subir pro Picking. As demais ruas de trânsito continuam contando,
+   inclusive sujeira/perca (26/27) — decisão da operação na mesma conversa. */
+const RUAS_FORA_DA_FILA = { 98: 1 };
+
 /* ============================================================================
    TURNOS — gabarito da operação
    ============================================================================
@@ -267,8 +275,8 @@ function casarMovimentos(pernas) {
       volume: entrada.volume,
       login: entrada.login,
       nome: entrada.nome,
-      origem: { endereco: saida.endereco, zona: classificarZona(saida.rua, saida.nivel) },
-      destino: { endereco: entrada.endereco, zona: classificarZona(entrada.rua, entrada.nivel) },
+      origem: { endereco: saida.endereco, rua: saida.rua, zona: classificarZona(saida.rua, saida.nivel) },
+      destino: { endereco: entrada.endereco, rua: entrada.rua, zona: classificarZona(entrada.rua, entrada.nivel) },
     });
   });
 
@@ -290,14 +298,17 @@ function casarMovimentos(pernas) {
    operação em 02/09/2026 — ver armadilha 2 no topo do arquivo. Realocação
    Picking -> Picking não conta: a peça já estava na estanteria.
 
-   EM TRÂNSITO = saiu do Pulmão e parou no corredor (500/600). É a fila de
-   ressuprimento em andamento: já foi baixado, ainda não chegou na estanteria.
+   EM TRÂNSITO = saiu do Pulmão e parou no corredor de ressuprimento (500/600,
+   21/100 legados, e as ruas de sinalização). É a fila de ressuprimento em
+   andamento: já foi baixado, ainda não chegou na estanteria. A rua 98 fica
+   FORA (ver RUAS_FORA_DA_FILA): lá é staging de recebimento, não fila.
    ============================================================================ */
 function ehRessuprimento(mov) {
   return mov.destino.zona === 'PICKING' && mov.origem.zona !== 'PICKING';
 }
 function ehBaixaPendente(mov) {
-  return mov.origem.zona === 'PULMAO' && mov.destino.zona === 'TRANSITO';
+  if (mov.origem.zona !== 'PULMAO' || mov.destino.zona !== 'TRANSITO') return false;
+  return !RUAS_FORA_DA_FILA[Number(mov.destino.rua) || 0];
 }
 
 /* Dia seguinte/anterior a partir de "AAAA-MM-DD", em UTC — nunca escorrega de

@@ -2341,6 +2341,62 @@ function renderizarEstoqueOperacao(p) {
       '</div>';
   }
 
+  /* ---------- B.O. em endereço transitório (sujeira pra operação tratar) ----------
+     São as ruas de trânsito/validação do Pulmão (21/24/26/27/98/100/500/600):
+     ficam FORA da ocupação × capacidade (não são porta-pallet, são passagem —
+     decisão da operação em 05/09/2026), mas o saldo parado nelas precisa
+     aparecer em algum lugar, endereço a endereço, pra virar tarefa. */
+  const transito = p.transito_pulmao || { total_qtd: 0, total_enderecos: 0, enderecos: [] };
+  let blocoTransito = '';
+  if (filtroRessuprimento !== 'picking' && transito.enderecos.length) {
+    const porRuaTransito = new Map();
+    transito.enderecos.forEach(function (e) {
+      if (!porRuaTransito.has(e.rua)) porRuaTransito.set(e.rua, { rua: e.rua, rotulo: e.classif_rotulo, qtd: 0, enderecos: 0 });
+      const g = porRuaTransito.get(e.rua);
+      g.qtd += e.qtd; g.enderecos += 1;
+    });
+    const ruasTransito = Array.from(porRuaTransito.values()).sort(function (a, b) { return b.qtd - a.qtd; });
+    const maxRuaTransito = ruasTransito.reduce(function (mx, r) { return Math.max(mx, r.qtd); }, 0);
+    let barrasTransito = '';
+    ruasTransito.forEach(function (r) {
+      const larg = maxRuaTransito > 0 ? r.qtd / maxRuaTransito * 100 : 0;
+      barrasTransito += '<div class="bar-item">' +
+        '<div class="nome">Rua ' + escapar(r.rua) + ' — ' + escapar(r.rotulo) + '</div>' +
+        '<div class="trilho"><div class="preench" style="width:' + larg + '%;background:var(--amber)"></div></div>' +
+        '<div class="num">' + fmtInt(r.qtd) + ' · ' + fmtInt(r.enderecos) + ' end.</div>' +
+      '</div>';
+    });
+    const linhasTransito = transito.enderecos.slice(0, 200).map(function (e) {
+      return '<tr><th class="esq">' + escapar(e.rua) + ' · ' + escapar(e.nivel) + ' · ' + escapar(e.box) + '</th>' +
+        '<td class="esq">' + escapar(e.classif_rotulo) + '</td>' +
+        '<td>' + fmtInt(e.skus) + '</td>' +
+        '<td><strong>' + fmtInt(e.qtd) + '</strong></td></tr>';
+    }).join('');
+    blocoTransito =
+      '<div class="card">' +
+        '<div class="section-title">B.O. em endereço transitório — saldo parado fora da capacidade</div>' +
+        '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
+          'Ruas de passagem e sinalização do Pulmão (corredor de ressuprimento, transitório de ' +
+          'recebimento, sujeira e perca). <strong>Não entram na ocupação × capacidade</strong> — não são ' +
+          'porta-pallet — mas o material parado nelas é B.O. a tratar: cada endereço abaixo tem saldo ' +
+          'esperando decisão.</p>' +
+        '<div class="kpi-row">' +
+          '<div class="kpi"><div class="rot">Peças paradas em trânsito</div>' +
+            '<div class="val forte" style="color:var(--amber)">' + fmtInt(transito.total_qtd) + '</div>' +
+            '<div class="sub">fora da ocupação de ' + fmtInt((p.ocupacao && p.ocupacao.pulmao ? p.ocupacao.pulmao.ocupado : 0)) + ' posições do Pulmão</div></div>' +
+          '<div class="kpi"><div class="rot">Endereços com B.O.</div>' +
+            '<div class="val forte">' + fmtInt(transito.total_enderecos) + '</div>' +
+            '<div class="sub">em ' + fmtInt(ruasTransito.length) + ' rua(s) de trânsito</div></div>' +
+        '</div>' +
+        '<div class="bar-list" style="margin-bottom:14px">' + barrasTransito + '</div>' +
+        '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
+          '<th class="esq">Endereço (rua · nível · box)</th><th class="esq">Classificação</th><th>SKUs</th><th>Peças</th>' +
+        '</tr></thead><tbody>' + linhasTransito + '</tbody></table>' +
+        (transito.enderecos.length > 200 ? '<p style="font-size:11px;color:var(--text-muted);margin-top:6px">mostrando os 200 maiores de ' + fmtInt(transito.enderecos.length) + '</p>' : '') +
+        '</div>' +
+      '</div>';
+  }
+
   document.getElementById('estoqueop-conteudo').innerHTML =
     avisos +
     '<div class="kicker">Ocupação de posições — Pulmão e Picking</div>' +
@@ -2372,6 +2428,7 @@ function renderizarEstoqueOperacao(p) {
         '<th class="esq">Descrição</th><th>Qtd</th><th>% do nível</th><th>SKUs</th>' +
       '</tr></thead><tbody>' + linhasArvore + '</tbody></table></div>' +
     '</div>' +
+    blocoTransito +
     blocoValidacao +
     '<div style="font-size:11px;color:var(--text-muted);margin-top:12px">' +
       'Picking: ' + escapar(p.arquivo_picking || '—') + ' · Pulmão: ' + escapar(p.arquivo_pulmao || '—') +

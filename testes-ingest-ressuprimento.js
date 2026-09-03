@@ -194,6 +194,35 @@ eq(payloadFisico.ocupacao.picking_calcado.ocupado, 0,
    'nem de picking — pickingReal já a exclui, e ela não volta em lugar nenhum');
 
 /* -------------------------------------------------------------------------- */
+secao('ocupação — ruas de trânsito DENTRO do Pulmão (21/24/26/27/98/100/500/600) também ficam de fora');
+// Pedido da operação (05/09/2026): essas ruas são corredor de baixa/subida
+// de ressuprimento, sujeira e perca -- passagem, não porta-pallet fixo. Não
+// devem contar na capacidade do Pulmão (mesmo raciocínio das ruas 20/70/80/
+// 81-02 reclassificadas do Picking), e viram o card de B.O. em trânsito.
+const pulmaoComTransito = {
+  registros: [
+    { familia_codigo: '101', artigo_codigo: 'A1', cor: 'PT', tamanho: '40', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '1', nivel: '5', box: '1', dt_cri: null, qtd: 10, codbar: '' },
+    { familia_codigo: '101', artigo_codigo: 'A2', cor: 'PT', tamanho: '41', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '500', nivel: '1', box: '1', dt_cri: null, qtd: 7, codbar: '' },
+    { familia_codigo: '101', artigo_codigo: 'A3', cor: 'PT', tamanho: '42', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '500', nivel: '1', box: '1', dt_cri: null, qtd: 3, codbar: '' },
+    { familia_codigo: '101', artigo_codigo: 'A4', cor: 'PT', tamanho: '43', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '26', nivel: '1', box: '2', dt_cri: null, qtd: 5, codbar: '' },
+  ],
+  colisoes_volume: 0,
+};
+const payloadTransito = construirSnapshotRessuprimento(
+  { registros: [], negativas_excluidas: 0, negativas_unidades: 0 }, pulmaoComTransito, mapaFamilias, { pulmao: 100 },
+  { arquivo_picking: 'x.txt', arquivo_pulmao: 'p.txt' }
+);
+eq(payloadTransito.ocupacao.pulmao.ocupado, 1,
+   'só a rua 1 (Pulmão de verdade) conta na ocupação -- as de trânsito (500, 26) ficam de fora');
+eq(payloadTransito.transito_pulmao.total_enderecos, 2,
+   '2 endereços distintos em trânsito: 500|1|1 (A2+A3, mesmo endereço) e 26|1|2 (A4)');
+eq(payloadTransito.transito_pulmao.total_qtd, 15, 'soma as peças dos 2 endereços em trânsito (7+3+5)');
+const endTransito500 = payloadTransito.transito_pulmao.enderecos.find(function (e) { return e.rua === '500'; });
+eq(endTransito500.qtd, 10, 'endereço 500|1|1 soma A2(7)+A3(3) = 10, mesmo endereço físico');
+eq(endTransito500.skus, 2, 'e conta os 2 SKUs distintos que dividem esse endereço');
+ok(/Baixar Ressuprimento/.test(endTransito500.classif_rotulo), 'carrega o rótulo da classificação da rua (500 = Baixar Ressuprimento)');
+
+/* -------------------------------------------------------------------------- */
 secao('segmentoMacro — os 6 baldes da gestão, cruzando todas as marcas');
 eq(segmentoMacro('TÊXTIL/ACESSÓRIOS MIZUNO', 'VESTUÁRIO MIZUNO'), 'VESTUÁRIO',
    'vestuário não é engolido pelo "ACESSÓRIOS" que vem no nome do segmento');

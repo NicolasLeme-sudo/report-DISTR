@@ -396,14 +396,44 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
      Pulmão pra 156% da capacidade; a gestão não as inclui nos 5.010 lugares do
      Pulmão nem nos 3.933 do Picking-calçado. Por isso a ocupação usa só o
      Pulmão físico (`pulmao.registros`, sem o reclassificado do Picking) e o
-     Picking de verdade (`pickingReal`, que já exclui o reclassificado). */
-  const pulmaoFisico = pulmaoTudo.filter(function (r) { return r.origem === 'pulmao'; });
+     Picking de verdade (`pickingReal`, que já exclui o reclassificado).
+
+     Do mesmo jeito, as ruas de TRÂNSITO/VALIDAÇÃO dentro do próprio arquivo
+     de Pulmão (21/24/26/27/98/100/500/600 — corredor de baixa/subida de
+     ressuprimento, sujeira, perca) não são porta-pallet fixo: são passagem.
+     Confirmado com a operação (05/09/2026) que elas não devem contar na
+     capacidade do Pulmão — ficam de fora daqui e viram o card
+     "Ressuprimento pendente em trânsito" (transito_pulmao), pra mostrar o
+     B.O. sem misturar com a ocupação física real. */
+  const pulmaoFisico = pulmaoTudo.filter(function (r) { return r.origem === 'pulmao' && r.classif_grupo === 'PULMAO'; });
   const ocupacao = {
     pulmao: zona('pulmao', posicoesOcupadas(pulmaoFisico)),
     picking_meia: zona('picking_meia', posicoesOcupadas(pickingReal.filter(function (r) { return r.bucket === 'meia'; }))),
     picking_vestuario: zona('picking_vestuario', posicoesOcupadas(pickingReal.filter(function (r) { return r.bucket === 'vestuario'; }))),
     picking_calcado: zona('picking_calcado', posicoesOcupadas(pickingReal.filter(function (r) { return r.bucket === 'calcado'; }))),
   };
+
+  /* ---------- B.O. em trânsito: saldo parado nas ruas de trânsito/validação
+     do Pulmão, por ENDEREÇO — pra gestão enxergar onde o material está
+     "sumido" da ocupação (excluído da capacidade acima) mas ainda tem saldo
+     físico esperando decisão/baixa. ---------- */
+  const transitoPulmao = pulmaoTudo.filter(function (r) { return r.origem === 'pulmao' && r.classif_grupo !== 'PULMAO'; });
+  const transitoPorEndereco = new Map();
+  transitoPulmao.forEach(function (r) {
+    const chave = r.rua + '|' + r.nivel + '|' + r.box;
+    if (!transitoPorEndereco.has(chave)) {
+      transitoPorEndereco.set(chave, {
+        rua: r.rua, nivel: r.nivel, box: r.box,
+        classif_rotulo: r.classif_rotulo, qtd: 0, skus: new Set(),
+      });
+    }
+    const e = transitoPorEndereco.get(chave);
+    e.qtd += r.qtd;
+    e.skus.add(chaveSku(r.artigo_codigo, r.cor, r.tamanho));
+  });
+  const transitoEnderecos = Array.from(transitoPorEndereco.values())
+    .map(function (e) { return { rua: e.rua, nivel: e.nivel, box: e.box, classif_rotulo: e.classif_rotulo, qtd: e.qtd, skus: e.skus.size }; })
+    .sort(function (a, b) { return b.qtd - a.qtd; });
 
   /* ---------- árvore Marca › Segmento › Família, uma por filtro (picking / pulmão / todos) ----------
      Mesma estrutura de 3 níveis do Balanço de Estoque (Armazém › Marca › Família — ver ingest.js), só
@@ -573,6 +603,14 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
         'resolver quando houver como separar os dois motivos.',
     },
     ocupacao: ocupacao,
+    // Saldo parado nas ruas de trânsito/validação do Pulmão, por endereço —
+    // fica de fora da ocupação×capacidade acima, mas precisa aparecer em
+    // algum lugar pra virar B.O. visível pra gestão (pedido 05/09/2026).
+    transito_pulmao: {
+      total_qtd: transitoEnderecos.reduce(function (s, e) { return s + e.qtd; }, 0),
+      total_enderecos: transitoEnderecos.length,
+      enderecos: transitoEnderecos,
+    },
     arvore_picking: construirArvore(pickingReal),
     arvore_pulmao: construirArvore(pulmaoTudo),
     // "Todos": estoque completo da distribuidora — Picking + Pulmão somados (são
