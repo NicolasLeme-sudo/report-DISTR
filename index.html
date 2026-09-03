@@ -2419,24 +2419,39 @@ function movimentosDoDia(d) {
   return t ? t.movimentos : 0;
 }
 
+/* Linhas gravadas ANTES do ajuste de turno real por colaborador (04/09/2026)
+   ainda têm o antigo balde "T02_T03" (a janela sobreposta 20:00-00:15).
+   Esse turno não existe mais na tela (ORDEM_TURNO só tem T01/T02/T03) — sem
+   remapear aqui, essas peças somavam no total do dia mas não apareciam em
+   NENHUMA coluna de turno, fazendo "Total peças" não bater com T01+T02+T03
+   somados (bug real, achado 05/09/2026 comparando a tabela com a soma das
+   colunas). Mesmo destino que o fallback por horário já dava a essa janela:
+   vira T02. Nunca migrado no banco (dado histórico não mexido), só na
+   leitura. */
+function normalizarTurnoLegado(turno) {
+  return turno === 'T02_T03' ? 'T02' : turno;
+}
+
 /* Colapsa o histórico bruto (uma linha por dia+segmento+turno) no mesmo
    formato que a tela já sabe desenhar — dia -> {pecas, movimentos, turnos}. */
 function diasDoHistorico(linhas) {
   const porDia = new Map();
   linhas.forEach(function (h) {
+    const turno = normalizarTurnoLegado(h.turno);
     if (!porDia.has(h.dia)) porDia.set(h.dia, { dia: h.dia, pecas: 0, movimentos: 0, turnos: {} });
     const d = porDia.get(h.dia);
     d.pecas += h.pecas; d.movimentos += h.movimentos;
-    if (!d.turnos[h.turno]) d.turnos[h.turno] = { pecas: 0, movimentos: 0 };
-    d.turnos[h.turno].pecas += h.pecas; d.turnos[h.turno].movimentos += h.movimentos;
+    if (!d.turnos[turno]) d.turnos[turno] = { pecas: 0, movimentos: 0 };
+    d.turnos[turno].pecas += h.pecas; d.turnos[turno].movimentos += h.movimentos;
   });
   return Array.from(porDia.values()).sort(function (a, b) { return a.dia < b.dia ? -1 : 1; });
 }
 function porTurnoDoHistorico(linhas) {
   const mapa = new Map();
   linhas.forEach(function (h) {
-    if (!mapa.has(h.turno)) mapa.set(h.turno, { turno: h.turno, pecas: 0, movimentos: 0 });
-    const t = mapa.get(h.turno); t.pecas += h.pecas; t.movimentos += h.movimentos;
+    const turno = normalizarTurnoLegado(h.turno);
+    if (!mapa.has(turno)) mapa.set(turno, { turno: turno, pecas: 0, movimentos: 0 });
+    const t = mapa.get(turno); t.pecas += h.pecas; t.movimentos += h.movimentos;
   });
   return Array.from(mapa.values()).sort(function (a, b) { return b.pecas - a.pecas; });
 }
