@@ -2549,7 +2549,16 @@ function blocoMovimentacoes() {
   // cai pro período do ÚLTIMO Kardex processado, pra não ficar em branco.
   const dias = usaHistorico ? diasDoHistorico(historicoRessuprimento) : (m ? m.por_dia || [] : []);
   const porTurnoFonte = usaHistorico ? porTurnoDoHistorico(historicoRessuprimento) : (m ? m.por_turno || [] : []);
-  const porSegmentoFonte = usaHistorico ? porSegmentoDoHistorico(historicoRessuprimento) : (m ? m.por_segmento || [] : []);
+  // A composição por segmento segue o MESMO recorte do resto do card: o
+  // intervalo de datas já vem aplicado (o histórico é carregado com
+  // .gte/.lte), e o filtro de turno é aplicado aqui — sem isso, clicar num
+  // turno mudava os KPIs e o gráfico mas a composição continuava somando os
+  // 3 turnos (pedido do usuário, 05/09/2026). No fallback sem histórico não
+  // dá pra recortar por turno: o snapshot guarda por_segmento já somado.
+  const historicoDoTurno = filtroTurnoRessuprimento
+    ? historicoRessuprimento.filter(function (h) { return normalizarTurnoLegado(h.turno) === filtroTurnoRessuprimento; })
+    : historicoRessuprimento;
+  const porSegmentoFonte = usaHistorico ? porSegmentoDoHistorico(historicoDoTurno) : (m ? m.por_segmento || [] : []);
 
   const seletorIntervalo = '<div class="filtros" style="margin-bottom:10px">' +
     '<span class="rot-filtro">Período</span>' +
@@ -2948,7 +2957,8 @@ function blocoMovimentacoes() {
     '</div>' : '') +
   '</div>' +
   '<div class="card">' +
-    '<div class="section-title">Composição do ressuprimento por segmento</div>' +
+    '<div class="section-title">Composição do ressuprimento por segmento — ' + escapar(periodo) +
+      (filtroTurnoRessuprimento ? ' · ' + ROT_TURNO[filtroTurnoRessuprimento] : '') + '</div>' +
     '<div class="bar-list">' + barrasSegMov + '</div>' +
     avisoSemFamilia +
   '</div>' +
