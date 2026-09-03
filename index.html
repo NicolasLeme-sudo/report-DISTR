@@ -966,6 +966,9 @@ tr.total > th, tr.total > td {
     <div class="menu-item" id="menuRessuprimento" onclick="mostrarSecao('ressuprimento')">
       <span class="icone">📦</span> Ressuprimento
     </div>
+    <div class="menu-item" id="menuEstoqueOp" onclick="mostrarSecao('estoqueop')">
+      <span class="icone">🏪</span> Estoque
+    </div>
 
     <div class="sidebar-section-label">Gestão</div>
     <div class="menu-item ativo" id="menuEstoque" onclick="mostrarSecao('estoque')">
@@ -1010,6 +1013,10 @@ tr.total > th, tr.total > td {
 
     <section class="secao" id="secao-ressuprimento">
       <div id="ressuprimento-conteudo"><div class="loading-msg">Carregando snapshot…</div></div>
+    </section>
+
+    <section class="secao" id="secao-estoqueop">
+      <div id="estoqueop-conteudo"><div class="loading-msg">Carregando snapshot…</div></div>
     </section>
 
     <section class="secao ativa" id="secao-estoque">
@@ -1263,6 +1270,7 @@ function corDoTema(nome) {
 const TITULOS = {
   start: 'Start Inicial',
   ressuprimento: 'Ressuprimento',
+  estoqueop: '🏪 Estoque',
   estoque: 'Balanço e Detalhamento de Estoque',
   distr: 'Fluxo de Processos',
   atualizar: 'Abastecimento',
@@ -1285,7 +1293,8 @@ function atualizarSubtituloSecao(secao) {
   let iso = null;
   if (secao === 'estoque') iso = dataSnapshotEstoque;
   else if (secao === 'distr') iso = window.DistrFluxo ? DistrFluxo.dataSnapshot() : null;
-  else if (secao === 'ressuprimento') iso = dataSnapshotRessuprimento;
+  else if (secao === 'estoqueop') iso = dataSnapshotRessuprimento;
+  else if (secao === 'ressuprimento') iso = dataSnapshotMovimentacoes;
   el.textContent = iso ? 'Última atualização: ' + formatarDataHora(iso) : '';
 }
 window.atualizarSubtituloSecao = atualizarSubtituloSecao;
@@ -1308,7 +1317,7 @@ function mostrarSecao(secao) {
   document.getElementById('secao-' + secao).classList.add('ativa');
   document.querySelectorAll('.menu-item').forEach(function (i) { i.classList.remove('ativo'); });
   const item = {
-    start: 'menuStart', ressuprimento: 'menuRessuprimento', estoque: 'menuEstoque',
+    start: 'menuStart', ressuprimento: 'menuRessuprimento', estoqueop: 'menuEstoqueOp', estoque: 'menuEstoque',
     distr: 'menuDistrFluxo', atualizar: 'menuAtualizar',
   }[secao];
   if (item) document.getElementById(item).classList.add('ativo');
@@ -1320,7 +1329,10 @@ function mostrarSecao(secao) {
     distrFluxoCarregado = true;
     DistrFluxo.iniciar('dfRoot', supabaseClient, perfilAtual);
   }
-  if (secao === 'ressuprimento' && !ressuprimentoCarregado) {
+  // Ressuprimento e Estoque (Operação) vêm do mesmo carregamento — posição
+  // (Picking+Pulmão), Kardex e histórico sobem juntos — então a primeira
+  // das duas telas que o usuário abrir dispara o load pras duas.
+  if ((secao === 'ressuprimento' || secao === 'estoqueop') && !ressuprimentoCarregado) {
     ressuprimentoCarregado = true;
     carregarRessuprimento();
   }
@@ -1950,7 +1962,8 @@ function alternarNoPlanejamento(chave) {
   if (abertosPlanejamento.has(chave)) abertosPlanejamento.delete(chave); else abertosPlanejamento.add(chave);
   renderizarRessuprimento();
 }
-let dataSnapshotRessuprimento = null;
+let dataSnapshotRessuprimento = null;    // gerado_em do snapshot de POSIÇÃO (tela Estoque)
+let dataSnapshotMovimentacoes = null;    // gerado_em do último Kardex (tela Ressuprimento)
 
 /* "Ressuprido sem planejamento" — agrupado por DATA (uma linha por data,
    expande pra ver quais famílias ressupriram naquele dia), com busca e
@@ -2010,10 +2023,12 @@ async function carregarHistoricoRessuprimento() {
 }
 
 async function carregarRessuprimento() {
-  const alvo = document.getElementById('ressuprimento-conteudo');
-  // Os dois snapshots vêm juntos, mas são independentes: posição (Picking+Pulmão)
-  // é do dia, Kardex é de período. Um pode existir sem o outro — a tela mostra o
-  // que houver e avisa sobre o que falta, em vez de ficar em branco.
+  const alvoEstoqueOp = document.getElementById('estoqueop-conteudo');
+  const alvoRessup = document.getElementById('ressuprimento-conteudo');
+  // Os dois snapshots vêm juntos, mas alimentam telas SEPARADAS (Estoque e
+  // Ressuprimento) e são independentes entre si: posição (Picking+Pulmão) é
+  // do dia, Kardex é de período. Um pode existir sem o outro — cada tela
+  // mostra o que tiver e avisa sobre o que falta, sem depender da outra.
   const [resPosicao, resMov] = await Promise.all([
     supabaseClient.from('dashboard_snapshots')
       .select('payload, gerado_em').eq('pagina', 'ressuprimento')
@@ -2023,38 +2038,43 @@ async function carregarRessuprimento() {
       .order('gerado_em', { ascending: false }).limit(1),
     carregarHistoricoRessuprimento(),
   ]);
-  const { data, error } = resPosicao;
   dadosMovimentacoes = (!resMov.error && resMov.data && resMov.data.length) ? resMov.data[0].payload : null;
 
-  if (error) {
-    alvo.innerHTML = '<div class="aviso erro">Erro ao carregar o snapshot: ' + escapar(error.message) + '</div>';
-    return;
-  }
-  if (!data || data.length === 0) {
-    alvo.innerHTML = '<div class="aviso">Nenhum snapshot de ressuprimento publicado ainda. ' +
+  /* ---------- tela Estoque (posição Picking/Pulmão) ---------- */
+  if (resPosicao.error) {
+    alvoEstoqueOp.innerHTML = '<div class="aviso erro">Erro ao carregar o snapshot: ' + escapar(resPosicao.error.message) + '</div>';
+  } else if (!resPosicao.data || resPosicao.data.length === 0) {
+    alvoEstoqueOp.innerHTML = '<div class="aviso">Nenhum snapshot de estoque publicado ainda. ' +
       'Envie os arquivos de Picking e Pulmão pela tela <strong>Admin › Abastecimento</strong>.</div>';
-    return;
+  } else {
+    dataSnapshotRessuprimento = resPosicao.data[0].gerado_em;
+    atualizarSubtituloSecao('estoqueop');
+    window._snapshotRessuprimento = resPosicao.data[0].payload;
+    renderizarEstoqueOperacao();
   }
-  dataSnapshotRessuprimento = data[0].gerado_em;
+
+  /* ---------- tela Ressuprimento (Kardex + histórico) — sempre tenta
+     renderizar, mesmo sem posição: blocoMovimentacoes() já sabe mostrar seu
+     próprio aviso quando não há Kardex nenhum. ---------- */
+  dataSnapshotMovimentacoes = (!resMov.error && resMov.data && resMov.data.length) ? resMov.data[0].gerado_em : null;
   atualizarSubtituloSecao('ressuprimento');
-  window._snapshotRessuprimento = data[0].payload;
-  renderizarRessuprimento();
+  alvoRessup.innerHTML = blocoMovimentacoes();
 }
 
 function alternarFiltroRessuprimento(f) {
   filtroRessuprimento = f;
   filtroSegmentoRessuprimento = null; // trocar de arquivo reinicia o recorte por segmento
   abertosRessuprimento.clear();
-  renderizarRessuprimento();
+  renderizarEstoqueOperacao();
 }
 function alternarFiltroSegmentoRessuprimento(seg) {
   filtroSegmentoRessuprimento = (filtroSegmentoRessuprimento === seg) ? null : seg;
   abertosRessuprimento.clear();
-  renderizarRessuprimento();
+  renderizarEstoqueOperacao();
 }
 function alternarNoRessuprimento(chave) {
   if (abertosRessuprimento.has(chave)) abertosRessuprimento.delete(chave); else abertosRessuprimento.add(chave);
-  renderizarRessuprimento();
+  renderizarEstoqueOperacao();
 }
 
 /* Recorta a árvore Marca›Segmento›Família (já pronta por filtro Picking/
@@ -2099,9 +2119,9 @@ function expandirTudoRessuprimento() {
     abertosRessuprimento.add(chaveM);
     (m.segmentos || []).forEach(function (s) { abertosRessuprimento.add(chaveM + '|S|' + s.codigo); });
   });
-  renderizarRessuprimento();
+  renderizarEstoqueOperacao();
 }
-function recolherTudoRessuprimento() { abertosRessuprimento.clear(); renderizarRessuprimento(); }
+function recolherTudoRessuprimento() { abertosRessuprimento.clear(); renderizarEstoqueOperacao(); }
 
 /* Mesmo formato de linha do Balanço de Estoque (linhaArvore), só que sem as
    duas colunas de valor — aqui é só item. */
@@ -2136,7 +2156,7 @@ function donutOcupacao(pctVal, cor) {
   '</svg>';
 }
 
-function renderizarRessuprimento(p) {
+function renderizarEstoqueOperacao(p) {
   p = p || window._snapshotRessuprimento;
   if (!p) return;
 
@@ -2321,7 +2341,7 @@ function renderizarRessuprimento(p) {
       '</div>';
   }
 
-  document.getElementById('ressuprimento-conteudo').innerHTML =
+  document.getElementById('estoqueop-conteudo').innerHTML =
     avisos +
     '<div class="kicker">Ocupação de posições — Pulmão e Picking</div>' +
     chips +
@@ -2352,7 +2372,6 @@ function renderizarRessuprimento(p) {
         '<th class="esq">Descrição</th><th>Qtd</th><th>% do nível</th><th>SKUs</th>' +
       '</tr></thead><tbody>' + linhasArvore + '</tbody></table></div>' +
     '</div>' +
-    blocoMovimentacoes() +
     blocoValidacao +
     '<div style="font-size:11px;color:var(--text-muted);margin-top:12px">' +
       'Picking: ' + escapar(p.arquivo_picking || '—') + ' · Pulmão: ' + escapar(p.arquivo_pulmao || '—') +
@@ -2372,6 +2391,16 @@ const ROT_TURNO = { T01: 'T01', T02: 'T02', T03: 'T03' };
 const JANELA_TURNO = { T01: '05:00–14:47', T02: '14:48–00:15', T03: '00:16–04:59' };
 const COR_TURNO = { T01: '--accent', T02: '--brand-miz', T03: '--olive' };
 const ORDEM_TURNO = ['T01', 'T02', 'T03'];
+
+/* Re-renderiza só o bloco de "Ressuprimento por dia" (tela Ressuprimento) —
+   equivalente ao render() da tela Estoque, mas pro que virou o próprio
+   conteúdo da tela Ressuprimento depois da divisão das duas telas
+   (05/09/2026). Chamado por qualquer filtro/ordenação/toggle que vive
+   nessa tela (turno, intervalo de datas, planejamento, sem planejamento). */
+function renderizarRessuprimento() {
+  const alvo = document.getElementById('ressuprimento-conteudo');
+  if (alvo) alvo.innerHTML = blocoMovimentacoes();
+}
 
 function alternarFiltroTurnoRessuprimento(t) {
   filtroTurnoRessuprimento = (filtroTurnoRessuprimento === t) ? null : t;
