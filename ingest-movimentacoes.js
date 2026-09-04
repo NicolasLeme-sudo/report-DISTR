@@ -692,7 +692,7 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
 
 /* ============================================================================
    HISTÓRICO DIÁRIO — grava dia+segmento+turno em ressuprimento_historico_diario
-   pra que a tela consiga montar um intervalo de datas (ex: últimos 7 dias)
+   pra que a tela consiga montar um intervalo de datas (ex: últimos 10 dias)
    cruzando VÁRIOS uploads de Kardex, não só o último processado. Upsert por
    (dia, segmento, turno): reprocessar um Kardex cujo período já foi gravado
    antes sobrescreve os dias daquele período — o arquivo mais recente sempre

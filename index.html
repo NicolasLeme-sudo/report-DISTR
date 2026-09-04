@@ -2025,11 +2025,11 @@ function ordenarSemPlano(campo) {
 }
 
 /* Carrega o histórico diário (ressuprimento_historico_diario) pro intervalo
-   [filtroHistDe, filtroHistAte], default últimos 7 dias corridos até hoje.
+   [filtroHistDe, filtroHistAte], default últimos 10 dias corridos até hoje.
    Tabela ausente (migração não rodada) vira lista vazia — o card cai de
    volta pro período único do último Kardex, sem quebrar a tela. */
 async function carregarHistoricoRessuprimento() {
-  if (!filtroHistDe) filtroHistDe = window.diaISO ? window.diaISO(-6, hojeISO()) : hojeISO();
+  if (!filtroHistDe) filtroHistDe = window.diaISO ? window.diaISO(-9, hojeISO()) : hojeISO();
   if (!filtroHistAte) filtroHistAte = hojeISO();
   try {
     const { data, error } = await supabaseClient.from('ressuprimento_historico_diario')
@@ -2047,7 +2047,7 @@ async function carregarHistoricoRessuprimento() {
    Kardex, em vez de só o último. Tabela ausente (migração não rodada) vira
    lista vazia — a tela cai de volta pro snapshot único do último Kardex. */
 async function carregarHistoricoFamiliaRessuprimento() {
-  if (!filtroHistDe) filtroHistDe = window.diaISO ? window.diaISO(-6, hojeISO()) : hojeISO();
+  if (!filtroHistDe) filtroHistDe = window.diaISO ? window.diaISO(-9, hojeISO()) : hojeISO();
   if (!filtroHistAte) filtroHistAte = hojeISO();
   try {
     const { data, error } = await supabaseClient.from('ressuprimento_familia_diario')
@@ -2571,8 +2571,8 @@ function alterarIntervaloHistorico(campo, valor) {
   if (campo === 'de') filtroHistDe = valor; else filtroHistAte = valor;
   Promise.all([carregarHistoricoRessuprimento(), carregarHistoricoFamiliaRessuprimento()]).then(renderizarRessuprimento);
 }
-function usarUltimos7DiasHistorico() {
-  filtroHistDe = window.diaISO(-6, hojeISO());
+function usarUltimos10DiasHistorico() {
+  filtroHistDe = window.diaISO(-9, hojeISO());
   filtroHistAte = hojeISO();
   Promise.all([carregarHistoricoRessuprimento(), carregarHistoricoFamiliaRessuprimento()]).then(renderizarRessuprimento);
 }
@@ -2616,7 +2616,7 @@ function blocoMovimentacoes() {
     '<input type="date" value="' + escapar(filtroHistAte || '') + '" min="' + escapar(filtroHistDe || '') + '" ' +
       'style="padding:4px 8px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border);font-size:12px" ' +
       'onchange="alterarIntervaloHistorico(\'ate\', this.value)">' +
-    '<span class="chip" onclick="usarUltimos7DiasHistorico()">Últimos 7 dias</span>' +
+    '<span class="chip" onclick="usarUltimos10DiasHistorico()">Últimos 10 dias</span>' +
     (usaHistorico ? '' : '<span style="color:var(--text-muted);font-size:11px">— sem histórico gravado neste intervalo ainda; mostrando o último Kardex processado (' +
       (m && m.periodo && m.periodo.de ? escapar(m.periodo.de) + ' a ' + escapar(m.periodo.ate) : '—') + ').</span>') +
   '</div>';
