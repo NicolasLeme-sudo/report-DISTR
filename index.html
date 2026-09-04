@@ -2903,16 +2903,10 @@ function blocoMovimentacoes() {
        Invertido a pedido do usuário (05/09/2026): a data virou a informação
        principal (coluna "Datas", à esquerda), não mais a família. Expande
        uma data pra ver quais famílias ressupriram sem planejamento naquele
-       dia, cada uma com o % que ESSE dia representa do total sem
-       planejamento DAQUELA família (não do dia) — continua sendo a mesma
-       pergunta de antes ("esse dia foi grande pra essa família?"), só que
-       agora agrupada por data em vez de por família. */
+       dia. (O % de quanto o dia pesa no total da família foi removido a
+       pedido do usuário, 05/09/2026 — não estava ajudando.) */
     const buscaSemPlano = filtroTextoSemPlano.trim().toLowerCase();
     const porDataSemPlanoTotal = new Set(semPlano.map(function (r) { return r.dia; })).size;
-    const totalPorFamiliaSemPlano = new Map(); // familia_codigo -> total sem planejamento em TODAS as datas
-    semPlano.forEach(function (r) {
-      totalPorFamiliaSemPlano.set(r.familia_codigo, (totalPorFamiliaSemPlano.get(r.familia_codigo) || 0) + r.pecas);
-    });
     const porDataSemPlano = new Map();
     semPlano.forEach(function (r) {
       if (!porDataSemPlano.has(r.dia)) porDataSemPlano.set(r.dia, { dia: r.dia, pecas: 0, familias: [], busca: '', porTurno: {} });
@@ -2997,13 +2991,8 @@ function blocoMovimentacoes() {
         '<td><strong>' + fmtInt(g.pecas) + '</strong>' + pillsPorTurno(g.porTurno) + '</td></tr>';
       if (!aberto) return;
       g.familias.forEach(function (f) {
-        // % do total sem planejamento DESSA família (em todas as datas) —
-        // mostra quanto ESTE dia pesou dentro do problema da família (ex:
-        // "40%" diz que este dia sozinho respondeu por quase metade dela).
-        const totalFamilia = totalPorFamiliaSemPlano.get(f.familia_codigo) || 0;
-        const pctDaFamilia = totalFamilia > 0 ? (f.pecas / totalFamilia) * 100 : 0;
         linhasSemPlano += '<tr class="n2"><th class="esq ind-2">' + escapar(f.familia_codigo) + ' — ' +
-            escapar(f.familia_nome) + ' · ' + fmtPct(pctDaFamilia) + ' da família</th>' +
+            escapar(f.familia_nome) + '</th>' +
           '<td>—</td><td>—</td><td>' + fmtInt(f.pecas) + pillsPorTurno(f.por_turno) + '</td></tr>';
       });
     });
