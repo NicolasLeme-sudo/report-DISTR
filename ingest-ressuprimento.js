@@ -225,6 +225,15 @@ function parsearPicking(textoArquivo) {
     let qtdGapReservado = 0;
     if (qtd < 0) { qtdGapReservado = Math.abs(qtd); qtd = 0; negativasExcluidas++; negativasUnidades += qtdGapReservado; }
 
+    // qtde_cativado (10ª coluna do relatório) — material físico já reservado
+    // pelo comercial pra garantir o saldo de uma venda, com ou sem PFA gerada
+    // ainda (confirmado com o usuário, 05/09/2026). É saldo REAL, só não está
+    // "livre" — por isso entra na soma de saldo_picking por segmento (mesmo
+    // gabarito da planilha de análise da gestão: "Soma de Qtde cativada e no
+    // estoque"), mas fica em campo separado pra nunca esconder a diferença
+    // entre "disponível" e "cativado".
+    const qtdCativado = window.numeroBR(p[9]);
+
     registros.push({
       familia_codigo: String(p[1] || '').trim(),
       artigo_codigo: (p[2] || '').trim(),
@@ -234,6 +243,7 @@ function parsearPicking(textoArquivo) {
       ean: (p[6] || '').trim(),
       rua: rua, nivel: nivel, box: box,
       qtd: qtd,
+      qtd_cativado: qtdCativado,
       qtd_gap_reservado: qtdGapReservado,
     });
   }
@@ -583,8 +593,18 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
       const apoio = apoioPorCodigo.get(r.ean) || 0;
       if (apoio > 0) { enderecosComApoio.add(r.rua + '|' + r.nivel + '|' + r.box); apoioTotal += apoio; }
     });
+    // saldo_picking = disponível + cativado — mesmo gabarito da planilha de
+    // análise da gestão ("Soma de Qtde cativada e no estoque da família"):
+    // material cativado (reservado pelo comercial, com ou sem PFA gerada
+    // ainda) é saldo físico real, só não está livre pra puxar sem mais
+    // conversa. Os dois ficam expostos separados também, pra nunca esconder
+    // quanto do saldo total já está comprometido (05/09/2026).
+    const saldoDisponivel = doBucket.reduce(function (s, r) { return s + r.qtd; }, 0);
+    const saldoCativado = doBucket.reduce(function (s, r) { return s + (r.qtd_cativado || 0); }, 0);
     ressuprimentoPorBucket[bucket] = {
-      saldo_picking: doBucket.reduce(function (s, r) { return s + r.qtd; }, 0),
+      saldo_picking: saldoDisponivel + saldoCativado,
+      saldo_disponivel: saldoDisponivel,
+      saldo_cativado: saldoCativado,
       enderecos_com_apoio_pulmao: enderecosComApoio.size,
       apoio_pulmao_disponivel: apoioTotal,
       // GAP visível (ver comentário em parsearPicking): unidades que apareciam

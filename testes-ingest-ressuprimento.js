@@ -33,8 +33,8 @@ function eq(obtido, esperado, msg) {
 secao('parsearPicking — saldo negativo vira GAP, não soma em nenhum sentido');
 const TOPO_PICK = 'VULSP - ENDERECOS DE PICKING DO EXTRE/AC190||por:EX000001|em:Set.1 ,26|';
 const CAB_PICK = 'CONCAT|Fam|artigo|descricao|cor|tam|EAN|endereco|qtde_disponivel|qtde_cativado|';
-function linhaPicking(rua, nivel, box, qtd) {
-  return '432-PRETO-40|101|432|TENIS X|PRETO|40|7890000000000| ' + rua + ',' + nivel + ',' + box + '|' + qtd + '|0|';
+function linhaPicking(rua, nivel, box, qtd, cativado) {
+  return '432-PRETO-40|101|432|TENIS X|PRETO|40|7890000000000| ' + rua + ',' + nivel + ',' + box + '|' + qtd + '|' + (cativado || 0) + '|';
 }
 function arquivoPicking(linhas) { return [TOPO_PICK, CAB_PICK].concat(linhas).join('\n'); }
 
@@ -48,6 +48,12 @@ const pPos = parsearPicking(arquivoPicking([linhaPicking('01', '01', '001', '12'
 eq(pPos.registros[0].qtd, 12, 'qtd positiva não é afetada');
 eq(pPos.registros[0].qtd_gap_reservado, 0, 'sem gap quando não é negativo');
 eq(pPos.negativas_excluidas, 0, 'nenhuma linha negativa contada');
+
+/* -------------------------------------------------------------------------- */
+secao('parsearPicking — qtde_cativado (10ª coluna) é lida, não descartada');
+const pCativado = parsearPicking(arquivoPicking([linhaPicking('01', '01', '001', '20', '7')]));
+eq(pCativado.registros[0].qtd, 20, 'qtd disponível continua vindo certo');
+eq(pCativado.registros[0].qtd_cativado, 7, 'qtd_cativado é lida da 10ª coluna, não fica undefined');
 
 /* -------------------------------------------------------------------------- */
 secao('parsearPulmao — QTD.VOLUME (não QTD.STOCK) e dedup por VOLUME');
@@ -104,7 +110,7 @@ const mapaFamilias = new Map([
 // + 1 linha na rua 81 nivel 2 (pulmão, confiável) + rua 81 nivel 1 (continua picking)
 const picking = {
   registros: [
-    { familia_codigo: '101', artigo_codigo: 'A1', cor: 'PT', tamanho: '40', ean: 'EAN1', rua: '1', nivel: '1', box: '1', qtd: 50, qtd_gap_reservado: 0 },
+    { familia_codigo: '101', artigo_codigo: 'A1', cor: 'PT', tamanho: '40', ean: 'EAN1', rua: '1', nivel: '1', box: '1', qtd: 50, qtd_cativado: 15, qtd_gap_reservado: 0 },
     { familia_codigo: '101', artigo_codigo: 'A2', cor: 'PT', tamanho: '40', ean: 'EAN2', rua: '20', nivel: '1', box: '1', qtd: 10, qtd_gap_reservado: 0 },
     { familia_codigo: '101', artigo_codigo: 'A3', cor: 'PT', tamanho: '40', ean: 'EAN3', rua: '70', nivel: '1', box: '1', qtd: 7, qtd_gap_reservado: 0 },
     { familia_codigo: '101', artigo_codigo: 'A4', cor: 'PT', tamanho: '40', ean: 'EAN4', rua: '81', nivel: '2', box: '1', qtd: 3, qtd_gap_reservado: 0 },
@@ -141,6 +147,13 @@ eq(totalArvorePulmao, 200 + 10 + 7 + 3 + 999, 'árvore de pulmão inclui o real 
 // cruzamento: EAN1 (picking rua1, saldo 50) tem apoio real no pulmão rua1 (200) -> conta
 eq(payload.ressuprimento_por_segmento.calcado.apoio_pulmao_disponivel, 200,
    'apoio confiável soma só a rua 1 (EAN1=200) — rua 20/81-02 reclassificadas não têm CODBAR neste teste, e rua 24 (sujeira) não é confiável mesmo tendo CODBAR');
+
+// saldo_picking = disponível(A1=50 + A5=4=54) + cativado(A1=15 + A5=0=15) = 69 —
+// mesmo gabarito da planilha de análise da gestão (soma cativado+disponível),
+// mas disponível e cativado continuam expostos separados (05/09/2026).
+eq(payload.ressuprimento_por_segmento.calcado.saldo_disponivel, 54, 'saldo_disponivel soma só qtd (A1=50 + A5=4)');
+eq(payload.ressuprimento_por_segmento.calcado.saldo_cativado, 15, 'saldo_cativado soma só qtd_cativado (A1=15, A5 não tem)');
+eq(payload.ressuprimento_por_segmento.calcado.saldo_picking, 69, 'saldo_picking = disponível + cativado, não esconde nenhum dos dois');
 
 // validação: a linha de sujeira (rua 24) e a reclassificada não-confiável (rua 70, A3)
 // devem aparecer marcadas em_validacao
