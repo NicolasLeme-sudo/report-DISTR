@@ -1977,6 +1977,22 @@ function alternarAbertoSemPlano(chave) {
   if (abertosSemPlano.has(chave)) abertosSemPlano.delete(chave); else abertosSemPlano.add(chave);
   renderizarRessuprimento();
 }
+
+/* Filtro de data do card "Ressuprimento planejado × realizado" — recorta
+   `plano` (por p.data) e `semPlano` (por r.dia) ANTES de toda a árvore e do
+   agrupamento por data (pedido do usuário, 05/09/2026, pra poder olhar só
+   um dia/semana em vez do período inteiro do Kardex sempre). null = sem
+   recorte, mostra o período inteiro do Kardex (comportamento de antes). */
+let filtroPlanoDe = null;  // 'AAAA-MM-DD'
+let filtroPlanoAte = null; // 'AAAA-MM-DD'
+function alterarIntervaloPlano(campo, valor) {
+  if (campo === 'de') filtroPlanoDe = valor || null; else filtroPlanoAte = valor || null;
+  renderizarRessuprimento();
+}
+function limparIntervaloPlano() {
+  filtroPlanoDe = null; filtroPlanoAte = null;
+  renderizarRessuprimento();
+}
 function filtrarSemPlano(texto) {
   filtroTextoSemPlano = texto;
   // renderizarRessuprimento() troca o innerHTML inteiro do bloco — o próprio
@@ -2697,10 +2713,34 @@ function blocoMovimentacoes() {
   /* ---------- planejamento: D0 / D-1 / sem planejamento (sempre do ÚLTIMO
      Kardex processado — o cruzamento com PFA é por período de arquivo, não
      faz sentido sobre um intervalo histórico arbitrário). ---------- */
-  const plano = m ? m.planejamento || [] : [];
-  const semPlano = m ? m.ressuprimento_sem_planejamento || [] : [];
+  const planoTudo = m ? m.planejamento || [] : [];
+  const semPlanoTudo = m ? m.ressuprimento_sem_planejamento || [] : [];
+  const plano = filtroPlanoDe || filtroPlanoAte
+    ? planoTudo.filter(function (p) { return (!filtroPlanoDe || p.data >= filtroPlanoDe) && (!filtroPlanoAte || p.data <= filtroPlanoAte); })
+    : planoTudo;
+  const semPlano = filtroPlanoDe || filtroPlanoAte
+    ? semPlanoTudo.filter(function (r) { return (!filtroPlanoDe || r.dia >= filtroPlanoDe) && (!filtroPlanoAte || r.dia <= filtroPlanoAte); })
+    : semPlanoTudo;
+  // Total por dia já ressuprido no Kardex (respeitando o filtro de turno do
+  // card acima), pra calcular "quanto foi planejado" por subtração simples:
+  // planejado(dia) = total do dia − sem planejamento(dia). Reaproveita a
+  // mesma lógica D0/D-1 já existente (uma família planejada pra amanhã já
+  // credita hoje) sem precisar de nenhuma conta nova.
+  const totalDiaKardex = new Map();
+  dias.forEach(function (d) { totalDiaKardex.set(d.dia, pecasDoDia(d)); });
+  const seletorPlano = (planoTudo.length || semPlanoTudo.length) ? '<div class="filtros" style="margin-bottom:10px">' +
+    '<span class="rot-filtro">Período</span>' +
+    '<input type="date" value="' + escapar(filtroPlanoDe || '') + '" ' +
+      'style="padding:4px 8px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border);font-size:12px" ' +
+      'onchange="alterarIntervaloPlano(\'de\', this.value)">' +
+    '<span style="color:var(--text-muted);font-size:12px">até</span>' +
+    '<input type="date" value="' + escapar(filtroPlanoAte || '') + '" ' +
+      'style="padding:4px 8px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border);font-size:12px" ' +
+      'onchange="alterarIntervaloPlano(\'ate\', this.value)">' +
+    (filtroPlanoDe || filtroPlanoAte ? '<span class="chip" onclick="limparIntervaloPlano()">Período inteiro do Kardex</span>' : '') +
+  '</div>' : '';
   let blocoPlanejamento = '';
-  if (plano.length === 0 && semPlano.length === 0) {
+  if (planoTudo.length === 0 && semPlanoTudo.length === 0) {
     blocoPlanejamento = '<div class="card">' +
       '<div class="section-title">Ressuprimento planejado × realizado</div>' +
       '<div class="aviso">Nenhuma PFA lançada ainda pro período deste Kardex. Lance pela tela ' +
@@ -2880,9 +2920,18 @@ function blocoMovimentacoes() {
       const chave = 'D|' + g.dia;
       const aberto = abertosSemPlano.has(chave);
       const btn = '<span class="toggle" onclick="alternarAbertoSemPlano(\'' + escaparJs(chave) + '\')">' + (aberto ? '−' : '+') + '</span>';
+      // Planejado(dia) = total ressuprido no dia (do Kardex, mesmo recorte de
+      // turno do card acima) − sem planejamento(dia). Não precisa de nenhuma
+      // conta nova: o total do dia já contempla D0+D-1+sem planejamento.
+      const totalDia = totalDiaKardex.has(g.dia) ? totalDiaKardex.get(g.dia) : null;
+      const planejadasDia = totalDia === null ? null : Math.max(0, totalDia - g.pecas);
+      const pctPlanejadoDia = (totalDia && totalDia > 0 && planejadasDia !== null) ? (planejadasDia / totalDia) * 100 : null;
       linhasSemPlano += '<tr class="n1"><th class="esq"><span class="desc">' + btn + '<span>' +
           formatarDataSimples(g.dia) + '</span></span></th>' +
         '<td>' + fmtInt(g.familias.length) + ' família' + (g.familias.length > 1 ? 's' : '') + '</td>' +
+        '<td>' + (planejadasDia === null ? '—' :
+          '<span style="color:var(--olive)">' + fmtInt(planejadasDia) + '</span>' +
+          (pctPlanejadoDia !== null ? ' <span style="color:var(--text-muted);font-size:11px">(' + fmtPct(pctPlanejadoDia) + ' do dia)</span>' : '')) + '</td>' +
         '<td><strong>' + fmtInt(g.pecas) + '</strong></td></tr>';
       if (!aberto) return;
       g.familias.forEach(function (f) {
@@ -2893,19 +2942,23 @@ function blocoMovimentacoes() {
         const pctDaFamilia = totalFamilia > 0 ? (f.pecas / totalFamilia) * 100 : 0;
         linhasSemPlano += '<tr class="n2"><th class="esq ind-2">' + escapar(f.familia_codigo) + ' — ' +
             escapar(f.familia_nome) + ' · ' + fmtPct(pctDaFamilia) + ' da família</th>' +
-          '<td>—</td><td>' + fmtInt(f.pecas) + '</td></tr>';
+          '<td>—</td><td>—</td><td>' + fmtInt(f.pecas) + '</td></tr>';
       });
     });
     const totalPecasSemPlanoFiltrado = gruposSemPlano.reduce(function (s, g) { return s + g.pecas; }, 0);
 
     blocoPlanejamento = '<div class="card">' +
-      '<div class="section-title">Ressuprimento planejado × realizado</div>' +
+      '<div class="section-title">Ressuprimento planejado × realizado' +
+        ((filtroPlanoDe || filtroPlanoAte) ? ' — ' + escapar(filtroPlanoDe ? formatarDataSimples(filtroPlanoDe) : 'início') +
+          ' a ' + escapar(filtroPlanoAte ? formatarDataSimples(filtroPlanoAte) : 'fim') : '') +
+      '</div>' +
       '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
         'Cruza as PFAs lançadas em <strong>Admin › Planejamento</strong> com o que o Kardex mostra ' +
         'chegando no Picking — D0 no próprio dia, D-1 quando o turno da noite adianta. Turno sem ' +
         'nenhuma PFA lançada aparece com "—" (não é falha, é ausência de lançamento). A coluna Peças ' +
         'só existe por família e por turno: o Kardex não identifica o que cada PFA ressupriu ' +
         'individualmente, então a PFA sozinha não mostra um número.</p>' +
+      seletorPlano +
       kpisPlano +
       (plano.length ? '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
         '<th class="esq">Turno › Família › PFA</th><th>Status</th><th>Peças</th>' +
@@ -2922,7 +2975,9 @@ function blocoMovimentacoes() {
           fmtInt(totalPecasSemPlanoFiltrado) + ' peças no total — clique numa data pra ver as famílias; ' +
           'clique num título de coluna pra ordenar.</p>' +
         (gruposSemPlano.length ? '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
-            thOrdenavel('data', 'Datas', 'esq') + thOrdenavel('familias', 'Famílias') + thOrdenavel('pecas', 'Peças') +
+            thOrdenavel('data', 'Datas', 'esq') + thOrdenavel('familias', 'Famílias') +
+            '<th title="Total do dia (do Kardex, mesmo recorte de turno acima) menos o sem planejamento">Planejadas</th>' +
+            thOrdenavel('pecas', 'Sem planejamento') +
           '</tr></thead><tbody>' + linhasSemPlano + '</tbody></table></div>' :
           '<div class="aviso">Nenhum resultado bate com "' + escapar(filtroTextoSemPlano) + '".</div>') +
       '' : '') +
