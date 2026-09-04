@@ -324,12 +324,13 @@ html { overflow-x: hidden; }
 .bar-item.on .nome { color: var(--accent); }
 /* Variante pra rótulos compridos (ex.: "Rua 98 — Transitório - Armazenagem/
    Ressuprimento") — sem isso o texto quebrava em 2-4 linhas, cada barra da
-   lista com uma altura diferente ("sem padrão", pedido do usuário,
-   05/09/2026). Corta numa linha só com "…" e mostra o texto inteiro no
-   title (hover), coluna do nome mais larga (matiza-se com o dado real,
-   não é padding vazio). */
-.bar-item-rua { grid-template-columns: 230px 1fr 90px; }
-.bar-item-rua .nome { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+   lista com uma altura diferente ("sem padrão"). Primeira coluna em
+   max-content: sempre larga o suficiente pro MAIOR rótulo da lista caber
+   inteiro numa linha só, nunca corta com "…" — pedido do usuário,
+   05/09/2026 ("mesmo que as barras diminuam, quero ver 100% do texto").
+   A barra (1fr) é quem cede espaço quando o rótulo é comprido, nunca o nome. */
+.bar-item-rua { grid-template-columns: max-content 1fr 90px; }
+.bar-item-rua .nome { white-space: nowrap; cursor: default; }
 /* Barras por dia do Ressuprimento — empilhadas por turno. Colunas de largura
    fixa com rolagem horizontal: um mês de dados não pode espremer a barra até
    ela virar um fio. */
