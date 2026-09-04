@@ -545,12 +545,18 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
   }
 
   /* ---------- material em endereço de validação (sinalização de FIFO) ---------- */
+  // Agrupado por ENDEREÇO + SKU (não só por SKU, como antes -- 05/09/2026, pedido
+  // do usuário pra unificar este card com o de "B.O. em endereço transitório"
+  // numa listagem única). O mesmo SKU parado em duas ruas de validação
+  // diferentes agora vira duas linhas (uma por endereço físico), em vez de
+  // somar num único total sem dizer onde está.
   const validacao = pulmaoTudo.filter(function (r) { return r.em_validacao && r.qtd > 0; });
   const validacaoPorGrupo = new Map();
   validacao.forEach(function (r) {
-    const chave = chaveSku(r.artigo_codigo, r.cor, r.tamanho) + '' + r.classif_rotulo;
+    const chave = r.rua + '|' + r.nivel + '|' + r.box + '|' + chaveSku(r.artigo_codigo, r.cor, r.tamanho) + '|' + r.classif_rotulo;
     if (!validacaoPorGrupo.has(chave)) {
       validacaoPorGrupo.set(chave, {
+        rua: r.rua, nivel: r.nivel, box: r.box,
         artigo_codigo: r.artigo_codigo, cor: r.cor, tamanho: r.tamanho, descricao: r.descricao,
         marca: r.marca, segmento: r.segmento, classificacao: r.classif_rotulo,
         qtd: 0, mais_antigo: null,

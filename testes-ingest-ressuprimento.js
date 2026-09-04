@@ -147,6 +147,18 @@ eq(payload.ressuprimento_por_segmento.calcado.apoio_pulmao_disponivel, 200,
 const emValidacao = payload.validacao.map(function (v) { return v.artigo_codigo; }).sort();
 ok(emValidacao.indexOf('A3') !== -1, 'A3 (sujeira, rua 24 real + reclassificado rua 70) aparece em validação');
 
+// A3 está em DOIS endereços físicos diferentes (rua 24 real + rua 70 reclassificada) —
+// tem que virar DUAS linhas com o endereço de cada uma, não uma só somada (05/09/2026,
+// agrupamento passou a ser por endereço+SKU, não só por SKU).
+const linhasA3 = payload.validacao.filter(function (v) { return v.artigo_codigo === 'A3'; });
+eq(linhasA3.length, 2, 'A3 vira 2 linhas — uma por endereço físico, não uma soma');
+const ruasA3 = linhasA3.map(function (v) { return v.rua; }).sort();
+eq(ruasA3.join(','), '24,70', 'as 2 linhas carregam o endereço certo (rua 24 e rua 70)');
+const a3Rua24 = linhasA3.filter(function (v) { return v.rua === '24'; })[0];
+eq(a3Rua24.qtd, 999, 'a linha da rua 24 mantém a própria quantidade, sem somar com a da rua 70');
+eq(a3Rua24.nivel, '1', 'linha de validação carrega nível');
+eq(a3Rua24.box, '1', 'linha de validação carrega box');
+
 /* -------------------------------------------------------------------------- */
 secao('ocupação — endereço ALOCADO conta, saldo zero não esvazia a posição');
 // Confirmado contra a planilha de Ocupação da gestão (02/09/2026): pelo critério

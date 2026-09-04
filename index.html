@@ -401,6 +401,14 @@ tr.total > th, tr.total > td {
   font-weight: 700; font-size: 12.5px; color: var(--text);
 }
 
+/* Tabela com altura fixa (~10 linhas visíveis) + cabeçalho grudado no topo —
+   listas grandes (ex.: B.O. em endereço transitório/validação) rolam dentro
+   da própria caixa em vez de esticar a página inteira. Pedido do usuário,
+   05/09/2026, no mesmo espírito do painel de Inventário. */
+.tabela-rolavel { max-height: 398px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+.tabela-rolavel table.arvore thead th { position: sticky; top: 0; background: var(--bg-card); z-index: 1; }
+.tabela-rolavel table.arvore { border: none; }
+
 .toggle {
   display: inline-flex; align-items: center; justify-content: center;
   width: 15px; height: 15px; margin-right: 8px; border-radius: 3px;
@@ -1943,6 +1951,17 @@ function exportarCSV() {
 let filtroRessuprimento = 'picking';        // 'picking' | 'pulmao' | 'todos'
 let filtroSegmentoRessuprimento = null;     // null = Todos | um dos 6 segmentos da gestão
 let filtroTurnoRessuprimento = null;        // null = todos os turnos | T01 | T02 | T03
+
+/* "B.O. em endereço transitório/validação" — card único (05/09/2026, fundiu
+   os dois cards antigos "Material em validação" + "B.O. em trânsito" que
+   mostravam o MESMO material cortado de dois jeitos diferentes). Filtro por
+   classificação de endereço (Sujeira/Perca/Baixar Ressuprimento/...), busca
+   livre e limite de linhas carregadas — a tabela em si sempre mostra só
+   ~10 linhas por vez e rola por dentro (ver .tabela-rolavel no CSS). */
+let filtroClassifValidacao = null;    // null = Todas | um classif_rotulo específico
+let filtroTextoValidacao = '';
+let limiteValidacao = 100;            // quantas linhas carregar na tabela (não afeta o CSV)
+let ordemValidacao = { campo: 'qtd', direcao: 'desc' };
 let dadosMovimentacoes = null;              // snapshot do Kardex (pagina='ressuprimento_mov')
 // Histórico contínuo (tabela ressuprimento_historico_diario), independente
 // de qual foi o último Kardex processado — alimenta o card "Ressuprimento
@@ -2022,6 +2041,38 @@ function ordenarSemPlano(campo) {
     ordemSemPlano = { campo: campo, direcao: 'desc' };
   }
   renderizarRessuprimento();
+}
+
+/* ---------- "B.O. em endereço transitório/validação" ---------- */
+function alternarFiltroClassifValidacao(classif) {
+  filtroClassifValidacao = (filtroClassifValidacao === classif) ? null : classif;
+  renderizarEstoqueOperacao();
+}
+function alterarLimiteValidacao(valor) {
+  limiteValidacao = valor === 'todos' ? Infinity : Number(valor);
+  renderizarEstoqueOperacao();
+}
+function ordenarValidacao(campo) {
+  if (ordemValidacao.campo === campo) {
+    ordemValidacao.direcao = ordemValidacao.direcao === 'asc' ? 'desc' : 'asc';
+  } else {
+    ordemValidacao = { campo: campo, direcao: campo === 'endereco' || campo === 'sku' ? 'asc' : 'desc' };
+  }
+  renderizarEstoqueOperacao();
+}
+function filtrarTextoValidacao(texto) {
+  filtroTextoValidacao = texto;
+  // Mesmo cuidado do buscaSemPlano: preserva foco/cursor/rolagem no re-render
+  // (renderizarEstoqueOperacao troca o innerHTML inteiro do bloco).
+  const scrollY = window.scrollY;
+  const cursor = texto.length;
+  renderizarEstoqueOperacao();
+  const input = document.getElementById('buscaValidacao');
+  if (input) {
+    input.focus();
+    input.setSelectionRange(cursor, cursor);
+  }
+  window.scrollTo(0, scrollY);
 }
 
 /* Carrega o histórico diário (ressuprimento_historico_diario) pro intervalo
@@ -2364,83 +2415,153 @@ function renderizarEstoqueOperacao(p) {
     '<td>' + fmtInt(totalGeral) + '</td><td>100,0%</td><td>' + fmtInt(skusGeral) + '</td>' +
   '</tr>';
 
-  /* ---------- material em validação (só faz sentido olhando o Pulmão) ---------- */
-  let blocoValidacao = '';
-  if (filtroRessuprimento !== 'picking' && (p.validacao || []).length) {
-    const totalValidacao = p.validacao.reduce(function (s, v) { return s + v.qtd; }, 0);
-    const linhasValidacao = p.validacao.slice(0, 200).map(function (v) {
-      return '<tr><th>' + escapar(v.artigo_codigo) + '/' + escapar(v.cor) + '/' + escapar(v.tamanho) + '</th>' +
-        '<td>' + escapar(v.descricao) + '</td>' +
-        '<td>' + escapar(v.classificacao) + '</td>' +
-        '<td>' + fmtInt(v.qtd) + '</td>' +
-        '<td>' + (v.mais_antigo ? formatarDataSimples(v.mais_antigo) : '—') + '</td></tr>';
-    }).join('');
-    blocoValidacao =
-      '<div class="card">' +
-        '<div class="section-title">Material em endereço de validação (sujeira/perca/trânsito)</div>' +
-        '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
-          'Ainda é vendável (decisão da operação), mas fica sinalizado aqui pra reforçar FIFO — ' +
-          'ordenado do mais antigo pro mais novo. Total: ' + fmtInt(totalValidacao) + ' un. em ' +
-          fmtInt(p.validacao.length) + ' grupos' + (p.validacao.length > 200 ? ' (mostrando os 200 mais antigos)' : '') + '.</p>' +
-        '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
-          '<th class="esq">SKU</th><th class="esq">Descrição</th><th class="esq">Classificação</th><th>Qtd</th><th>Mais antigo</th>' +
-        '</tr></thead><tbody>' + linhasValidacao + '</tbody></table></div>' +
-      '</div>';
-  }
-
-  /* ---------- B.O. em endereço transitório (sujeira pra operação tratar) ----------
-     São as ruas de trânsito/validação do Pulmão (21/24/26/27/98/100/500/600):
-     ficam FORA da ocupação × capacidade (não são porta-pallet, são passagem —
-     decisão da operação em 05/09/2026), mas o saldo parado nelas precisa
-     aparecer em algum lugar, endereço a endereço, pra virar tarefa. */
-  const transito = p.transito_pulmao || { total_qtd: 0, total_enderecos: 0, enderecos: [] };
-  let blocoTransito = '';
-  if (filtroRessuprimento !== 'picking' && transito.enderecos.length) {
-    const porRuaTransito = new Map();
-    transito.enderecos.forEach(function (e) {
-      if (!porRuaTransito.has(e.rua)) porRuaTransito.set(e.rua, { rua: e.rua, rotulo: e.classif_rotulo, qtd: 0, enderecos: 0 });
-      const g = porRuaTransito.get(e.rua);
-      g.qtd += e.qtd; g.enderecos += 1;
+  /* ---------- B.O. em endereço transitório/validação ----------
+     Card único (05/09/2026) — fundiu os dois cards antigos ("Material em
+     validação" + "B.O. em trânsito") que mostravam o MESMO material
+     (ruas de passagem/sinalização do Pulmão, fora da ocupação × capacidade,
+     mais a sujeira reclassificada do Picking) cortado de dois jeitos
+     diferentes: por SKU num, por endereço noutro. Agora é uma lista só,
+     por ENDEREÇO + SKU, com filtro de classificação, busca livre, exportação
+     e altura fixa (rola por dentro, não estica a página). */
+  let blocoBO = '';
+  const validacaoTudo = p.validacao || [];
+  if (filtroRessuprimento !== 'picking' && validacaoTudo.length) {
+    const enderecosDistintos = new Set();
+    const porRua = new Map();
+    let totalQtd = 0;
+    validacaoTudo.forEach(function (v) {
+      totalQtd += v.qtd;
+      enderecosDistintos.add(v.rua + '|' + v.nivel + '|' + v.box);
+      if (!porRua.has(v.rua)) porRua.set(v.rua, { rua: v.rua, rotulo: v.classificacao, qtd: 0, enderecos: new Set() });
+      const g = porRua.get(v.rua);
+      g.qtd += v.qtd; g.enderecos.add(v.rua + '|' + v.nivel + '|' + v.box);
     });
-    const ruasTransito = Array.from(porRuaTransito.values()).sort(function (a, b) { return b.qtd - a.qtd; });
-    const maxRuaTransito = ruasTransito.reduce(function (mx, r) { return Math.max(mx, r.qtd); }, 0);
-    let barrasTransito = '';
-    ruasTransito.forEach(function (r) {
-      const larg = maxRuaTransito > 0 ? r.qtd / maxRuaTransito * 100 : 0;
-      barrasTransito += '<div class="bar-item">' +
+    const ruas = Array.from(porRua.values())
+      .map(function (r) { return { rua: r.rua, rotulo: r.rotulo, qtd: r.qtd, enderecos: r.enderecos.size }; })
+      .sort(function (a, b) { return b.qtd - a.qtd; });
+    const maxRua = ruas.reduce(function (mx, r) { return Math.max(mx, r.qtd); }, 0);
+    let barrasBO = '';
+    ruas.forEach(function (r) {
+      const larg = maxRua > 0 ? r.qtd / maxRua * 100 : 0;
+      barrasBO += '<div class="bar-item">' +
         '<div class="nome">Rua ' + escapar(r.rua) + ' — ' + escapar(r.rotulo) + '</div>' +
         '<div class="trilho"><div class="preench" style="width:' + larg + '%;background:var(--amber)"></div></div>' +
         '<div class="num">' + fmtInt(r.qtd) + ' · ' + fmtInt(r.enderecos) + ' end.</div>' +
       '</div>';
     });
-    const linhasTransito = transito.enderecos.slice(0, 200).map(function (e) {
-      return '<tr><th class="esq">' + escapar(e.rua) + ' · ' + escapar(e.nivel) + ' · ' + escapar(e.box) + '</th>' +
-        '<td class="esq">' + escapar(e.classif_rotulo) + '</td>' +
-        '<td>' + fmtInt(e.skus) + '</td>' +
-        '<td><strong>' + fmtInt(e.qtd) + '</strong></td></tr>';
+
+    /* ---------- chips de classificação (dinâmico, direto do que existe no arquivo) ---------- */
+    const classificacoes = Array.from(new Set(validacaoTudo.map(function (v) { return v.classificacao; }))).sort();
+    let chipsClassif = '<div class="filtros">' +
+      '<span class="rot-filtro">Classificação</span>' +
+      '<span class="chip' + (!filtroClassifValidacao ? ' on' : '') +
+        '" onclick="alternarFiltroClassifValidacao(null)">Todas</span>';
+    classificacoes.forEach(function (c) {
+      chipsClassif += '<span class="chip' + (filtroClassifValidacao === c ? ' on' : '') +
+        '" onclick="alternarFiltroClassifValidacao(\'' + escaparJs(c) + '\')">' + escapar(c) + '</span>';
+    });
+    chipsClassif += '</div>';
+
+    /* ---------- filtro + busca + ordenação ---------- */
+    const buscaBO = filtroTextoValidacao.trim().toLowerCase();
+    let filtradasBO = filtroClassifValidacao
+      ? validacaoTudo.filter(function (v) { return v.classificacao === filtroClassifValidacao; })
+      : validacaoTudo;
+    if (buscaBO) {
+      filtradasBO = filtradasBO.filter(function (v) {
+        // Inclui o SKU e o endereço já MONTADOS com o mesmo separador da
+        // coluna na tela ("art/cor/tam", "rua · nível · box") — sem isso,
+        // buscar exatamente o que aparece na tabela (copiado/colado) não
+        // encontrava nada, porque o texto buscado só batia campo a campo
+        // separado por espaço (bug real, achado testando a busca).
+        const alvo = [
+          v.rua, v.nivel, v.box, v.rua + ' · ' + v.nivel + ' · ' + v.box, v.classificacao,
+          v.artigo_codigo, v.cor, v.tamanho, v.artigo_codigo + '/' + v.cor + '/' + v.tamanho,
+          v.descricao, v.qtd, fmtInt(v.qtd), v.mais_antigo ? formatarDataSimples(v.mais_antigo) : '',
+        ].join(' ').toLowerCase();
+        return alvo.indexOf(buscaBO) !== -1;
+      });
+    }
+    const sinalBO = ordemValidacao.direcao === 'asc' ? 1 : -1;
+    function chaveOrdemBO(v, campo) {
+      switch (campo) {
+        case 'endereco': return v.rua.padStart(4, '0') + '|' + v.nivel.padStart(4, '0') + '|' + v.box.padStart(6, '0');
+        case 'classificacao': return v.classificacao || '';
+        case 'sku': return v.artigo_codigo + '/' + v.cor + '/' + v.tamanho;
+        case 'nome': return v.descricao || '';
+        case 'data': return v.mais_antigo || '';
+        default: return v.qtd;
+      }
+    }
+    filtradasBO = filtradasBO.slice().sort(function (a, b) {
+      const ca = chaveOrdemBO(a, ordemValidacao.campo), cb = chaveOrdemBO(b, ordemValidacao.campo);
+      return (ca < cb ? -1 : ca > cb ? 1 : 0) * sinalBO;
+    });
+
+    const limiteAtual = Number.isFinite(limiteValidacao) ? limiteValidacao : filtradasBO.length;
+    const linhasCarregadas = filtradasBO.slice(0, limiteAtual);
+
+    function setaOrdemBO(campo) {
+      if (ordemValidacao.campo !== campo) return '';
+      return ' <span style="font-size:9px">' + (ordemValidacao.direcao === 'asc' ? '▲' : '▼') + '</span>';
+    }
+    function thOrdenavelBO(campo, rotulo, classe) {
+      return '<th class="' + (classe || '') + '" style="cursor:pointer;user-select:none" ' +
+        'onclick="ordenarValidacao(\'' + campo + '\')" title="Ordenar por ' + rotulo + '">' + rotulo + setaOrdemBO(campo) + '</th>';
+    }
+
+    const linhasBO = linhasCarregadas.map(function (v) {
+      return '<tr><th class="esq">' + escapar(v.rua) + ' · ' + escapar(v.nivel) + ' · ' + escapar(v.box) + '</th>' +
+        '<td class="esq">' + escapar(v.classificacao) + '</td>' +
+        '<td class="esq">' + escapar(v.artigo_codigo) + '/' + escapar(v.cor) + '/' + escapar(v.tamanho) + '</td>' +
+        '<td class="esq">' + escapar(v.descricao) + '</td>' +
+        '<td>' + fmtInt(v.qtd) + '</td>' +
+        '<td>' + (v.mais_antigo ? formatarDataSimples(v.mais_antigo) : '—') + '</td></tr>';
     }).join('');
-    blocoTransito =
+
+    blocoBO =
       '<div class="card">' +
-        '<div class="section-title">B.O. em endereço transitório — saldo parado fora da capacidade</div>' +
+        '<div class="section-title">B.O. em endereço transitório/validação — saldo fora da capacidade</div>' +
         '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
           'Ruas de passagem e sinalização do Pulmão (corredor de ressuprimento, transitório de ' +
-          'recebimento, sujeira e perca). <strong>Não entram na ocupação × capacidade</strong> — não são ' +
-          'porta-pallet — mas o material parado nelas é B.O. a tratar: cada endereço abaixo tem saldo ' +
-          'esperando decisão.</p>' +
+          'recebimento, sujeira e perca) mais a sujeira reclassificada do Picking. <strong>Não entram na ' +
+          'ocupação × capacidade</strong> — não são porta-pallet — mas o material ainda é vendável ' +
+          '(decisão da operação) e precisa virar tarefa: cada linha abaixo é um endereço + SKU esperando decisão.</p>' +
         '<div class="kpi-row">' +
-          '<div class="kpi"><div class="rot">Peças paradas em trânsito</div>' +
-            '<div class="val forte" style="color:var(--amber)">' + fmtInt(transito.total_qtd) + '</div>' +
+          '<div class="kpi"><div class="rot">Peças paradas em trânsito/validação</div>' +
+            '<div class="val forte" style="color:var(--amber)">' + fmtInt(totalQtd) + '</div>' +
             '<div class="sub">fora da ocupação de ' + fmtInt((p.ocupacao && p.ocupacao.pulmao ? p.ocupacao.pulmao.ocupado : 0)) + ' posições do Pulmão</div></div>' +
           '<div class="kpi"><div class="rot">Endereços com B.O.</div>' +
-            '<div class="val forte">' + fmtInt(transito.total_enderecos) + '</div>' +
-            '<div class="sub">em ' + fmtInt(ruasTransito.length) + ' rua(s) de trânsito</div></div>' +
+            '<div class="val forte">' + fmtInt(enderecosDistintos.size) + '</div>' +
+            '<div class="sub">em ' + fmtInt(ruas.length) + ' rua(s)</div></div>' +
         '</div>' +
-        '<div class="bar-list" style="margin-bottom:14px">' + barrasTransito + '</div>' +
-        '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
-          '<th class="esq">Endereço (rua · nível · box)</th><th class="esq">Classificação</th><th>SKUs</th><th>Peças</th>' +
-        '</tr></thead><tbody>' + linhasTransito + '</tbody></table>' +
-        (transito.enderecos.length > 200 ? '<p style="font-size:11px;color:var(--text-muted);margin-top:6px">mostrando os 200 maiores de ' + fmtInt(transito.enderecos.length) + '</p>' : '') +
+        '<div class="bar-list" style="margin-bottom:14px">' + barrasBO + '</div>' +
+        chipsClassif +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0">' +
+          '<input type="text" id="buscaValidacao" placeholder="Buscar (endereço, SKU, nome, qtde, classificação…)" ' +
+            'value="' + escapar(filtroTextoValidacao) + '" oninput="filtrarTextoValidacao(this.value)" ' +
+            'style="padding:6px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);' +
+            'border:1px solid var(--border);font-size:12px;flex:1 1 260px;max-width:360px">' +
+          '<span style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-muted)">' +
+            '<label for="limiteValidacao">Mostrar</label>' +
+            '<select id="limiteValidacao" onchange="alterarLimiteValidacao(this.value)" ' +
+              'style="padding:5px 8px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border);font-size:12px">' +
+              [10, 50, 100, 200, 500].map(function (n) {
+                return '<option value="' + n + '"' + (limiteValidacao === n ? ' selected' : '') + '>' + n + '</option>';
+              }).join('') +
+              '<option value="todos"' + (!Number.isFinite(limiteValidacao) ? ' selected' : '') + '>Todos</option>' +
+            '</select>' +
+            '<button class="btn-mini" onclick="exportarCSVValidacao()">⬇ Exportar CSV</button>' +
+          '</span>' +
         '</div>' +
+        '<p style="font-size:11px;color:var(--text-muted);margin-bottom:6px">' +
+          'Exibindo ' + fmtInt(linhasCarregadas.length) + ' de ' + fmtInt(filtradasBO.length) + ' linha(s)' +
+          (filtradasBO.length !== validacaoTudo.length ? ' (filtrado de ' + fmtInt(validacaoTudo.length) + ')' : '') + '.</p>' +
+        '<div class="tabela-rolavel"><table class="arvore"><thead><tr>' +
+          thOrdenavelBO('endereco', 'Endereço', 'esq') + thOrdenavelBO('classificacao', 'Classificação', 'esq') +
+          thOrdenavelBO('sku', 'SKU', 'esq') + thOrdenavelBO('nome', 'Nome do produto', 'esq') +
+          thOrdenavelBO('qtd', 'QTDE') + thOrdenavelBO('data', 'Data do lote') +
+        '</tr></thead><tbody>' + linhasBO + '</tbody></table></div>' +
       '</div>';
   }
 
@@ -2475,8 +2596,7 @@ function renderizarEstoqueOperacao(p) {
         '<th class="esq">Descrição</th><th>Qtd</th><th>% do nível</th><th>SKUs</th>' +
       '</tr></thead><tbody>' + linhasArvore + '</tbody></table></div>' +
     '</div>' +
-    blocoTransito +
-    blocoValidacao +
+    blocoBO +
     '<div style="font-size:11px;color:var(--text-muted);margin-top:12px">' +
       'Picking: ' + escapar(p.arquivo_picking || '—') + ' · Pulmão: ' + escapar(p.arquivo_pulmao || '—') +
     '</div>';
@@ -3117,6 +3237,49 @@ function exportarCSVRessuprimento() {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'ressuprimento-' + filtroRessuprimento + '-distribuidora.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/* Exporta a listagem de "B.O. em endereço transitório/validação" — ignora o
+   limite de linhas CARREGADAS na tela (limiteValidacao), mas respeita o
+   filtro de classificação e a busca: o CSV é sempre "tudo que bate com o
+   filtro atual", não só o que está visível na tabela. */
+function exportarCSVValidacao() {
+  const p = window._snapshotRessuprimento;
+  if (!p || !(p.validacao || []).length) return;
+  let linhasFiltro = filtroClassifValidacao
+    ? p.validacao.filter(function (v) { return v.classificacao === filtroClassifValidacao; })
+    : p.validacao;
+  const busca = filtroTextoValidacao.trim().toLowerCase();
+  if (busca) {
+    // Mesma montagem de `alvo` da busca na tela (rua·nível·box e SKU já
+    // juntados com o separador da coluna) — pra exportar exatamente o que
+    // a busca visível encontrou, nem mais nem menos linhas.
+    linhasFiltro = linhasFiltro.filter(function (v) {
+      const alvo = [
+        v.rua, v.nivel, v.box, v.rua + ' · ' + v.nivel + ' · ' + v.box, v.classificacao,
+        v.artigo_codigo, v.cor, v.tamanho, v.artigo_codigo + '/' + v.cor + '/' + v.tamanho,
+        v.descricao, v.qtd, v.mais_antigo,
+      ].join(' ').toLowerCase();
+      return alvo.indexOf(busca) !== -1;
+    });
+  }
+  const linhas = [['Endereco', 'Classificacao', 'SKU', 'Nome do produto', 'QTDE', 'Data do lote']];
+  linhasFiltro.forEach(function (v) {
+    linhas.push([
+      v.rua + '.' + v.nivel + '.' + v.box, v.classificacao,
+      v.artigo_codigo + '/' + v.cor + '/' + v.tamanho, v.descricao,
+      v.qtd, v.mais_antigo || '',
+    ]);
+  });
+  const csv = linhas.map(function (l) {
+    return l.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(';');
+  }).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'bo-transito-validacao-distribuidora.csv';
   a.click();
   URL.revokeObjectURL(a.href);
 }
