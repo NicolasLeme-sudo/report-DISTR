@@ -342,6 +342,93 @@ function segmentoMacroSeDisponivel(fam) {
   return window.segmentoMacro(fam.segmento, fam.categoria);
 }
 
+/* ============================================================================
+   CRUZAMENTO COM O PLANEJAMENTO — D0 / D-1 / sem planejamento
+   ============================================================================
+   Cada linha de `planejamento` é {pfa, familia_codigo, turno, data}, lançada
+   manualmente pela assistente (tela Admin > Planejamento) — é permanente,
+   nunca é sobrescrita por upload de Kardex. `pecasPorFamiliaDia` é um
+   Map("familia|dia" -> peças) — pode vir de UM Kardex (uso em
+   construirSnapshotMovimentacoes) ou do HISTÓRICO acumulado de vários
+   uploads (ressuprimento_familia_diario, uso em index.html na hora de
+   renderizar a tela) — a conta é idêntica nos dois casos:
+
+     D0                    -> ressuprido na PRÓPRIA data planejada.
+     D-1                   -> ressuprido no dia ANTERIOR (turno da noite
+                              adiantando o que o turno seguinte vai separar).
+     aguardando            -> data planejada é DEPOIS do último dia que temos
+                              movimento pra essa fonte (ainda não deu tempo).
+     planejado_nao_ressuprido -> nem D0, nem D-1, nem aguardando: pendente.
+
+   `ultimoDia` é o corte que decide "aguardando" vs "pendente" — o último dia
+   coberto pelo Kardex quando a fonte é um snapshot único, ou o dia mais
+   recente presente no histórico acumulado quando a fonte é o histórico.
+   ============================================================================ */
+function classificarPlanejamento(planejamento, pecasPorFamiliaDia, ultimoDia, mapaFamilias) {
+  mapaFamilias = mapaFamilias || new Map();
+  return planejamento.map(function (p) {
+    const pecasD0 = pecasPorFamiliaDia.get(p.familia_codigo + '|' + p.data) || 0;
+    const pecasD1 = pecasPorFamiliaDia.get(p.familia_codigo + '|' + diaISO(-1, p.data)) || 0;
+    let status, pecas, diasPendente = null;
+    if (pecasD0 > 0) { status = 'D0'; pecas = pecasD0; }
+    else if (pecasD1 > 0) { status = 'D-1'; pecas = pecasD1; }
+    else if (ultimoDia && p.data > ultimoDia) { status = 'aguardando'; pecas = 0; }
+    else {
+      status = 'planejado_nao_ressuprido'; pecas = 0;
+      // FIFO: há quantos dias essa PFA está pendente, contado até o último
+      // dia que já temos movimento (não "hoje" — a fonte pode ser de ontem).
+      if (ultimoDia) diasPendente = Math.max(0, diferencaDias(p.data, ultimoDia));
+    }
+    const famPlano = mapaFamilias.get(p.familia_codigo);
+    return {
+      pfa: p.pfa, familia_codigo: p.familia_codigo, familia_nome: famPlano ? famPlano.categoria : p.familia_codigo,
+      turno: p.turno, data: p.data, status: status, pecas: pecas, dias_pendente: diasPendente,
+    };
+  });
+}
+
+/* Inverso de classificarPlanejamento: família ressuprida sem nenhuma PFA
+   planejada pra ela, na própria data ou no dia seguinte — o "ressupriu à
+   toa" que a operação pediu pra enxergar. Mesmo motivo de ser função
+   separada: chamada tanto com `pecasPorFamiliaDia` de um Kardex só quanto
+   do histórico acumulado.
+
+   `porFamiliaDiaTurno` (opcional, Map "familia|dia|turno" -> {pecas,...}) só
+   serve pra anexar a quebra por turno em CADA linha (`por_turno: {T01: x,
+   T02: y, T03: z}`) — pedido do usuário, 05/09/2026: "o que os turnos
+   ressupriram que não foi D0 nem D-1". Não muda QUAIS famílias/dias entram
+   na lista — essa decisão continua turno-agnóstica, feita só com
+   `pecasPorFamiliaDia`. */
+function calcularSemPlanejamento(pecasPorFamiliaDia, planejamento, mapaFamilias, porFamiliaDiaTurno) {
+  mapaFamilias = mapaFamilias || new Map();
+  const familiasPlanejadasPorDia = new Map(); // dia -> Set(familia_codigo)
+  planejamento.forEach(function (p) {
+    if (!familiasPlanejadasPorDia.has(p.data)) familiasPlanejadasPorDia.set(p.data, new Set());
+    familiasPlanejadasPorDia.get(p.data).add(p.familia_codigo);
+  });
+  const resultado = [];
+  pecasPorFamiliaDia.forEach(function (pecas, chave) {
+    const partes = chave.split('|');
+    const familiaCod = partes[0], dia = partes[1];
+    const planejadoHoje = familiasPlanejadasPorDia.has(dia) && familiasPlanejadasPorDia.get(dia).has(familiaCod);
+    const diaSeguinte = diaISO(1, dia);
+    const planejadoAmanha = familiasPlanejadasPorDia.has(diaSeguinte) && familiasPlanejadasPorDia.get(diaSeguinte).has(familiaCod);
+    if (!planejadoHoje && !planejadoAmanha) {
+      const fam = mapaFamilias.get(familiaCod);
+      const porTurno = {};
+      if (porFamiliaDiaTurno) {
+        TURNOS.forEach(function (t) {
+          const fdt = porFamiliaDiaTurno.get(chave + '|' + t.id);
+          if (fdt && fdt.pecas) porTurno[t.id] = fdt.pecas;
+        });
+      }
+      resultado.push({ familia_codigo: familiaCod, familia_nome: fam ? fam.categoria : familiaCod, dia: dia, pecas: pecas, por_turno: porTurno });
+    }
+  });
+  resultado.sort(function (a, b) { return b.pecas - a.pecas; });
+  return resultado;
+}
+
 function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFamilias, planejamento, mapaColaboradorTurno) {
   mapaArtigoFamilia = mapaArtigoFamilia || new Map();
   mapaFamilias = mapaFamilias || new Map();
@@ -356,7 +443,14 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
   const porSegmento = new Map();  // segmento_macro -> { pecas, movimentos }
   const rotas = new Map();        // "ZONA -> ZONA" -> { pecas, movimentos }
   const operadores = new Map();   // login -> { nome, pecas, movimentos }
-  const pecasPorFamiliaDia = new Map(); // "familia|dia" -> peças ressupridas
+  const pecasPorFamiliaDia = new Map(); // "familia|dia" -> peças ressupridas (turno-agnóstico, usado no D0/D-1)
+  // dia+família+turno -> { pecas, movimentos } — igual à ideia de
+  // porDiaSegmentoTurno, mas por família: vira ressuprimento_familia_diario
+  // (histórico) e alimenta a quebra por turno do "sem planejamento" (o que
+  // cada turno ressupriu que não era nem D0 nem D-1 de nenhuma PFA — pedido
+  // do usuário, 05/09/2026). A classificação D0/D-1 continua turno-agnóstica
+  // (pecasPorFamiliaDia acima) — decisão já tomada antes, não muda aqui.
+  const porFamiliaDiaTurno = new Map();
   // dia+segmento+turno -> { pecas, movimentos } — é essa quebra que vira
   // ressuprimento_historico_diario (upsert por dia/segmento/turno), pra
   // manter um histórico contínuo entre uploads de Kardex, já que cada
@@ -404,6 +498,12 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
     } else {
       const chaveFD = familiaCod + '|' + m.dia;
       pecasPorFamiliaDia.set(chaveFD, (pecasPorFamiliaDia.get(chaveFD) || 0) + m.qtd);
+      const chaveFDT = chaveFD + '|' + m.turno;
+      if (!porFamiliaDiaTurno.has(chaveFDT)) {
+        porFamiliaDiaTurno.set(chaveFDT, { dia: m.dia, familia_codigo: familiaCod, turno: m.turno, pecas: 0, movimentos: 0 });
+      }
+      const fdt = porFamiliaDiaTurno.get(chaveFDT);
+      fdt.pecas += m.qtd; fdt.movimentos += 1;
     }
     const rotSeg = segMacro || 'SEM FAMÍLIA';
     if (!porSegmento.has(rotSeg)) porSegmento.set(rotSeg, { segmento: rotSeg, pecas: 0, movimentos: 0 });
@@ -445,68 +545,18 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
   /* ============================================================================
      CRUZAMENTO COM O PLANEJAMENTO — D0 / D-1 / sem planejamento
      ============================================================================
-     Cada linha de `planejamento` é {pfa, familia_codigo, turno, data}, lançada
-     manualmente pela assistente (tela Admin > Planejamento). O cruzamento é
-     por FAMÍLIA (não por artigo — ver comentário em ingest-ressuprimento.js
-     sobre por que família em vez de depender do CSV de PFA sempre atualizado):
-
-       D0                    -> ressuprido na PRÓPRIA data planejada.
-       D-1                   -> ressuprido no dia ANTERIOR (turno da noite
-                                adiantando o que o turno seguinte vai separar).
-       planejado_nao_ressuprido -> nem D0 nem D-1: a família não teve nenhum
-                                    ressuprimento nas duas datas relevantes.
-
-     O inverso (família ressuprida sem nenhuma PFA planejada pra ela, na data
-     ou no dia seguinte) fica em `ressuprimento_sem_planejamento` — é o
-     "ressupriu à toa" que a operação pediu pra enxergar.
+     Extraído pra função (05/09/2026) pra poder ser chamado tanto daqui — com
+     `pecasPorFamiliaDia` limitado ao período de UM Kardex — quanto do
+     index.html na hora de renderizar a tela, cruzando `ressuprimento_
+     planejamento` (permanente) com o HISTÓRICO acumulado de vários uploads
+     (ressuprimento_familia_diario), pra o card parar de esquecer dias que
+     não estão no último arquivo processado. Mesma conta, só muda de onde
+     vem `pecasPorFamiliaDia` — ver classificarPlanejamento/
+     calcularSemPlanejamento logo abaixo (fora desta função, exportadas).
      ============================================================================ */
-  // Último dia coberto pelo Kardex — uma PFA planejada pra DEPOIS disso ainda
-  // não teve chance de ser ressuprida (o turno "ainda não chegou" no arquivo
-  // que temos), então não é "não ressuprida" (que soa a falha), é "aguardando".
   const ultimoDiaKardex = dataBrParaIso(parsed.periodo.ate);
-
-  const planejamentoClassificado = planejamento.map(function (p) {
-    const pecasD0 = pecasPorFamiliaDia.get(p.familia_codigo + '|' + p.data) || 0;
-    const pecasD1 = pecasPorFamiliaDia.get(p.familia_codigo + '|' + diaISO(-1, p.data)) || 0;
-    let status, pecas, diasPendente = null;
-    if (pecasD0 > 0) { status = 'D0'; pecas = pecasD0; }
-    else if (pecasD1 > 0) { status = 'D-1'; pecas = pecasD1; }
-    else if (ultimoDiaKardex && p.data > ultimoDiaKardex) { status = 'aguardando'; pecas = 0; }
-    else {
-      status = 'planejado_nao_ressuprido'; pecas = 0;
-      // FIFO: há quantos dias essa PFA está pendente, contado até o último
-      // dia que o Kardex já cobre (não "hoje" — o arquivo pode ser de ontem).
-      if (ultimoDiaKardex) diasPendente = Math.max(0, diferencaDias(p.data, ultimoDiaKardex));
-    }
-    const famPlano = mapaFamilias.get(p.familia_codigo);
-    return {
-      pfa: p.pfa, familia_codigo: p.familia_codigo, familia_nome: famPlano ? famPlano.categoria : p.familia_codigo,
-      turno: p.turno, data: p.data, status: status, pecas: pecas, dias_pendente: diasPendente,
-    };
-  });
-
-  // Famílias planejadas pra cada dia (a própria data, e o dia seguinte — pra
-  // achar quem ressuprida hoje é, na verdade, D-1 de amanhã).
-  const familiasPlanejadasPorDia = new Map(); // dia -> Set(familia_codigo)
-  planejamento.forEach(function (p) {
-    if (!familiasPlanejadasPorDia.has(p.data)) familiasPlanejadasPorDia.set(p.data, new Set());
-    familiasPlanejadasPorDia.get(p.data).add(p.familia_codigo);
-  });
-  const ressuprimentoSemPlanejamento = [];
-  pecasPorFamiliaDia.forEach(function (pecas, chave) {
-    const partes = chave.split('|');
-    const familiaCod = partes[0], dia = partes[1];
-    const planejadoHoje = familiasPlanejadasPorDia.has(dia) && familiasPlanejadasPorDia.get(dia).has(familiaCod);
-    const diaSeguinte = diaISO(1, dia);
-    const planejadoAmanha = familiasPlanejadasPorDia.has(diaSeguinte) && familiasPlanejadasPorDia.get(diaSeguinte).has(familiaCod);
-    if (!planejadoHoje && !planejadoAmanha) {
-      const fam = mapaFamilias.get(familiaCod);
-      ressuprimentoSemPlanejamento.push({
-        familia_codigo: familiaCod, familia_nome: fam ? fam.categoria : familiaCod, dia: dia, pecas: pecas,
-      });
-    }
-  });
-  ressuprimentoSemPlanejamento.sort(function (a, b) { return b.pecas - a.pecas; });
+  const planejamentoClassificado = classificarPlanejamento(planejamento, pecasPorFamiliaDia, ultimoDiaKardex, mapaFamilias);
+  const ressuprimentoSemPlanejamento = calcularSemPlanejamento(pecasPorFamiliaDia, planejamento, mapaFamilias, porFamiliaDiaTurno);
 
   return {
     versao: 1,
@@ -532,6 +582,12 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
     // turno) pra alimentar o histórico contínuo de "Ressuprimento por dia"
     // na tela — ver processarMovimentacoes.
     historico_diario: Array.from(porDiaSegmentoTurno.values()),
+    // Vira linhas de ressuprimento_familia_diario (uma por dia+família+turno)
+    // — histórico acumulado que alimenta a RECLASSIFICAÇÃO de D0/D-1/
+    // pendente/sem-planejamento (agregando os turnos) e a quebra por turno
+    // do "sem planejamento" na tela, em vez de depender só deste snapshot
+    // (05/09/2026).
+    historico_diario_familia: Array.from(porFamiliaDiaTurno.values()),
     // Quantos movimentos tiveram o turno resolvido pelo cadastro real
     // (dim_colaboradores_turno) vs. chutado pelo horário — nunca escondido.
     resolucao_turno: { por_cadastro: porCadastro, por_horario: porHorario },
@@ -628,6 +684,7 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
   if (error) throw error;
 
   await upsertHistoricoDiario(supabaseClient, payload.historico_diario, avisar);
+  await upsertHistoricoFamiliaDiario(supabaseClient, payload.historico_diario_familia, avisar);
 
   avisar('Concluído.');
   return payload;
@@ -662,8 +719,41 @@ async function upsertHistoricoDiario(supabaseClient, linhas, onAviso) {
   }
 }
 
+/* ============================================================================
+   HISTÓRICO DIÁRIO POR FAMÍLIA — grava dia+família+turno em
+   ressuprimento_familia_diario, mesmo padrão de upsertHistoricoDiario acima
+   (onConflict por dia, arquivo mais recente vence só nos dias que cobre).
+   É esse histórico que permite ao index.html reclassificar D0/D-1/pendente/
+   sem-planejamento (agregando os turnos) no carregamento da tela, cruzando
+   com o planejamento PERMANENTE, em vez de depender só do último Kardex
+   processado — e também mostrar o que cada TURNO ressupriu sem nenhuma PFA
+   cobrindo (05/09/2026, dois pedidos do usuário: não perder dias antigos
+   quando o próximo Kardex cobrir só uma janela mais curta, e enxergar o
+   "sem planejamento" quebrado por turno).
+   ============================================================================ */
+async function upsertHistoricoFamiliaDiario(supabaseClient, linhas, onAviso) {
+  const avisar = onAviso || function () {};
+  if (!linhas || linhas.length === 0) return;
+  const lotes = [];
+  for (let i = 0; i < linhas.length; i += LOTE_HISTORICO_DIARIO) {
+    lotes.push(linhas.slice(i, i + LOTE_HISTORICO_DIARIO));
+  }
+  try {
+    for (const lote of lotes) {
+      const { error } = await supabaseClient.from('ressuprimento_familia_diario')
+        .upsert(lote, { onConflict: 'dia,familia_codigo,turno' });
+      if (error) throw error;
+    }
+    avisar(linhas.length.toLocaleString('pt-BR') + ' linha(s) gravadas no histórico por família.');
+  } catch (e) {
+    avisar('Aviso: não deu pra gravar o histórico por família (' + (e && e.message) + ') — rodou migracao_planejamento_historico.sql? ' +
+      'O restante do processamento seguiu normal, só o card de Planejamento vai continuar preso ao último Kardex.');
+  }
+}
+
 window.processarMovimentacoes = processarMovimentacoes;
 window.upsertHistoricoDiario = upsertHistoricoDiario;
+window.upsertHistoricoFamiliaDiario = upsertHistoricoFamiliaDiario;
 window.parsearKardex = parsearKardex;
 window.casarMovimentos = casarMovimentos;
 window.construirSnapshotMovimentacoes = construirSnapshotMovimentacoes;
@@ -671,3 +761,5 @@ window.classificarZona = classificarZona;
 window.turnoDe = turnoDe;
 window.TURNOS = TURNOS;
 window.diaISO = diaISO;
+window.classificarPlanejamento = classificarPlanejamento;
+window.calcularSemPlanejamento = calcularSemPlanejamento;

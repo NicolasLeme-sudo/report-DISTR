@@ -294,6 +294,10 @@ eq(semPlanoMap['068'], 7, 'família 068 ressuprida sem nenhuma PFA planejada pra
 ok(semPlanoMap['060'] === undefined, 'família 060 (tem PFA1 pro mesmo dia) NÃO aparece em sem_planejamento');
 ok(semPlanoMap['043'] === undefined, 'família 043 (tem PFA2 pro dia seguinte, cobre o D-1) NÃO aparece em sem_planejamento');
 
+const semPlano068 = snapPlano.ressuprimento_sem_planejamento.find(function (r) { return r.familia_codigo === '068'; });
+eq(semPlano068.por_turno.T01, 7, 'sem planejamento vem quebrado por turno (068 ressuprida às 10:00 = T01)');
+eq(Object.keys(semPlano068.por_turno).length, 1, 'só o turno que realmente ressupriu aparece na quebra');
+
 /* ------------------------------------------------------------------ */
 console.log('\n=== status "aguardando" — PFA planejada pra depois do fim do Kardex ===');
 const planejamentoFuturo = [
@@ -396,6 +400,20 @@ console.log('\n=== processarMovimentacoes — dim_artigo_familia NÃO tem coluna
   const chamadasVazio = [];
   await ctx.upsertHistoricoDiario({ from: function (n) { chamadasVazio.push(n); return { upsert: async function () { return { error: null }; } }; } }, [], function () {});
   eq(chamadasVazio.length, 0, 'historico_diario vazio não gera nenhuma chamada ao Supabase');
+
+  console.log('\n=== upsertHistoricoFamiliaDiario — mesmo padrão, onConflict por dia+família+turno ===');
+  const chamadasFam = [];
+  const clienteFamOk = {
+    from: function (nome) {
+      return { upsert: async function (linhas, opts) { chamadasFam.push({ tabela: nome, linhas: linhas, opts: opts }); return { error: null }; } };
+    },
+  };
+  const avisosFam = [];
+  await ctx.upsertHistoricoFamiliaDiario(clienteFamOk, [{ dia: '2026-08-10', familia_codigo: '068', turno: 'T01', pecas: 7, movimentos: 1 }], function (m) { avisosFam.push(m); });
+  eq(chamadasFam.length, 1, 'uma chamada de upsert pra 1 linha');
+  eq(chamadasFam[0].tabela, 'ressuprimento_familia_diario', 'mira a tabela ressuprimento_familia_diario');
+  eq(chamadasFam[0].opts.onConflict, 'dia,familia_codigo,turno', 'onConflict é dia+família+turno');
+  ok(avisosFam.some(function (a) { return /1 linha/.test(a); }), 'avisa quantas linhas foram gravadas');
 })().then(function () {
   console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
   process.exit(falhas === 0 ? 0 : 1);

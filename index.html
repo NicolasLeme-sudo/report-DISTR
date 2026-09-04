@@ -1952,6 +1952,14 @@ let dadosMovimentacoes = null;              // snapshot do Kardex (pagina='ressu
 let historicoRessuprimento = [];
 let filtroHistDe = null;   // 'AAAA-MM-DD'
 let filtroHistAte = null;  // 'AAAA-MM-DD'
+// Histórico por FAMÍLIA (ressuprimento_familia_diario) + planejamento
+// permanente (ressuprimento_planejamento) + dicionário de famílias — os três
+// juntos permitem reclassificar D0/D-1/pendente/sem-planejamento no MESMO
+// intervalo [filtroHistDe, filtroHistAte] do gráfico acima, cruzando vários
+// uploads de Kardex, em vez de depender só do último snapshot processado.
+let historicoFamiliaRessuprimento = [];
+let planejamentoTudo = [];       // ressuprimento_planejamento inteira (persistente, não filtrada por data)
+let mapaFamiliasGlobal = new Map(); // dim_familias, carregado uma vez por sessão da tela
 function hojeISO() {
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -1978,21 +1986,16 @@ function alternarAbertoSemPlano(chave) {
   renderizarRessuprimento();
 }
 
-/* Filtro de data do card "Ressuprimento planejado × realizado" — recorta
-   `plano` (por p.data) e `semPlano` (por r.dia) ANTES de toda a árvore e do
-   agrupamento por data (pedido do usuário, 05/09/2026, pra poder olhar só
-   um dia/semana em vez do período inteiro do Kardex sempre). null = sem
-   recorte, mostra o período inteiro do Kardex (comportamento de antes). */
-let filtroPlanoDe = null;  // 'AAAA-MM-DD'
-let filtroPlanoAte = null; // 'AAAA-MM-DD'
-function alterarIntervaloPlano(campo, valor) {
-  if (campo === 'de') filtroPlanoDe = valor || null; else filtroPlanoAte = valor || null;
-  renderizarRessuprimento();
-}
-function limparIntervaloPlano() {
-  filtroPlanoDe = null; filtroPlanoAte = null;
-  renderizarRessuprimento();
-}
+/* O card "Ressuprimento planejado × realizado" (D0/D-1/pendente/sem
+   planejamento) segue o MESMO filtro de período do gráfico "Ressuprimento
+   por dia" acima (filtroHistDe/filtroHistAte) — pedido do usuário,
+   05/09/2026, mesma lógica já aplicada à "Composição por segmento": um só
+   controle de período pra tela inteira, em vez de um seletor próprio.
+   A classificação D0/D-1/pendente/sem-planejamento vem do HISTÓRICO
+   acumulado (ressuprimento_familia_diario, ver carregarHistoricoPlanejamento
+   abaixo), não mais só do último Kardex — cruza com o planejamento
+   PERMANENTE (ressuprimento_planejamento), então não perde dias antigos
+   quando o próximo Kardex cobrir só uma janela mais curta. */
 function filtrarSemPlano(texto) {
   filtroTextoSemPlano = texto;
   // renderizarRessuprimento() troca o innerHTML inteiro do bloco — o próprio
@@ -2038,6 +2041,24 @@ async function carregarHistoricoRessuprimento() {
   }
 }
 
+/* Histórico por família+turno (ressuprimento_familia_diario), mesmo
+   intervalo [filtroHistDe, filtroHistAte] do card de cima — é o que permite
+   reclassificar D0/D-1/pendente/sem-planejamento cruzando vários uploads de
+   Kardex, em vez de só o último. Tabela ausente (migração não rodada) vira
+   lista vazia — a tela cai de volta pro snapshot único do último Kardex. */
+async function carregarHistoricoFamiliaRessuprimento() {
+  if (!filtroHistDe) filtroHistDe = window.diaISO ? window.diaISO(-6, hojeISO()) : hojeISO();
+  if (!filtroHistAte) filtroHistAte = hojeISO();
+  try {
+    const { data, error } = await supabaseClient.from('ressuprimento_familia_diario')
+      .select('dia, familia_codigo, turno, pecas, movimentos')
+      .gte('dia', filtroHistDe).lte('dia', filtroHistAte);
+    historicoFamiliaRessuprimento = (!error && data) ? data : [];
+  } catch (e) {
+    historicoFamiliaRessuprimento = [];
+  }
+}
+
 async function carregarRessuprimento() {
   const alvoEstoqueOp = document.getElementById('estoqueop-conteudo');
   const alvoRessup = document.getElementById('ressuprimento-conteudo');
@@ -2045,7 +2066,7 @@ async function carregarRessuprimento() {
   // Ressuprimento) e são independentes entre si: posição (Picking+Pulmão) é
   // do dia, Kardex é de período. Um pode existir sem o outro — cada tela
   // mostra o que tiver e avisa sobre o que falta, sem depender da outra.
-  const [resPosicao, resMov] = await Promise.all([
+  const [resPosicao, resMov, , , resPlano, resFam] = await Promise.all([
     supabaseClient.from('dashboard_snapshots')
       .select('payload, gerado_em').eq('pagina', 'ressuprimento')
       .order('gerado_em', { ascending: false }).limit(1),
@@ -2053,8 +2074,18 @@ async function carregarRessuprimento() {
       .select('payload, gerado_em').eq('pagina', 'ressuprimento_mov')
       .order('gerado_em', { ascending: false }).limit(1),
     carregarHistoricoRessuprimento(),
+    carregarHistoricoFamiliaRessuprimento(),
+    // Permanente (nunca sobrescrita por upload de Kardex) e o dicionário de
+    // famílias — carregados aqui pra permitir reclassificar D0/D-1/pendente/
+    // sem-planejamento no intervalo escolhido, cruzando com o histórico
+    // acumulado acima em vez de depender só do último snapshot.
+    supabaseClient.from('ressuprimento_planejamento').select('pfa, familia_codigo, turno, data')
+      .then(function (r) { return r; }).catch(function () { return { data: [], error: true }; }),
+    window.lerTudoPaginado ? window.lerTudoPaginado(supabaseClient, 'dim_familias', 'codigo, marca, categoria, segmento').catch(function () { return []; }) : Promise.resolve([]),
   ]);
   dadosMovimentacoes = (!resMov.error && resMov.data && resMov.data.length) ? resMov.data[0].payload : null;
+  planejamentoTudo = (resPlano && !resPlano.error && resPlano.data) ? resPlano.data : [];
+  mapaFamiliasGlobal = new Map((resFam || []).map(function (f) { return [f.codigo, f]; }));
 
   /* ---------- tela Estoque (posição Picking/Pulmão) ---------- */
   if (resPosicao.error) {
@@ -2538,12 +2569,12 @@ function porSegmentoDoHistorico(linhas) {
 }
 function alterarIntervaloHistorico(campo, valor) {
   if (campo === 'de') filtroHistDe = valor; else filtroHistAte = valor;
-  carregarHistoricoRessuprimento().then(renderizarRessuprimento);
+  Promise.all([carregarHistoricoRessuprimento(), carregarHistoricoFamiliaRessuprimento()]).then(renderizarRessuprimento);
 }
 function usarUltimos7DiasHistorico() {
   filtroHistDe = window.diaISO(-6, hojeISO());
   filtroHistAte = hojeISO();
-  carregarHistoricoRessuprimento().then(renderizarRessuprimento);
+  Promise.all([carregarHistoricoRessuprimento(), carregarHistoricoFamiliaRessuprimento()]).then(renderizarRessuprimento);
 }
 
 function blocoMovimentacoes() {
@@ -2713,14 +2744,35 @@ function blocoMovimentacoes() {
   /* ---------- planejamento: D0 / D-1 / sem planejamento (sempre do ÚLTIMO
      Kardex processado — o cruzamento com PFA é por período de arquivo, não
      faz sentido sobre um intervalo histórico arbitrário). ---------- */
-  const planoTudo = m ? m.planejamento || [] : [];
-  const semPlanoTudo = m ? m.ressuprimento_sem_planejamento || [] : [];
-  const plano = filtroPlanoDe || filtroPlanoAte
-    ? planoTudo.filter(function (p) { return (!filtroPlanoDe || p.data >= filtroPlanoDe) && (!filtroPlanoAte || p.data <= filtroPlanoAte); })
-    : planoTudo;
-  const semPlano = filtroPlanoDe || filtroPlanoAte
-    ? semPlanoTudo.filter(function (r) { return (!filtroPlanoDe || r.dia >= filtroPlanoDe) && (!filtroPlanoAte || r.dia <= filtroPlanoAte); })
-    : semPlanoTudo;
+  // Reclassifica D0/D-1/pendente/aguardando/sem-planejamento a partir do
+  // HISTÓRICO acumulado (ressuprimento_familia_diario, no mesmo intervalo
+  // [filtroHistDe, filtroHistAte] do gráfico acima) cruzado com o
+  // planejamento PERMANENTE (ressuprimento_planejamento) — em vez de
+  // depender só do último Kardex processado. Sem histórico ainda gravado
+  // (migração recente) cai pro snapshot único do último Kardex, igual antes.
+  const usaHistoricoPlano = historicoFamiliaRessuprimento && historicoFamiliaRessuprimento.length > 0;
+  let planoTudo, semPlanoTudo;
+  if (usaHistoricoPlano) {
+    const pecasPorFamiliaDiaHist = new Map();     // "familia|dia" -> peças (soma dos turnos)
+    const porFamiliaDiaTurnoHist = new Map();     // "familia|dia|turno" -> { pecas }
+    let ultimoDiaHist = null;
+    historicoFamiliaRessuprimento.forEach(function (h) {
+      const chaveFD = h.familia_codigo + '|' + h.dia;
+      pecasPorFamiliaDiaHist.set(chaveFD, (pecasPorFamiliaDiaHist.get(chaveFD) || 0) + h.pecas);
+      porFamiliaDiaTurnoHist.set(chaveFD + '|' + h.turno, { pecas: h.pecas });
+      if (!ultimoDiaHist || h.dia > ultimoDiaHist) ultimoDiaHist = h.dia;
+    });
+    planoTudo = window.classificarPlanejamento(planejamentoTudo, pecasPorFamiliaDiaHist, ultimoDiaHist, mapaFamiliasGlobal);
+    semPlanoTudo = window.calcularSemPlanejamento(pecasPorFamiliaDiaHist, planejamentoTudo, mapaFamiliasGlobal, porFamiliaDiaTurnoHist);
+  } else {
+    planoTudo = m ? m.planejamento || [] : [];
+    semPlanoTudo = m ? m.ressuprimento_sem_planejamento || [] : [];
+  }
+  // Mesmo período do gráfico acima (filtroHistDe/Ate) — um só controle pra
+  // tela inteira (pedido do usuário, 05/09/2026, mesma lógica já aplicada à
+  // Composição por segmento).
+  const plano = planoTudo.filter(function (p) { return (!filtroHistDe || p.data >= filtroHistDe) && (!filtroHistAte || p.data <= filtroHistAte); });
+  const semPlano = semPlanoTudo.filter(function (r) { return (!filtroHistDe || r.dia >= filtroHistDe) && (!filtroHistAte || r.dia <= filtroHistAte); });
   // Total por dia já ressuprido no Kardex (respeitando o filtro de turno do
   // card acima), pra calcular "quanto foi planejado" por subtração simples:
   // planejado(dia) = total do dia − sem planejamento(dia). Reaproveita a
@@ -2728,17 +2780,6 @@ function blocoMovimentacoes() {
   // credita hoje) sem precisar de nenhuma conta nova.
   const totalDiaKardex = new Map();
   dias.forEach(function (d) { totalDiaKardex.set(d.dia, pecasDoDia(d)); });
-  const seletorPlano = (planoTudo.length || semPlanoTudo.length) ? '<div class="filtros" style="margin-bottom:10px">' +
-    '<span class="rot-filtro">Período</span>' +
-    '<input type="date" value="' + escapar(filtroPlanoDe || '') + '" ' +
-      'style="padding:4px 8px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border);font-size:12px" ' +
-      'onchange="alterarIntervaloPlano(\'de\', this.value)">' +
-    '<span style="color:var(--text-muted);font-size:12px">até</span>' +
-    '<input type="date" value="' + escapar(filtroPlanoAte || '') + '" ' +
-      'style="padding:4px 8px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border);font-size:12px" ' +
-      'onchange="alterarIntervaloPlano(\'ate\', this.value)">' +
-    (filtroPlanoDe || filtroPlanoAte ? '<span class="chip" onclick="limparIntervaloPlano()">Período inteiro do Kardex</span>' : '') +
-  '</div>' : '';
   let blocoPlanejamento = '';
   if (planoTudo.length === 0 && semPlanoTudo.length === 0) {
     blocoPlanejamento = '<div class="card">' +
@@ -2874,10 +2915,17 @@ function blocoMovimentacoes() {
     });
     const porDataSemPlano = new Map();
     semPlano.forEach(function (r) {
-      if (!porDataSemPlano.has(r.dia)) porDataSemPlano.set(r.dia, { dia: r.dia, pecas: 0, familias: [], busca: '' });
+      if (!porDataSemPlano.has(r.dia)) porDataSemPlano.set(r.dia, { dia: r.dia, pecas: 0, familias: [], busca: '', porTurno: {} });
       const grupo = porDataSemPlano.get(r.dia);
       grupo.pecas += r.pecas;
-      grupo.familias.push({ familia_codigo: r.familia_codigo, familia_nome: r.familia_nome, pecas: r.pecas });
+      // Quebra por turno — o que cada turno ressupriu sem nenhuma PFA cobrindo
+      // (pedido do usuário, 05/09/2026). r.por_turno pode faltar num snapshot
+      // salvo antes dessa mudança (fallback sem histórico); vira {} nesse caso.
+      const porTurnoR = r.por_turno || {};
+      ORDEM_TURNO.forEach(function (t) {
+        if (porTurnoR[t]) grupo.porTurno[t] = (grupo.porTurno[t] || 0) + porTurnoR[t];
+      });
+      grupo.familias.push({ familia_codigo: r.familia_codigo, familia_nome: r.familia_nome, pecas: r.pecas, por_turno: porTurnoR });
       grupo.busca += ' ' + r.familia_codigo + ' ' + r.familia_nome + ' ' + formatarDataSimples(r.dia) + ' ' +
         r.dia + ' ' + r.pecas + ' ' + fmtInt(r.pecas);
     });
@@ -2914,6 +2962,20 @@ function blocoMovimentacoes() {
       return '<th class="' + (classe || '') + '" style="cursor:pointer;user-select:none" ' +
         'onclick="ordenarSemPlano(\'' + campo + '\')" title="Ordenar por ' + rotulo + '">' + rotulo + setaOrdem(campo) + '</th>';
     }
+    // O que cada TURNO ressupriu sem nenhuma PFA cobrindo — pedido do
+    // usuário, 05/09/2026. Só mostra os turnos que realmente ressupriram
+    // algo sem planejamento; some por completo quando não há quebra (ex.:
+    // fallback sem histórico, snapshot salvo antes dessa mudança).
+    function pillsPorTurno(porTurno) {
+      const turnos = ORDEM_TURNO.filter(function (t) { return porTurno && porTurno[t]; });
+      if (!turnos.length) return '';
+      return '<div style="margin-top:3px;font-size:10px">' +
+        turnos.map(function (t) {
+          return '<span style="color:var(' + COR_TURNO[t] + ')">' + ROT_TURNO[t] + '</span> ' +
+            '<span style="color:var(--text-muted)">' + fmtInt(porTurno[t]) + '</span>';
+        }).join(' <span style="color:var(--text-muted)">·</span> ') +
+      '</div>';
+    }
 
     let linhasSemPlano = '';
     gruposSemPlano.forEach(function (g) {
@@ -2932,7 +2994,7 @@ function blocoMovimentacoes() {
         '<td>' + (planejadasDia === null ? '—' :
           '<span style="color:var(--olive)">' + fmtInt(planejadasDia) + '</span>' +
           (pctPlanejadoDia !== null ? ' <span style="color:var(--text-muted);font-size:11px">(' + fmtPct(pctPlanejadoDia) + ' do dia)</span>' : '')) + '</td>' +
-        '<td><strong>' + fmtInt(g.pecas) + '</strong></td></tr>';
+        '<td><strong>' + fmtInt(g.pecas) + '</strong>' + pillsPorTurno(g.porTurno) + '</td></tr>';
       if (!aberto) return;
       g.familias.forEach(function (f) {
         // % do total sem planejamento DESSA família (em todas as datas) —
@@ -2942,23 +3004,21 @@ function blocoMovimentacoes() {
         const pctDaFamilia = totalFamilia > 0 ? (f.pecas / totalFamilia) * 100 : 0;
         linhasSemPlano += '<tr class="n2"><th class="esq ind-2">' + escapar(f.familia_codigo) + ' — ' +
             escapar(f.familia_nome) + ' · ' + fmtPct(pctDaFamilia) + ' da família</th>' +
-          '<td>—</td><td>—</td><td>' + fmtInt(f.pecas) + '</td></tr>';
+          '<td>—</td><td>—</td><td>' + fmtInt(f.pecas) + pillsPorTurno(f.por_turno) + '</td></tr>';
       });
     });
     const totalPecasSemPlanoFiltrado = gruposSemPlano.reduce(function (s, g) { return s + g.pecas; }, 0);
 
     blocoPlanejamento = '<div class="card">' +
-      '<div class="section-title">Ressuprimento planejado × realizado' +
-        ((filtroPlanoDe || filtroPlanoAte) ? ' — ' + escapar(filtroPlanoDe ? formatarDataSimples(filtroPlanoDe) : 'início') +
-          ' a ' + escapar(filtroPlanoAte ? formatarDataSimples(filtroPlanoAte) : 'fim') : '') +
-      '</div>' +
+      '<div class="section-title">Ressuprimento planejado × realizado — ' + escapar(periodo) + '</div>' +
       '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
         'Cruza as PFAs lançadas em <strong>Admin › Planejamento</strong> com o que o Kardex mostra ' +
         'chegando no Picking — D0 no próprio dia, D-1 quando o turno da noite adianta. Turno sem ' +
         'nenhuma PFA lançada aparece com "—" (não é falha, é ausência de lançamento). A coluna Peças ' +
         'só existe por família e por turno: o Kardex não identifica o que cada PFA ressupriu ' +
-        'individualmente, então a PFA sozinha não mostra um número.</p>' +
-      seletorPlano +
+        'individualmente, então a PFA sozinha não mostra um número.' +
+        (usaHistoricoPlano ? '' : ' Sem histórico gravado neste intervalo ainda — mostrando o último Kardex processado.') +
+      '</p>' +
       kpisPlano +
       (plano.length ? '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
         '<th class="esq">Turno › Família › PFA</th><th>Status</th><th>Peças</th>' +
