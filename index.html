@@ -1136,15 +1136,20 @@ tr.total > th, tr.total > td {
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
           O que a assistente de planejamento está delegando pra operação ressuprir — uma linha por
           PFA, com a família (pra cruzar por segmento) e o turno/data que deve atender. Cola direto
-          da planilha (PFA e Família, uma dupla por linha, separadas por tab, ; ou ,).
-          Cruzado com o Kardex pra classificar D0 (ressuprido no dia certo), D-1 (adiantado) ou sem
-          planejamento (ressuprido sem ninguém ter pedido).
+          da planilha, separado por tab, ; ou , — em dois formatos, e dá pra misturar os dois no
+          mesmo lote:
         </p>
+        <ul style="font-size:12px;color:var(--text-muted);margin:-6px 0 14px 18px;padding:0">
+          <li><strong>PFA;FAMÍLIA</strong> — usa o Turno e a Data escolhidos abaixo pra linha inteira.</li>
+          <li><strong>PFA;FAMÍLIA;TURNO;DATA</strong> — cada linha leva seu próprio turno e data,
+            pra colar PFAs de turnos e dias diferentes de uma vez só. Turno aceita T01/T02/T03 (ou
+            1/2/3); Data aceita AAAA-MM-DD ou DD/MM/AAAA.</li>
+        </ul>
         <textarea id="textoPlanejamentoPfa" rows="6" style="width:100%;font-family:monospace;font-size:12px"
-          placeholder="196830;103&#10;197293;068&#10;197330;043"></textarea>
+          placeholder="196830;103&#10;197293;068;T02;03/09/2026&#10;197330;043;T01;2026-09-04"></textarea>
         <div style="display:flex;gap:12px;align-items:flex-end;margin-top:10px;flex-wrap:wrap">
           <div>
-            <label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Turno</label>
+            <label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Turno (linhas de 2 campos)</label>
             <select id="turnoPlanejamentoPfa" style="padding:7px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)">
               <option value="T01">T01 (05:00–14:47)</option>
               <option value="T02">T02 (14:48–00:15)</option>
@@ -1152,7 +1157,7 @@ tr.total > th, tr.total > td {
             </select>
           </div>
           <div>
-            <label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Data (ressuprir para)</label>
+            <label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Data (linhas de 2 campos)</label>
             <input type="date" id="dataPlanejamentoPfa" style="padding:6px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)">
           </div>
           <button class="btn-mini" id="btnSalvarPlanejamentoPfa">Salvar lançamento</button>
@@ -3643,28 +3648,59 @@ document.getElementById('btnProcessarAtivos').addEventListener('click', async fu
 });
 
 /* ---------- Planejamento de Ressuprimento (PFA por turno) ---------- */
+// Normaliza turno colado como "T01"/"t1"/"1"/"01" pro formato canônico do
+// banco (T01/T02/T03). Devolve null se não reconhecer.
+function normalizarTurnoColado(txt) {
+  const t = (txt || '').trim().toUpperCase().replace(/^T0?/, '');
+  return (t === '1' || t === '2' || t === '3') ? 'T0' + t : null;
+}
+// Normaliza data colada em AAAA-MM-DD (já no formato do <input type=date>)
+// ou DD/MM/AAAA e DD-MM-AAAA (formato mais comum de planilha BR). Devolve
+// null se não reconhecer — nunca adivinha um formato ambíguo.
+function normalizarDataColada(txt) {
+  const s = (txt || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (!m) return null;
+  const dia = m[1].padStart(2, '0'), mes = m[2].padStart(2, '0');
+  return m[3] + '-' + mes + '-' + dia;
+}
 document.getElementById('btnSalvarPlanejamentoPfa').addEventListener('click', async function () {
   const log = document.getElementById('logPlanejamentoPfa');
   const escrever = function (msg) { log.textContent += msg + '\n'; log.scrollTop = log.scrollHeight; };
   log.textContent = '';
   const btn = document.getElementById('btnSalvarPlanejamentoPfa');
-  const turno = document.getElementById('turnoPlanejamentoPfa').value;
-  const data = document.getElementById('dataPlanejamentoPfa').value;
-  if (!data) { escrever('Escolha a data antes de salvar.'); return; }
+  const turnoPadrao = document.getElementById('turnoPlanejamentoPfa').value;
+  const dataPadrao = document.getElementById('dataPlanejamentoPfa').value;
 
-  // Cada linha vira "PFA;FAMILIA" — aceita tab, ; ou , como separador (cola
-  // direto de duas colunas de planilha sem precisar reformatar).
+  // Cada linha vira "PFA;FAMILIA" (usa Turno/Data padrão acima) OU
+  // "PFA;FAMILIA;TURNO;DATA" (turno/data próprios, pra misturar turnos e
+  // dias diferentes no mesmo lote) — aceita tab, ; ou , como separador.
   const texto = document.getElementById('textoPlanejamentoPfa').value;
   const linhas = [];
   let linhasInvalidas = 0;
+  const motivos = new Set();
   texto.split(/\r?\n/).forEach(function (l) {
     if (!l.trim()) return;
     const partes = l.split(/[\t;,]+/).map(function (p) { return p.trim(); }).filter(Boolean);
-    if (partes.length < 2) { linhasInvalidas++; return; }
-    linhas.push({ pfa: partes[0], familia_codigo: partes[1], turno: turno, data: data, criado_em: new Date().toISOString() });
+    if (partes.length < 2) { linhasInvalidas++; motivos.add('faltou a família'); return; }
+
+    const pfa = partes[0], familia = partes[1];
+    let turno, data;
+    if (partes.length >= 4) {
+      turno = normalizarTurnoColado(partes[2]);
+      data = normalizarDataColada(partes[3]);
+      if (!turno) { linhasInvalidas++; motivos.add('turno da linha não reconhecido (' + partes[2] + ')'); return; }
+      if (!data) { linhasInvalidas++; motivos.add('data da linha não reconhecida (' + partes[3] + ')'); return; }
+    } else {
+      turno = turnoPadrao;
+      data = dataPadrao;
+      if (!data) { linhasInvalidas++; motivos.add('sem data — escolha a Data padrão acima ou cole no formato PFA;FAMÍLIA;TURNO;DATA'); return; }
+    }
+    linhas.push({ pfa: pfa, familia_codigo: familia, turno: turno, data: data, criado_em: new Date().toISOString() });
   });
   if (linhas.length === 0) {
-    escrever('Nenhuma linha reconhecida. Formato esperado: PFA;FAMÍLIA, uma dupla por linha.');
+    escrever('Nenhuma linha reconhecida.' + (motivos.size ? ' Motivo: ' + Array.from(motivos).join('; ') + '.' : ''));
     return;
   }
 
@@ -3672,8 +3708,16 @@ document.getElementById('btnSalvarPlanejamentoPfa').addEventListener('click', as
   try {
     const { error } = await supabaseClient.from('ressuprimento_planejamento').insert(linhas);
     if (error) throw error;
-    escrever(linhas.length + ' PFA(s) lançadas pro turno ' + turno + ' em ' + formatarDataSimples(data) + '.' +
-      (linhasInvalidas ? ' (' + linhasInvalidas + ' linha(s) ignorada(s) — faltou a família.)' : ''));
+    // Resumo por turno+data pra confirmar visualmente que o lote misto caiu
+    // nas datas/turnos certos, em vez de assumir tudo igual.
+    const porGrupo = new Map();
+    linhas.forEach(function (r) {
+      const chave = r.turno + ' · ' + formatarDataSimples(r.data);
+      porGrupo.set(chave, (porGrupo.get(chave) || 0) + 1);
+    });
+    const resumo = Array.from(porGrupo.entries()).map(function (par) { return par[1] + ' em ' + par[0]; }).join(', ');
+    escrever(linhas.length + ' PFA(s) lançadas: ' + resumo + '.' +
+      (linhasInvalidas ? ' (' + linhasInvalidas + ' linha(s) ignorada(s) — ' + Array.from(motivos).join('; ') + '.)' : ''));
     document.getElementById('textoPlanejamentoPfa').value = '';
     if (ressuprimentoCarregado) await carregarRessuprimento();
   } catch (e) {
