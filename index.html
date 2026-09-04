@@ -1963,16 +1963,18 @@ function exportarCSV() {
    material em validação (FIFO).
    ============================================================ */
 let filtroRessuprimento = 'picking';        // 'picking' | 'pulmao' | 'todos'
-let filtroSegmentoRessuprimento = null;     // null = Todos | um dos 6 segmentos da gestão
-let filtroTurnoRessuprimento = null;        // null = todos os turnos | T01 | T02 | T03
+let filtroSegmentoRessuprimento = new Set();  // vazio = Todos | multi-seleção dos segmentos da gestão
+let filtroTurnoRessuprimento = new Set();   // vazio = todos os turnos | multi-seleção de T01/T02/T03
 // Filtro de segmento do card "Ressuprimento por dia" — mesmo padrão visual
 // do chip de Segmento da tela Estoque, mas recorta o gráfico/tabela de dias
 // abaixo (05/09/2026). Só funciona com o histórico contínuo (cada linha já
 // vem com segmento); sem histórico gravado ainda, os chips nem aparecem —
 // o snapshot único de um Kardex não guarda segmento por dia, só o agregado.
-let filtroSegmentoRessuprimentoDia = null;
+let filtroSegmentoRessuprimentoDia = new Set();   // vazio = todos os segmentos | multi-seleção (05/09/2026)
 function alternarFiltroSegmentoRessuprimentoDia(seg) {
-  filtroSegmentoRessuprimentoDia = (filtroSegmentoRessuprimentoDia === seg) ? null : seg;
+  if (seg === null) filtroSegmentoRessuprimentoDia.clear();
+  else if (filtroSegmentoRessuprimentoDia.has(seg)) filtroSegmentoRessuprimentoDia.delete(seg);
+  else filtroSegmentoRessuprimentoDia.add(seg);
   renderizarRessuprimento();
 }
 
@@ -1982,7 +1984,7 @@ function alternarFiltroSegmentoRessuprimentoDia(seg) {
    classificação de endereço (Sujeira/Perca/Baixar Ressuprimento/...), busca
    livre e limite de linhas carregadas — a tabela em si sempre mostra só
    ~10 linhas por vez e rola por dentro (ver .tabela-rolavel no CSS). */
-let filtroClassifValidacao = null;    // null = Todas | um classif_rotulo específico
+let filtroClassifValidacao = new Set();    // vazio = Todas | multi-seleção de classif_rotulo
 let filtroTextoValidacao = '';
 let limiteValidacao = 100;            // quantas linhas carregar na tabela (não afeta o CSV)
 let ordemValidacao = { campo: 'qtd', direcao: 'desc' };
@@ -2074,7 +2076,9 @@ function ordenarSemPlano(campo) {
 
 /* ---------- "B.O. em endereço transitório/validação" ---------- */
 function alternarFiltroClassifValidacao(classif) {
-  filtroClassifValidacao = (filtroClassifValidacao === classif) ? null : classif;
+  if (classif === null) filtroClassifValidacao.clear();
+  else if (filtroClassifValidacao.has(classif)) filtroClassifValidacao.delete(classif);
+  else filtroClassifValidacao.add(classif);
   renderizarEstoqueOperacao();
 }
 function alterarLimiteValidacao(valor) {
@@ -2209,12 +2213,14 @@ async function carregarRessuprimento() {
 
 function alternarFiltroRessuprimento(f) {
   filtroRessuprimento = f;
-  filtroSegmentoRessuprimento = null; // trocar de arquivo reinicia o recorte por segmento
+  filtroSegmentoRessuprimento.clear(); // trocar de arquivo reinicia o recorte por segmento
   abertosRessuprimento.clear();
   renderizarEstoqueOperacao();
 }
 function alternarFiltroSegmentoRessuprimento(seg) {
-  filtroSegmentoRessuprimento = (filtroSegmentoRessuprimento === seg) ? null : seg;
+  if (seg === null) filtroSegmentoRessuprimento.clear();
+  else if (filtroSegmentoRessuprimento.has(seg)) filtroSegmentoRessuprimento.delete(seg);
+  else filtroSegmentoRessuprimento.add(seg);
   abertosRessuprimento.clear();
   renderizarEstoqueOperacao();
 }
@@ -2230,13 +2236,13 @@ function alternarNoRessuprimento(chave) {
    unidade duas vezes. null = Todos, devolve a árvore inteira sem recortar. */
 function arvoreFiltradaRessuprimento(p) {
   const arvore = (p && p['arvore_' + filtroRessuprimento]) || [];
-  const seg = filtroSegmentoRessuprimento;
-  if (!seg) return arvore;
+  const segs = filtroSegmentoRessuprimento;
+  if (!segs.size) return arvore;
   const marcas = [];
   arvore.forEach(function (m) {
     const segmentos = [];
     (m.segmentos || []).forEach(function (s) {
-      const familias = (s.familias || []).filter(function (f) { return f.segmento_macro === seg; });
+      const familias = (s.familias || []).filter(function (f) { return segs.has(f.segmento_macro); });
       if (!familias.length) return;
       const qtd = familias.reduce(function (a, f) { return a + f.qtd; }, 0);
       const skus = familias.reduce(function (a, f) { return a + f.skus; }, 0);
@@ -2333,18 +2339,34 @@ function renderizarEstoqueOperacao(p) {
   const segmentosDisponiveis = p['por_segmento_macro_' + filtroRessuprimento] || [];
   let chipsSegmento = '<div class="filtros">' +
     '<span class="rot-filtro">Segmento</span>' +
-    '<span class="chip' + (!filtroSegmentoRessuprimento ? ' on' : '') + '" onclick="alternarFiltroSegmentoRessuprimento(null)">Todos</span>';
+    '<span class="chip' + (!filtroSegmentoRessuprimento.size ? ' on' : '') + '" onclick="alternarFiltroSegmentoRessuprimento(null)">Todos</span>';
   segmentosDisponiveis.forEach(function (s) {
-    chipsSegmento += '<span class="chip' + (filtroSegmentoRessuprimento === s.codigo ? ' on' : '') +
+    chipsSegmento += '<span class="chip' + (filtroSegmentoRessuprimento.has(s.codigo) ? ' on' : '') +
       '" onclick="alternarFiltroSegmentoRessuprimento(\'' + escaparJs(s.codigo) + '\')">' + escapar(s.nome) + '</span>';
   });
+  if (filtroSegmentoRessuprimento.size) {
+    chipsSegmento += '<span class="chip" style="color:var(--red)" onclick="alternarFiltroSegmentoRessuprimento(null)">✕ Limpar filtro</span>';
+  }
   chipsSegmento += '</div>';
 
-  /* ---------- cards de SKU/endereço — respeitam Picking/Pulmão/Todos + segmento ---------- */
+  /* ---------- cards de SKU/endereço — respeitam Picking/Pulmão/Todos + segmento ----------
+     Com multi-seleção (05/09/2026), soma os segmentos escolhidos: skus/endereços/peças
+     somam certo entre segmentos (cada SKU pertence a um só segmento_macro); a média
+     de peças/endereço é recalculada em cima da soma, não é a média das médias. */
   const statsBase = p['stats_' + filtroRessuprimento] || { geral: {}, por_segmento: {} };
-  const stats = filtroSegmentoRessuprimento
-    ? (statsBase.por_segmento[filtroSegmentoRessuprimento] || { skus_distintos: 0, enderecos_distintos: 0, pecas: 0, media_pecas_por_endereco: 0 })
-    : (statsBase.geral || {});
+  let stats = statsBase.geral || {};
+  if (filtroSegmentoRessuprimento.size) {
+    const somaSeg = { skus_distintos: 0, enderecos_distintos: 0, pecas: 0 };
+    filtroSegmentoRessuprimento.forEach(function (seg) {
+      const s = statsBase.por_segmento[seg];
+      if (!s) return;
+      somaSeg.skus_distintos += s.skus_distintos || 0;
+      somaSeg.enderecos_distintos += s.enderecos_distintos || 0;
+      somaSeg.pecas += s.pecas || 0;
+    });
+    somaSeg.media_pecas_por_endereco = somaSeg.enderecos_distintos > 0 ? somaSeg.pecas / somaSeg.enderecos_distintos : 0;
+    stats = somaSeg;
+  }
   const kpisSku = '<div class="kpi-row">' +
     '<div class="kpi"><div class="rot">SKUs distintos com estoque</div>' +
       '<div class="val forte">' + fmtInt(stats.skus_distintos) + '</div>' +
@@ -2419,7 +2441,7 @@ function renderizarEstoqueOperacao(p) {
   let barrasSegmento = '';
   segmentosDisponiveis.forEach(function (s) {
     const larg = maxSeg > 0 ? s.qtd / maxSeg * 100 : 0;
-    barrasSegmento += '<div class="bar-item' + (filtroSegmentoRessuprimento === s.codigo ? ' on' : '') + '">' +
+    barrasSegmento += '<div class="bar-item' + (filtroSegmentoRessuprimento.has(s.codigo) ? ' on' : '') + '">' +
       '<div class="nome">' + escapar(s.nome) + '</div>' +
       '<div class="trilho"><div class="preench" style="width:' + larg + '%;background:var(--accent)"></div></div>' +
       '<div class="num">' + fmtInt(s.qtd) + ' · ' + fmtPct(totalSegmento ? s.qtd / totalSegmento * 100 : 0) + '</div>' +
@@ -2503,18 +2525,21 @@ function renderizarEstoqueOperacao(p) {
     const classificacoes = Array.from(new Set(validacaoTudo.map(function (v) { return v.classificacao; }))).sort();
     let chipsClassif = '<div class="filtros">' +
       '<span class="rot-filtro">Classificação</span>' +
-      '<span class="chip' + (!filtroClassifValidacao ? ' on' : '') +
+      '<span class="chip' + (!filtroClassifValidacao.size ? ' on' : '') +
         '" onclick="alternarFiltroClassifValidacao(null)">Todas</span>';
     classificacoes.forEach(function (c) {
-      chipsClassif += '<span class="chip' + (filtroClassifValidacao === c ? ' on' : '') +
+      chipsClassif += '<span class="chip' + (filtroClassifValidacao.has(c) ? ' on' : '') +
         '" onclick="alternarFiltroClassifValidacao(\'' + escaparJs(c) + '\')">' + escapar(c) + '</span>';
     });
+    if (filtroClassifValidacao.size) {
+      chipsClassif += '<span class="chip" style="color:var(--red)" onclick="alternarFiltroClassifValidacao(null)">✕ Limpar filtro</span>';
+    }
     chipsClassif += '</div>';
 
     /* ---------- filtro + busca + ordenação ---------- */
     const buscaBO = filtroTextoValidacao.trim().toLowerCase();
-    let filtradasBO = filtroClassifValidacao
-      ? validacaoTudo.filter(function (v) { return v.classificacao === filtroClassifValidacao; })
+    let filtradasBO = filtroClassifValidacao.size
+      ? validacaoTudo.filter(function (v) { return filtroClassifValidacao.has(v.classificacao); })
       : validacaoTudo;
     if (buscaBO) {
       filtradasBO = filtradasBO.filter(function (v) {
@@ -2683,6 +2708,11 @@ const ROT_TURNO = { T01: 'T01', T02: 'T02', T03: 'T03' };
 const JANELA_TURNO = { T01: '05:00–14:47', T02: '14:48–00:15', T03: '00:16–04:59' };
 const COR_TURNO = { T01: '--accent', T02: '--brand-miz', T03: '--olive' };
 const ORDEM_TURNO = ['T01', 'T02', 'T03'];
+/* Rótulo pra exibir um conjunto de turnos selecionados num título/legenda
+   ("T01+T02"), respeitando ORDEM_TURNO em vez da ordem de inserção do Set. */
+function rotuloTurnosSelecionados(set) {
+  return ORDEM_TURNO.filter(function (t) { return set.has(t); }).map(function (t) { return ROT_TURNO[t]; }).join('+');
+}
 
 /* Re-renderiza só o bloco de "Ressuprimento por dia" (tela Ressuprimento) —
    equivalente ao render() da tela Estoque, mas pro que virou o próprio
@@ -2694,21 +2724,29 @@ function renderizarRessuprimento() {
   if (alvo) alvo.innerHTML = blocoMovimentacoes();
 }
 
+/* Multi-seleção (05/09/2026, pedido do usuário): t === null limpa (volta
+   pra "Todos"); qualquer outro valor entra/sai do conjunto selecionado.
+   Conjunto vazio sempre significa "sem recorte" (mesmo efeito de "Todos"). */
 function alternarFiltroTurnoRessuprimento(t) {
-  filtroTurnoRessuprimento = (filtroTurnoRessuprimento === t) ? null : t;
+  if (t === null) filtroTurnoRessuprimento.clear();
+  else if (filtroTurnoRessuprimento.has(t)) filtroTurnoRessuprimento.delete(t);
+  else filtroTurnoRessuprimento.add(t);
   renderizarRessuprimento();
 }
 
-/* Peças do dia respeitando o filtro de turno (null = soma todos). */
+/* Peças do dia respeitando o filtro de turno (conjunto vazio = soma todos;
+   com 2+ turnos selecionados, soma só os selecionados). */
 function pecasDoDia(d) {
-  if (!filtroTurnoRessuprimento) return d.pecas;
-  const t = d.turnos[filtroTurnoRessuprimento];
-  return t ? t.pecas : 0;
+  if (!filtroTurnoRessuprimento.size) return d.pecas;
+  let soma = 0;
+  filtroTurnoRessuprimento.forEach(function (t) { if (d.turnos[t]) soma += d.turnos[t].pecas; });
+  return soma;
 }
 function movimentosDoDia(d) {
-  if (!filtroTurnoRessuprimento) return d.movimentos;
-  const t = d.turnos[filtroTurnoRessuprimento];
-  return t ? t.movimentos : 0;
+  if (!filtroTurnoRessuprimento.size) return d.movimentos;
+  let soma = 0;
+  filtroTurnoRessuprimento.forEach(function (t) { if (d.turnos[t]) soma += d.turnos[t].movimentos; });
+  return soma;
 }
 
 /* Linhas gravadas ANTES do ajuste de turno real por colaborador (04/09/2026)
@@ -2746,29 +2784,25 @@ function diasDoHistorico(linhas) {
    gravado (a coluna cai de volta pro "—" de antes, sem regressão). Mutação
    direta nos objetos de `dias` de propósito — mesmo padrão de uso único
    (renderiza e descarta) das outras funções deste arquivo. */
-function anexarOperadoresPorDia(dias, filtroTurno) {
+function anexarOperadoresPorDia(dias, filtroTurnoSet) {
   if (!historicoOperadorRessuprimento.length) return null;
+  const turnosConsiderados = (filtroTurnoSet && filtroTurnoSet.size) ? Array.from(filtroTurnoSet) : ORDEM_TURNO;
   const operadoresPorDiaTurno = new Map(); // "dia|turno" -> Set(login)
   const todosOperadores = new Set();
   historicoOperadorRessuprimento.forEach(function (o) {
-    if (filtroTurno && o.turno !== filtroTurno) return;
+    if (turnosConsiderados.indexOf(o.turno) === -1) return;
     const chave = o.dia + '|' + o.turno;
     if (!operadoresPorDiaTurno.has(chave)) operadoresPorDiaTurno.set(chave, new Set());
     operadoresPorDiaTurno.get(chave).add(o.login);
     todosOperadores.add(o.login);
   });
   dias.forEach(function (d) {
-    if (filtroTurno) {
-      const set = operadoresPorDiaTurno.get(d.dia + '|' + filtroTurno);
-      d.operadores = set ? set.size : 0;
-    } else {
-      const uniao = new Set();
-      ORDEM_TURNO.forEach(function (t) {
-        const set = operadoresPorDiaTurno.get(d.dia + '|' + t);
-        if (set) set.forEach(function (l) { uniao.add(l); });
-      });
-      d.operadores = uniao.size;
-    }
+    const uniao = new Set();
+    turnosConsiderados.forEach(function (t) {
+      const set = operadoresPorDiaTurno.get(d.dia + '|' + t);
+      if (set) set.forEach(function (l) { uniao.add(l); });
+    });
+    d.operadores = uniao.size;
   });
   return todosOperadores.size;
 }
@@ -2822,8 +2856,8 @@ function blocoMovimentacoes() {
   // agregar por dia/turno — só funciona com histórico (cada linha já vem
   // com segmento); sem histórico, o snapshot único não tem segmento por
   // dia, então o filtro fica sem efeito (chips nem aparecem nesse caso).
-  const historicoParaDias = filtroSegmentoRessuprimentoDia
-    ? historicoRessuprimento.filter(function (h) { return h.segmento === filtroSegmentoRessuprimentoDia; })
+  const historicoParaDias = filtroSegmentoRessuprimentoDia.size
+    ? historicoRessuprimento.filter(function (h) { return filtroSegmentoRessuprimentoDia.has(h.segmento); })
     : historicoRessuprimento;
   const dias = usaHistorico ? diasDoHistorico(historicoParaDias) : (m ? m.por_dia || [] : []);
   const porTurnoFonte = usaHistorico ? porTurnoDoHistorico(historicoParaDias) : (m ? m.por_turno || [] : []);
@@ -2838,8 +2872,8 @@ function blocoMovimentacoes() {
   // turno mudava os KPIs e o gráfico mas a composição continuava somando os
   // 3 turnos (pedido do usuário, 05/09/2026). No fallback sem histórico não
   // dá pra recortar por turno: o snapshot guarda por_segmento já somado.
-  const historicoDoTurno = filtroTurnoRessuprimento
-    ? historicoRessuprimento.filter(function (h) { return normalizarTurnoLegado(h.turno) === filtroTurnoRessuprimento; })
+  const historicoDoTurno = filtroTurnoRessuprimento.size
+    ? historicoRessuprimento.filter(function (h) { return filtroTurnoRessuprimento.has(normalizarTurnoLegado(h.turno)); })
     : historicoRessuprimento;
   const porSegmentoFonte = usaHistorico ? porSegmentoDoHistorico(historicoDoTurno) : (m ? m.por_segmento || [] : []);
 
@@ -2862,18 +2896,21 @@ function blocoMovimentacoes() {
   const diasComMovimento = dias.filter(function (d) { return pecasDoDia(d) > 0; }).length;
   const mediaDia = diasComMovimento > 0 ? pecas / diasComMovimento : 0;
 
-  /* ---------- chips de turno ---------- */
+  /* ---------- chips de turno (multi-seleção, 05/09/2026) ---------- */
   let chipsTurno = '<div class="filtros">' +
     '<span class="rot-filtro">Turno</span>' +
-    '<span class="chip' + (!filtroTurnoRessuprimento ? ' on' : '') +
+    '<span class="chip' + (!filtroTurnoRessuprimento.size ? ' on' : '') +
       '" onclick="alternarFiltroTurnoRessuprimento(null)">Todos</span>';
   ORDEM_TURNO.forEach(function (t) {
     const dados = (porTurnoFonte || []).filter(function (x) { return x.turno === t; })[0];
     if (!dados) return;
-    chipsTurno += '<span class="chip' + (filtroTurnoRessuprimento === t ? ' on' : '') +
+    chipsTurno += '<span class="chip' + (filtroTurnoRessuprimento.has(t) ? ' on' : '') +
       '" title="' + JANELA_TURNO[t] + '" onclick="alternarFiltroTurnoRessuprimento(\'' + t + '\')">' +
       ROT_TURNO[t] + '</span>';
   });
+  if (filtroTurnoRessuprimento.size) {
+    chipsTurno += '<span class="chip" style="color:var(--red)" onclick="alternarFiltroTurnoRessuprimento(null)">✕ Limpar filtro</span>';
+  }
   chipsTurno += '</div>';
 
   /* ---------- chips de segmento (mesmo padrão da tela Estoque) ----------
@@ -2890,13 +2927,16 @@ function blocoMovimentacoes() {
     const segmentosOrdenados = Array.from(segmentosDoDia.entries()).sort(function (a, b) { return b[1] - a[1]; });
     chipsSegmentoDia = '<div class="filtros">' +
       '<span class="rot-filtro">Segmento</span>' +
-      '<span class="chip' + (!filtroSegmentoRessuprimentoDia ? ' on' : '') +
+      '<span class="chip' + (!filtroSegmentoRessuprimentoDia.size ? ' on' : '') +
         '" onclick="alternarFiltroSegmentoRessuprimentoDia(null)">Todos</span>';
     segmentosOrdenados.forEach(function (par) {
       const seg = par[0];
-      chipsSegmentoDia += '<span class="chip' + (filtroSegmentoRessuprimentoDia === seg ? ' on' : '') +
+      chipsSegmentoDia += '<span class="chip' + (filtroSegmentoRessuprimentoDia.has(seg) ? ' on' : '') +
         '" onclick="alternarFiltroSegmentoRessuprimentoDia(\'' + escaparJs(seg) + '\')">' + escapar(seg) + '</span>';
     });
+    if (filtroSegmentoRessuprimentoDia.size) {
+      chipsSegmentoDia += '<span class="chip" style="color:var(--red)" onclick="alternarFiltroSegmentoRessuprimentoDia(null)">✕ Limpar filtro</span>';
+    }
     chipsSegmentoDia += '</div>';
   }
 
@@ -2904,7 +2944,7 @@ function blocoMovimentacoes() {
   const kpis = '<div class="kpi-row">' +
     '<div class="kpi"><div class="rot">Peças ressupridas</div>' +
       '<div class="val forte">' + fmtInt(pecas) + '</div>' +
-      '<div class="sub">' + (filtroTurnoRessuprimento ? ROT_TURNO[filtroTurnoRessuprimento] + ' · ' : '') +
+      '<div class="sub">' + (filtroTurnoRessuprimento.size ? rotuloTurnosSelecionados(filtroTurnoRessuprimento) + ' · ' : '') +
       fmtInt(diasComMovimento) + ' dias com movimento</div></div>' +
     '<div class="kpi"><div class="rot">Movimentos</div>' +
       '<div class="val forte">' + fmtInt(movimentos) + '</div>' +
@@ -2928,7 +2968,7 @@ function blocoMovimentacoes() {
     const alturaTotal = maxDia > 0 ? (totalDia / maxDia) * 100 : 0;
     let pilha = '';
     ORDEM_TURNO.forEach(function (t) {
-      if (filtroTurnoRessuprimento && t !== filtroTurnoRessuprimento) return;
+      if (filtroTurnoRessuprimento.size && !filtroTurnoRessuprimento.has(t)) return;
       const dt = d.turnos[t];
       if (!dt || dt.pecas <= 0) return;
       const parte = totalDia > 0 ? (dt.pecas / totalDia) * 100 : 0;
@@ -3326,7 +3366,7 @@ function blocoMovimentacoes() {
   '</div>' +
   '<div class="card">' +
     '<div class="section-title">Composição do ressuprimento por segmento — ' + escapar(periodo) +
-      (filtroTurnoRessuprimento ? ' · ' + ROT_TURNO[filtroTurnoRessuprimento] : '') + '</div>' +
+      (filtroTurnoRessuprimento.size ? ' · ' + rotuloTurnosSelecionados(filtroTurnoRessuprimento) : '') + '</div>' +
     '<div class="bar-list">' + barrasSegMov + '</div>' +
     avisoSemFamilia +
   '</div>' +
@@ -3338,8 +3378,8 @@ function exportarCSVMovimentacoes() {
   const usaHistorico = historicoRessuprimento && historicoRessuprimento.length > 0;
   // Mesmo recorte de segmento que a tabela na tela usa (05/09/2026) — o CSV
   // nunca deve exportar mais linhas do que o que está filtrado na tela.
-  const historicoParaExportar = filtroSegmentoRessuprimentoDia
-    ? historicoRessuprimento.filter(function (h) { return h.segmento === filtroSegmentoRessuprimentoDia; })
+  const historicoParaExportar = filtroSegmentoRessuprimentoDia.size
+    ? historicoRessuprimento.filter(function (h) { return filtroSegmentoRessuprimentoDia.has(h.segmento); })
     : historicoRessuprimento;
   const dias = usaHistorico ? diasDoHistorico(historicoParaExportar) : (m ? m.por_dia || [] : []);
   if (dias.length === 0) return;
@@ -3369,7 +3409,7 @@ function exportarCSVRessuprimento() {
   const p = window._snapshotRessuprimento;
   if (!p) return;
   const arvore = arvoreFiltradaRessuprimento(p);
-  const rotSeg = filtroSegmentoRessuprimento || 'Todos';
+  const rotSeg = filtroSegmentoRessuprimento.size ? Array.from(filtroSegmentoRessuprimento).join('+') : 'Todos';
   const linhas = [['Filtro', 'Segmento (filtro)', 'Nivel', 'Marca', 'Segmento', 'Familia', 'Qtd', 'SKUs']];
   arvore.forEach(function (m) {
     linhas.push([filtroRessuprimento, rotSeg, '1', m.nome, '', '', m.qtd, m.skus]);
@@ -3398,8 +3438,8 @@ function exportarCSVRessuprimento() {
 function exportarCSVValidacao() {
   const p = window._snapshotRessuprimento;
   if (!p || !(p.validacao || []).length) return;
-  let linhasFiltro = filtroClassifValidacao
-    ? p.validacao.filter(function (v) { return v.classificacao === filtroClassifValidacao; })
+  let linhasFiltro = filtroClassifValidacao.size
+    ? p.validacao.filter(function (v) { return filtroClassifValidacao.has(v.classificacao); })
     : p.validacao;
   const busca = filtroTextoValidacao.trim().toLowerCase();
   if (busca) {
