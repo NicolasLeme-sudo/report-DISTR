@@ -2003,6 +2003,11 @@ let filtroHistAte = null;  // 'AAAA-MM-DD'
 let historicoFamiliaRessuprimento = [];
 let planejamentoTudo = [];       // ressuprimento_planejamento inteira (persistente, não filtrada por data)
 let mapaFamiliasGlobal = new Map(); // dim_familias, carregado uma vez por sessão da tela
+// Histórico de QUEM trabalhou (ressuprimento_operador_diario), mesmo
+// intervalo do gráfico — alimenta a coluna "Operadores" quando a fonte é o
+// histórico acumulado (05/09/2026, achado pelo usuário: sempre mostrava
+// "—" porque o histórico agregado nunca guardou login por dia/turno).
+let historicoOperadorRessuprimento = [];
 function hojeISO() {
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -2134,6 +2139,24 @@ async function carregarHistoricoFamiliaRessuprimento() {
   }
 }
 
+/* Histórico de operadores (ressuprimento_operador_diario), mesmo intervalo
+   do gráfico — alimenta a coluna "Operadores" com contagem distinta de
+   login por dia (ou por dia+turno, se o chip de Turno estiver ativo).
+   Tabela ausente (migração não rodada) vira lista vazia — a coluna some de
+   volta pro "—" de antes, sem quebrar a tela. */
+async function carregarHistoricoOperadorRessuprimento() {
+  if (!filtroHistDe) filtroHistDe = window.diaISO ? window.diaISO(-9, hojeISO()) : hojeISO();
+  if (!filtroHistAte) filtroHistAte = hojeISO();
+  try {
+    const { data, error } = await supabaseClient.from('ressuprimento_operador_diario')
+      .select('dia, turno, login')
+      .gte('dia', filtroHistDe).lte('dia', filtroHistAte);
+    historicoOperadorRessuprimento = (!error && data) ? data : [];
+  } catch (e) {
+    historicoOperadorRessuprimento = [];
+  }
+}
+
 async function carregarRessuprimento() {
   const alvoEstoqueOp = document.getElementById('estoqueop-conteudo');
   const alvoRessup = document.getElementById('ressuprimento-conteudo');
@@ -2141,7 +2164,7 @@ async function carregarRessuprimento() {
   // Ressuprimento) e são independentes entre si: posição (Picking+Pulmão) é
   // do dia, Kardex é de período. Um pode existir sem o outro — cada tela
   // mostra o que tiver e avisa sobre o que falta, sem depender da outra.
-  const [resPosicao, resMov, , , resPlano, resFam] = await Promise.all([
+  const [resPosicao, resMov, , , , resPlano, resFam] = await Promise.all([
     supabaseClient.from('dashboard_snapshots')
       .select('payload, gerado_em').eq('pagina', 'ressuprimento')
       .order('gerado_em', { ascending: false }).limit(1),
@@ -2150,6 +2173,7 @@ async function carregarRessuprimento() {
       .order('gerado_em', { ascending: false }).limit(1),
     carregarHistoricoRessuprimento(),
     carregarHistoricoFamiliaRessuprimento(),
+    carregarHistoricoOperadorRessuprimento(),
     // Permanente (nunca sobrescrita por upload de Kardex) e o dicionário de
     // famílias — carregados aqui pra permitir reclassificar D0/D-1/pendente/
     // sem-planejamento no intervalo escolhido, cruzando com o histórico
@@ -2714,6 +2738,40 @@ function diasDoHistorico(linhas) {
   });
   return Array.from(porDia.values()).sort(function (a, b) { return a.dia < b.dia ? -1 : 1; });
 }
+/* Anexa `.operadores` (contagem distinta de login) em cada item de `dias`,
+   a partir do histórico de operadores (ressuprimento_operador_diario) —
+   respeita o filtro de turno passado (não segmento: login não pertence a
+   um segmento). Devolve o total de operadores distintos no período inteiro
+   (união de todos os dias), ou null se ainda não há histórico de operador
+   gravado (a coluna cai de volta pro "—" de antes, sem regressão). Mutação
+   direta nos objetos de `dias` de propósito — mesmo padrão de uso único
+   (renderiza e descarta) das outras funções deste arquivo. */
+function anexarOperadoresPorDia(dias, filtroTurno) {
+  if (!historicoOperadorRessuprimento.length) return null;
+  const operadoresPorDiaTurno = new Map(); // "dia|turno" -> Set(login)
+  const todosOperadores = new Set();
+  historicoOperadorRessuprimento.forEach(function (o) {
+    if (filtroTurno && o.turno !== filtroTurno) return;
+    const chave = o.dia + '|' + o.turno;
+    if (!operadoresPorDiaTurno.has(chave)) operadoresPorDiaTurno.set(chave, new Set());
+    operadoresPorDiaTurno.get(chave).add(o.login);
+    todosOperadores.add(o.login);
+  });
+  dias.forEach(function (d) {
+    if (filtroTurno) {
+      const set = operadoresPorDiaTurno.get(d.dia + '|' + filtroTurno);
+      d.operadores = set ? set.size : 0;
+    } else {
+      const uniao = new Set();
+      ORDEM_TURNO.forEach(function (t) {
+        const set = operadoresPorDiaTurno.get(d.dia + '|' + t);
+        if (set) set.forEach(function (l) { uniao.add(l); });
+      });
+      d.operadores = uniao.size;
+    }
+  });
+  return todosOperadores.size;
+}
 function porTurnoDoHistorico(linhas) {
   const mapa = new Map();
   linhas.forEach(function (h) {
@@ -2733,12 +2791,12 @@ function porSegmentoDoHistorico(linhas) {
 }
 function alterarIntervaloHistorico(campo, valor) {
   if (campo === 'de') filtroHistDe = valor; else filtroHistAte = valor;
-  Promise.all([carregarHistoricoRessuprimento(), carregarHistoricoFamiliaRessuprimento()]).then(renderizarRessuprimento);
+  Promise.all([carregarHistoricoRessuprimento(), carregarHistoricoFamiliaRessuprimento(), carregarHistoricoOperadorRessuprimento()]).then(renderizarRessuprimento);
 }
 function usarUltimos10DiasHistorico() {
   filtroHistDe = window.diaISO(-9, hojeISO());
   filtroHistAte = hojeISO();
-  Promise.all([carregarHistoricoRessuprimento(), carregarHistoricoFamiliaRessuprimento()]).then(renderizarRessuprimento);
+  Promise.all([carregarHistoricoRessuprimento(), carregarHistoricoFamiliaRessuprimento(), carregarHistoricoOperadorRessuprimento()]).then(renderizarRessuprimento);
 }
 
 function blocoMovimentacoes() {
@@ -2769,6 +2827,11 @@ function blocoMovimentacoes() {
     : historicoRessuprimento;
   const dias = usaHistorico ? diasDoHistorico(historicoParaDias) : (m ? m.por_dia || [] : []);
   const porTurnoFonte = usaHistorico ? porTurnoDoHistorico(historicoParaDias) : (m ? m.por_turno || [] : []);
+
+  // "Operadores" por dia, a partir do histórico de QUEM trabalhou (ver
+  // anexarOperadoresPorDia) — sem histórico de operador gravado ainda
+  // (migração recente), volta null e a coluna mostra "—" como antes.
+  const totalOperadoresDistintos = usaHistorico ? anexarOperadoresPorDia(dias, filtroTurnoRessuprimento) : null;
   // A composição por segmento segue o MESMO recorte do resto do card: o
   // intervalo de datas já vem aplicado (o histórico é carregado com
   // .gte/.lte), e o filtro de turno é aplicado aqui — sem isso, clicar num
@@ -2910,10 +2973,13 @@ function blocoMovimentacoes() {
     const dados = (porTurnoFonte || []).filter(function (x) { return x.turno === t; })[0];
     totCels += '<td>' + (dados ? fmtInt(dados.pecas) : '—') + '</td>';
   });
+  const operadoresTotalCel = totalOperadoresDistintos !== null
+    ? fmtInt(totalOperadoresDistintos)
+    : (!usaHistorico && m ? fmtInt(m.total.operadores_distintos) : '—');
   linhasDias += '<tr class="total"><th class="esq">TOTAL</th>' + totCels +
     '<td>' + fmtInt(pecas) + '</td>' +
     '<td>' + fmtInt(movimentos) + '</td>' +
-    '<td>' + (!usaHistorico && m ? fmtInt(m.total.operadores_distintos) : '—') + '</td></tr>';
+    '<td>' + operadoresTotalCel + '</td></tr>';
 
   const periodo = usaHistorico
     ? formatarDataSimples(filtroHistDe) + ' a ' + formatarDataSimples(filtroHistAte)
@@ -3277,6 +3343,7 @@ function exportarCSVMovimentacoes() {
     : historicoRessuprimento;
   const dias = usaHistorico ? diasDoHistorico(historicoParaExportar) : (m ? m.por_dia || [] : []);
   if (dias.length === 0) return;
+  if (usaHistorico) anexarOperadoresPorDia(dias, filtroTurnoRessuprimento);
   const linhas = [['Dia', 'T01', 'T02', 'T03', 'Total pecas', 'Movimentos', 'Operadores']];
   dias.forEach(function (d) {
     linhas.push([

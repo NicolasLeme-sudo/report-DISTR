@@ -181,6 +181,15 @@ eq(snapDias.por_dia[0].turnos.T02.pecas, 20, '22:00 do dia 10 cai no T02 (fallba
 eq(snapDias.por_dia[1].turnos.T03.pecas, 30, '03:00 do dia 11 cai no T03');
 eq(snapDias.total.operadores_distintos, 2, 'total de operadores distintos no período');
 
+// historico_diario_operador — uma linha por dia+turno+login distinto, pra
+// alimentar a coluna "Operadores" quando a fonte é o histórico acumulado.
+const operadorPorChave = {};
+snapDias.historico_diario_operador.forEach(function (o) { operadorPorChave[o.dia + '|' + o.turno + '|' + o.login] = o; });
+eq(snapDias.historico_diario_operador.length, 3, '3 combinações distintas de dia+turno+login (EX1 aparece 2x em dias/turnos diferentes, mas cada combinação só uma vez)');
+ok(!!operadorPorChave['2026-08-10|T01|EX1'], 'EX1 no dia 10 turno T01');
+ok(!!operadorPorChave['2026-08-10|T02|EX2'], 'EX2 no dia 10 turno T02');
+ok(!!operadorPorChave['2026-08-11|T03|EX1'], 'EX1 de novo no dia 11 turno T03 (login repetido, dia diferente = outra linha)');
+
 /* ------------------------------------------------------------------ */
 console.log('\n=== turno real do colaborador (dim_colaboradores_turno) vence o chute por horário ===');
 // EX1 (login de D1/D3) está cadastrado como T03 de verdade -- mesmo os
@@ -414,6 +423,20 @@ console.log('\n=== processarMovimentacoes — dim_artigo_familia NÃO tem coluna
   eq(chamadasFam[0].tabela, 'ressuprimento_familia_diario', 'mira a tabela ressuprimento_familia_diario');
   eq(chamadasFam[0].opts.onConflict, 'dia,familia_codigo,turno', 'onConflict é dia+família+turno');
   ok(avisosFam.some(function (a) { return /1 linha/.test(a); }), 'avisa quantas linhas foram gravadas');
+
+  console.log('\n=== upsertHistoricoOperadorDiario — mesmo padrão, onConflict por dia+turno+login ===');
+  const chamadasOp = [];
+  const clienteOpOk = {
+    from: function (nome) {
+      return { upsert: async function (linhas, opts) { chamadasOp.push({ tabela: nome, linhas: linhas, opts: opts }); return { error: null }; } };
+    },
+  };
+  const avisosOp = [];
+  await ctx.upsertHistoricoOperadorDiario(clienteOpOk, [{ dia: '2026-08-10', turno: 'T01', login: 'joao', nome: 'João' }], function (m) { avisosOp.push(m); });
+  eq(chamadasOp.length, 1, 'uma chamada de upsert pra 1 linha');
+  eq(chamadasOp[0].tabela, 'ressuprimento_operador_diario', 'mira a tabela ressuprimento_operador_diario');
+  eq(chamadasOp[0].opts.onConflict, 'dia,turno,login', 'onConflict é dia+turno+login');
+  ok(avisosOp.some(function (a) { return /1 linha/.test(a); }), 'avisa quantas linhas foram gravadas');
 })().then(function () {
   console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
   process.exit(falhas === 0 ? 0 : 1);

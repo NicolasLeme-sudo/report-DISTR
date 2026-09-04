@@ -456,6 +456,12 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
   // manter um histórico contínuo entre uploads de Kardex, já que cada
   // arquivo cobre só um período e some quando o próximo é processado.
   const porDiaSegmentoTurno = new Map();
+  // dia+turno+login -> {nome} — vira ressuprimento_operador_diario
+  // (histórico), pra "Operadores" no card "Ressuprimento por dia" parar de
+  // mostrar "—" sempre que o histórico contínuo está ativo (05/09/2026,
+  // achado pelo usuário: hoje só o snapshot de um Kardex isolado guarda
+  // operadores, o histórico agregado nunca guardou quem mexeu).
+  const porDiaTurnoOperador = new Map();
 
   let pecasRessupridas = 0, movimentosRessuprimento = 0;
   let pecasEmTransito = 0, movimentosEmTransito = 0;
@@ -534,6 +540,11 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
     if (!operadores.has(m.login)) operadores.set(m.login, { login: m.login, nome: m.nome, pecas: 0, movimentos: 0 });
     const o = operadores.get(m.login);
     o.pecas += m.qtd; o.movimentos += 1;
+
+    const chaveDTO = m.dia + '|' + m.turno + '|' + m.login;
+    if (!porDiaTurnoOperador.has(chaveDTO)) {
+      porDiaTurnoOperador.set(chaveDTO, { dia: m.dia, turno: m.turno, login: m.login, nome: m.nome });
+    }
   });
 
   const dias = Array.from(porDia.values())
@@ -588,6 +599,10 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
     // do "sem planejamento" na tela, em vez de depender só deste snapshot
     // (05/09/2026).
     historico_diario_familia: Array.from(porFamiliaDiaTurno.values()),
+    // Vira linhas de ressuprimento_operador_diario (uma por dia+turno+login)
+    // — histórico acumulado de QUEM trabalhou, pra "Operadores" no card
+    // "Ressuprimento por dia" não ficar preso ao último Kardex (05/09/2026).
+    historico_diario_operador: Array.from(porDiaTurnoOperador.values()),
     // Quantos movimentos tiveram o turno resolvido pelo cadastro real
     // (dim_colaboradores_turno) vs. chutado pelo horário — nunca escondido.
     resolucao_turno: { por_cadastro: porCadastro, por_horario: porHorario },
@@ -685,6 +700,7 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
 
   await upsertHistoricoDiario(supabaseClient, payload.historico_diario, avisar);
   await upsertHistoricoFamiliaDiario(supabaseClient, payload.historico_diario_familia, avisar);
+  await upsertHistoricoOperadorDiario(supabaseClient, payload.historico_diario_operador, avisar);
 
   avisar('Concluído.');
   return payload;
@@ -751,9 +767,38 @@ async function upsertHistoricoFamiliaDiario(supabaseClient, linhas, onAviso) {
   }
 }
 
+/* ============================================================================
+   HISTÓRICO DIÁRIO DE OPERADORES — grava dia+turno+login em
+   ressuprimento_operador_diario, mesmo padrão de upsert das outras tabelas
+   de histórico (onConflict pela chave; arquivo mais recente sobrescreve só
+   os dias que cobre). É esse histórico que permite a coluna "Operadores" do
+   card "Ressuprimento por dia" mostrar um número de verdade quando a fonte
+   é o histórico acumulado, em vez de "—" (05/09/2026).
+   ============================================================================ */
+async function upsertHistoricoOperadorDiario(supabaseClient, linhas, onAviso) {
+  const avisar = onAviso || function () {};
+  if (!linhas || linhas.length === 0) return;
+  const lotes = [];
+  for (let i = 0; i < linhas.length; i += LOTE_HISTORICO_DIARIO) {
+    lotes.push(linhas.slice(i, i + LOTE_HISTORICO_DIARIO));
+  }
+  try {
+    for (const lote of lotes) {
+      const { error } = await supabaseClient.from('ressuprimento_operador_diario')
+        .upsert(lote, { onConflict: 'dia,turno,login' });
+      if (error) throw error;
+    }
+    avisar(linhas.length.toLocaleString('pt-BR') + ' linha(s) gravadas no histórico de operadores.');
+  } catch (e) {
+    avisar('Aviso: não deu pra gravar o histórico de operadores (' + (e && e.message) + ') — rodou migracao_operador_historico.sql? ' +
+      'O restante do processamento seguiu normal, só a coluna Operadores vai continuar mostrando "—" no histórico.');
+  }
+}
+
 window.processarMovimentacoes = processarMovimentacoes;
 window.upsertHistoricoDiario = upsertHistoricoDiario;
 window.upsertHistoricoFamiliaDiario = upsertHistoricoFamiliaDiario;
+window.upsertHistoricoOperadorDiario = upsertHistoricoOperadorDiario;
 window.parsearKardex = parsearKardex;
 window.casarMovimentos = casarMovimentos;
 window.construirSnapshotMovimentacoes = construirSnapshotMovimentacoes;
