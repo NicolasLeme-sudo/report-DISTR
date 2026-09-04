@@ -1965,6 +1965,16 @@ function exportarCSV() {
 let filtroRessuprimento = 'picking';        // 'picking' | 'pulmao' | 'todos'
 let filtroSegmentoRessuprimento = null;     // null = Todos | um dos 6 segmentos da gestão
 let filtroTurnoRessuprimento = null;        // null = todos os turnos | T01 | T02 | T03
+// Filtro de segmento do card "Ressuprimento por dia" — mesmo padrão visual
+// do chip de Segmento da tela Estoque, mas recorta o gráfico/tabela de dias
+// abaixo (05/09/2026). Só funciona com o histórico contínuo (cada linha já
+// vem com segmento); sem histórico gravado ainda, os chips nem aparecem —
+// o snapshot único de um Kardex não guarda segmento por dia, só o agregado.
+let filtroSegmentoRessuprimentoDia = null;
+function alternarFiltroSegmentoRessuprimentoDia(seg) {
+  filtroSegmentoRessuprimentoDia = (filtroSegmentoRessuprimentoDia === seg) ? null : seg;
+  renderizarRessuprimento();
+}
 
 /* "B.O. em endereço transitório/validação" — card único (05/09/2026, fundiu
    os dois cards antigos "Material em validação" + "B.O. em trânsito" que
@@ -2748,8 +2758,17 @@ function blocoMovimentacoes() {
   // escolhido, quando existir — cobre vários uploads de Kardex ao longo do
   // tempo. Sem histórico ainda gravado (migração recente, ou tabela vazia),
   // cai pro período do ÚLTIMO Kardex processado, pra não ficar em branco.
-  const dias = usaHistorico ? diasDoHistorico(historicoRessuprimento) : (m ? m.por_dia || [] : []);
-  const porTurnoFonte = usaHistorico ? porTurnoDoHistorico(historicoRessuprimento) : (m ? m.por_turno || [] : []);
+  //
+  // Filtro de SEGMENTO do gráfico/tabela de dias (chip abaixo do Turno,
+  // mesmo padrão da tela Estoque, 05/09/2026): recorta o histórico ANTES de
+  // agregar por dia/turno — só funciona com histórico (cada linha já vem
+  // com segmento); sem histórico, o snapshot único não tem segmento por
+  // dia, então o filtro fica sem efeito (chips nem aparecem nesse caso).
+  const historicoParaDias = filtroSegmentoRessuprimentoDia
+    ? historicoRessuprimento.filter(function (h) { return h.segmento === filtroSegmentoRessuprimentoDia; })
+    : historicoRessuprimento;
+  const dias = usaHistorico ? diasDoHistorico(historicoParaDias) : (m ? m.por_dia || [] : []);
+  const porTurnoFonte = usaHistorico ? porTurnoDoHistorico(historicoParaDias) : (m ? m.por_turno || [] : []);
   // A composição por segmento segue o MESMO recorte do resto do card: o
   // intervalo de datas já vem aplicado (o histórico é carregado com
   // .gte/.lte), e o filtro de turno é aplicado aqui — sem isso, clicar num
@@ -2793,6 +2812,30 @@ function blocoMovimentacoes() {
       ROT_TURNO[t] + '</span>';
   });
   chipsTurno += '</div>';
+
+  /* ---------- chips de segmento (mesmo padrão da tela Estoque) ----------
+     Opções vêm do histórico INTEIRO do período (não do já filtrado por
+     segmento), senão escolher um segmento faria os outros somirem da
+     lista. Só existe com histórico — sem ele não tem segmento por dia. */
+  let chipsSegmentoDia = '';
+  if (usaHistorico) {
+    const segmentosDoDia = new Map();
+    historicoRessuprimento.forEach(function (h) {
+      if (!segmentosDoDia.has(h.segmento)) segmentosDoDia.set(h.segmento, 0);
+      segmentosDoDia.set(h.segmento, segmentosDoDia.get(h.segmento) + h.pecas);
+    });
+    const segmentosOrdenados = Array.from(segmentosDoDia.entries()).sort(function (a, b) { return b[1] - a[1]; });
+    chipsSegmentoDia = '<div class="filtros">' +
+      '<span class="rot-filtro">Segmento</span>' +
+      '<span class="chip' + (!filtroSegmentoRessuprimentoDia ? ' on' : '') +
+        '" onclick="alternarFiltroSegmentoRessuprimentoDia(null)">Todos</span>';
+    segmentosOrdenados.forEach(function (par) {
+      const seg = par[0];
+      chipsSegmentoDia += '<span class="chip' + (filtroSegmentoRessuprimentoDia === seg ? ' on' : '') +
+        '" onclick="alternarFiltroSegmentoRessuprimentoDia(\'' + escaparJs(seg) + '\')">' + escapar(seg) + '</span>';
+    });
+    chipsSegmentoDia += '</div>';
+  }
 
   /* ---------- cards ---------- */
   const kpis = '<div class="kpi-row">' +
@@ -3198,6 +3241,7 @@ function blocoMovimentacoes() {
       'costuma acontecer em dois saltos, e somar as duas pernas contaria a mesma peça duas vezes.</p>' +
     seletorIntervalo +
     chipsTurno +
+    chipsSegmentoDia +
     kpis +
     '<div class="barras-dia">' + barras + '</div>' +
     '<div class="legenda" style="margin-top:10px">' + legendaTurno + '</div>' +
@@ -3226,7 +3270,12 @@ function blocoMovimentacoes() {
 function exportarCSVMovimentacoes() {
   const m = dadosMovimentacoes;
   const usaHistorico = historicoRessuprimento && historicoRessuprimento.length > 0;
-  const dias = usaHistorico ? diasDoHistorico(historicoRessuprimento) : (m ? m.por_dia || [] : []);
+  // Mesmo recorte de segmento que a tabela na tela usa (05/09/2026) — o CSV
+  // nunca deve exportar mais linhas do que o que está filtrado na tela.
+  const historicoParaExportar = filtroSegmentoRessuprimentoDia
+    ? historicoRessuprimento.filter(function (h) { return h.segmento === filtroSegmentoRessuprimentoDia; })
+    : historicoRessuprimento;
+  const dias = usaHistorico ? diasDoHistorico(historicoParaExportar) : (m ? m.por_dia || [] : []);
   if (dias.length === 0) return;
   const linhas = [['Dia', 'T01', 'T02', 'T03', 'Total pecas', 'Movimentos', 'Operadores']];
   dias.forEach(function (d) {
