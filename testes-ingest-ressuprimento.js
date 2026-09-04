@@ -148,12 +148,17 @@ eq(totalArvorePulmao, 200 + 10 + 7 + 3 + 999, 'árvore de pulmão inclui o real 
 eq(payload.ressuprimento_por_segmento.calcado.apoio_pulmao_disponivel, 200,
    'apoio confiável soma só a rua 1 (EAN1=200) — rua 20/81-02 reclassificadas não têm CODBAR neste teste, e rua 24 (sujeira) não é confiável mesmo tendo CODBAR');
 
-// saldo_picking = disponível(A1=50 + A5=4=54) + cativado(A1=15 + A5=0=15) = 69 —
-// mesmo gabarito da planilha de análise da gestão (soma cativado+disponível),
-// mas disponível e cativado continuam expostos separados (05/09/2026).
-eq(payload.ressuprimento_por_segmento.calcado.saldo_disponivel, 54, 'saldo_disponivel soma só qtd (A1=50 + A5=4)');
+// saldo_picking = disponível(A1=50) + cativado(A1=15) = 65 — A5 (rua 81
+// nível 1) NÃO entra: gabarito da gestão exclui a rua 81 inteira dessa soma
+// específica, mesmo o nível 1 continuando picking de verdade pra ocupação
+// (05/09/2026). Sem essa exclusão daria 69 (contando A5=4 também).
+eq(payload.ressuprimento_por_segmento.calcado.saldo_disponivel, 50, 'saldo_disponivel exclui A5 (rua 81 nível 1) — só A1(50)');
 eq(payload.ressuprimento_por_segmento.calcado.saldo_cativado, 15, 'saldo_cativado soma só qtd_cativado (A1=15, A5 não tem)');
-eq(payload.ressuprimento_por_segmento.calcado.saldo_picking, 69, 'saldo_picking = disponível + cativado, não esconde nenhum dos dois');
+eq(payload.ressuprimento_por_segmento.calcado.saldo_picking, 65, 'saldo_picking = disponível + cativado, sem a rua 81');
+
+// mas a rua 81 nível 1 (A5) continua contando NORMALMENTE na árvore/ocupação
+// do Picking-Calçado — a exclusão é só nesse cruzamento de ressuprimento.
+eq(totalArvorePicking, 54, 'árvore de picking continua com A1(50)+A5(4) — rua 81 nível 1 não sai da ocupação');
 
 // validação: a linha de sujeira (rua 24) e a reclassificada não-confiável (rua 70, A3)
 // devem aparecer marcadas em_validacao

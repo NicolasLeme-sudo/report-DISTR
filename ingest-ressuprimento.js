@@ -586,7 +586,18 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
 
   const ressuprimentoPorBucket = {};
   ['meia', 'vestuario', 'calcado'].forEach(function (bucket) {
-    const doBucket = pickingReal.filter(function (r) { return r.bucket === bucket; });
+    // Gabarito da gestão (planilha de análise de estoque, 05/09/2026): o
+    // "saldo de calçado no picking" desconsidera as ruas 20/70/80 (que já
+    // saem daqui via RECLASSIFICA_PICKING_PARA_PULMAO) E a rua 81 INTEIRA —
+    // não só o nível 2 que a gente já reclassifica pro Pulmão por falta de
+    // capacidade, o nível 1 também fica de fora dessa soma específica.
+    // Só afeta este cruzamento de ressuprimento: a rua 81 nível 1 continua
+    // contando normalmente na ocupação/árvore do Picking-Calçado.
+    const doBucket = pickingReal.filter(function (r) {
+      if (r.bucket !== bucket) return false;
+      if (bucket === 'calcado' && r.rua === '81') return false;
+      return true;
+    });
     const enderecosComApoio = new Set();
     let apoioTotal = 0;
     doBucket.forEach(function (r) {
