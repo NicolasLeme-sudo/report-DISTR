@@ -95,8 +95,14 @@ function classificarBucket(segmento, categoria) {
   if (s.indexOf('TENIS') !== -1 || s.indexOf('TÊNIS') !== -1 ||
       c.indexOf('CHUTEIRA') !== -1 || c.indexOf('CHINELO') !== -1 || c.indexOf('TAMANCO') !== -1 ||
       c.indexOf('SAPATO') !== -1) return 'calcado';
-  if (s.indexOf('TEXTIL') !== -1 || s.indexOf('TÊXTIL') !== -1 ||
-      c.indexOf('VESTU') !== -1 || c.indexOf('ACESS') !== -1) return 'vestuario';
+  // ACESS precisa ser conferido ANTES do TÊXTIL genérico: o campo `segmento`
+  // de vestuário e de acessório é o MESMO texto ("TÊXTIL/ACESSÓRIOS <marca>"
+  // — vem de dim_familias), só a categoria distingue os dois. Checar TÊXTIL
+  // primeiro faria todo acessório cair em vestuário (pedido da gestão,
+  // 06/09/2026: acessório ganha cartão de ocupação próprio, não soma mais
+  // dentro de vestuário).
+  if (c.indexOf('ACESS') !== -1) return 'acessorio';
+  if (s.indexOf('TEXTIL') !== -1 || s.indexOf('TÊXTIL') !== -1 || c.indexOf('VESTU') !== -1) return 'vestuario';
   return 'outros';
 }
 
@@ -149,14 +155,20 @@ function segmentoMacro(segmento, categoria) {
    ============================================================================
    Pedido da gestão (03/09/2026): o nível 2 da árvore não deve mostrar o texto
    cru do `segmento` ("TÊXTIL/ACESSÓRIOS MIZUNO" — verboso e ainda carrega a
-   marca, redundante com o nível 1). Vira só 2 grupos, cada um somando alguns
-   dos 6 segmentos macro: VESTUÁRIO reúne vestuário/meia/acessório, CALÇADOS
-   reúne calçado/chinelo/chuteira. A família continua mostrando o segmento_macro
-   fino (MEIA, ACESSÓRIO etc.) no selo — o grupo aqui é só uma dobra a mais
-   pra navegação, não substitui a granularidade que já existe embaixo. */
+   marca, redundante com o nível 1). Vira grupos, cada um somando alguns dos 6
+   segmentos macro: VESTUÁRIO reúne vestuário/meia/acessório, CALÇADOS reúne
+   calçado/chuteira. A família continua mostrando o segmento_macro fino (MEIA,
+   ACESSÓRIO etc.) no selo — o grupo aqui é só uma dobra a mais pra navegação,
+   não substitui a granularidade que já existe embaixo.
+
+   CHINELO ganhou grupo próprio em vez de ficar dentro de CALÇADOS (06/09/2026
+   — a operação achou estranho não achar chinelo em lugar nenhum do
+   detalhamento; o item sempre existiu como segmento_macro à parte, só ficava
+   escondido dentro do rótulo "Calçados" nesta dobra do meio da árvore). */
 function grupoDetalhamento(segMacro) {
   if (segMacro === 'VESTUÁRIO' || segMacro === 'MEIA' || segMacro === 'ACESSÓRIO') return 'VESTUÁRIO';
-  if (segMacro === 'CALÇADO' || segMacro === 'CHINELO' || segMacro === 'CHUTEIRA') return 'CALÇADOS';
+  if (segMacro === 'CHINELO') return 'CHINELO';
+  if (segMacro === 'CALÇADO' || segMacro === 'CHUTEIRA') return 'CALÇADOS';
   return 'OUTROS';
 }
 
@@ -311,10 +323,12 @@ function parsearPulmao(textoArquivo) {
    ocupação, árvore Marca›Segmento por filtro (Picking/Pulmão), lista de
    material em validação (FIFO) e o cruzamento de ressuprimento por segmento.
 
-   capacidadesManual: { pulmao, picking_meia, picking_vestuario,
-   picking_calcado } — vem de dim_capacidade_zonas (editável pela gestão). Zona
-   sem valor manual usa ocupado × 1.2 (decisão da operação, provisório até a
-   capacidade real ser levantada).
+   capacidadesManual: { picking_meia, picking_vestuario, picking_acessorio,
+   picking_calcado, pulmao_meia, pulmao_vestuario, pulmao_acessorio,
+   pulmao_calcado } — vem de dim_capacidade_zonas (editável pela gestão), uma
+   chave por zona de bucket das 2 linhas (Picking e Pulmão). Zona sem valor
+   manual usa ocupado × 1.2 (decisão da operação, provisório até a capacidade
+   real ser levantada).
    ============================================================================ */
 function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidadesManual, meta) {
   const cap = capacidadesManual || {};
@@ -357,6 +371,7 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     return Object.assign({}, r, {
       marca: fam.marca, segmento: fam.segmento, categoria: fam.categoria,
       segmento_macro: segmentoMacro(fam.segmento, fam.categoria),
+      bucket: classificarBucket(fam.segmento, fam.categoria),
       origem: 'pulmao', motivo: null,
       apoio_confiavel: classif.grupo === 'PULMAO',
       em_validacao: classif.grupo !== 'PULMAO',
@@ -416,11 +431,50 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
      "Ressuprimento pendente em trânsito" (transito_pulmao), pra mostrar o
      B.O. sem misturar com a ocupação física real. */
   const pulmaoFisico = pulmaoTudo.filter(function (r) { return r.origem === 'pulmao' && r.classif_grupo === 'PULMAO'; });
+
+  /* Ocupação vira 2 LINHAS (Picking e Pulmão), cada uma com as mesmas 4 zonas
+     de bucket (Meia/Vestuário/Acessório/Calçado) + um Total que soma as 4
+     (pedido da gestão, 06/09/2026 — antes só Picking tinha zona por bucket;
+     Pulmão era um bloco só, sem segmentar). ACESSÓRIO é zona nova dos dois
+     lados: até aqui vinha somado dentro de Vestuário (ver classificarBucket).
+
+     IMPORTANTE: como isso divide zonas que antes eram uma só, os números de
+     capacidade cadastrados em dim_capacidade_zonas pra 'pulmao' (5.010, uma
+     zona só) e pra 'picking_vestuario' (12.980, que embutia acessório) NÃO
+     valem mais pras zonas novas — ficam como capacidade_estimada=true
+     (ocupado×1.2) até a gestão levantar o número real de cada bucket. */
+  function zonaBucket(prefixo, bucket, lista) {
+    return zona(prefixo + '_' + bucket, posicoesOcupadas(lista.filter(function (r) { return r.bucket === bucket; })));
+  }
+  function zonaTotal(nomeTotal, subzonas) {
+    const capacidade = subzonas.reduce(function (s, z) { return s + z.capacidade; }, 0);
+    const ocupado = subzonas.reduce(function (s, z) { return s + z.ocupado; }, 0);
+    return {
+      capacidade: capacidade, ocupado: ocupado,
+      pct: capacidade > 0 ? (ocupado / capacidade) * 100 : 0,
+      disponivel: Math.max(0, capacidade - ocupado),
+      capacidade_estimada: subzonas.some(function (z) { return z.capacidade_estimada; }),
+    };
+  }
+  const pickingPorBucket = {
+    meia: zonaBucket('picking', 'meia', pickingReal),
+    vestuario: zonaBucket('picking', 'vestuario', pickingReal),
+    acessorio: zonaBucket('picking', 'acessorio', pickingReal),
+    calcado: zonaBucket('picking', 'calcado', pickingReal),
+  };
+  const pulmaoPorBucket = {
+    meia: zonaBucket('pulmao', 'meia', pulmaoFisico),
+    vestuario: zonaBucket('pulmao', 'vestuario', pulmaoFisico),
+    acessorio: zonaBucket('pulmao', 'acessorio', pulmaoFisico),
+    calcado: zonaBucket('pulmao', 'calcado', pulmaoFisico),
+  };
   const ocupacao = {
-    pulmao: zona('pulmao', posicoesOcupadas(pulmaoFisico)),
-    picking_meia: zona('picking_meia', posicoesOcupadas(pickingReal.filter(function (r) { return r.bucket === 'meia'; }))),
-    picking_vestuario: zona('picking_vestuario', posicoesOcupadas(pickingReal.filter(function (r) { return r.bucket === 'vestuario'; }))),
-    picking_calcado: zona('picking_calcado', posicoesOcupadas(pickingReal.filter(function (r) { return r.bucket === 'calcado'; }))),
+    picking: Object.assign({
+      total: zonaTotal('picking_total', [pickingPorBucket.meia, pickingPorBucket.vestuario, pickingPorBucket.acessorio, pickingPorBucket.calcado]),
+    }, pickingPorBucket),
+    pulmao: Object.assign({
+      total: zonaTotal('pulmao_total', [pulmaoPorBucket.meia, pulmaoPorBucket.vestuario, pulmaoPorBucket.acessorio, pulmaoPorBucket.calcado]),
+    }, pulmaoPorBucket),
   };
 
   /* ---------- B.O. em trânsito: saldo parado nas ruas de trânsito/validação

@@ -96,7 +96,9 @@ eq(classificarBucket('MEIAS MIZUNO', 'MEIAS MIZUNO'), 'meia', 'segmento com MEIA
 eq(classificarBucket('TÊNIS MIZUNO', 'TÊNIS MIZUNO'), 'calcado', 'segmento com TÊNIS -> calcado');
 eq(classificarBucket('X', 'CHUTEIRA MIZUNO'), 'calcado', 'categoria CHUTEIRA -> calcado');
 eq(classificarBucket('X', 'CHINELO MIZUNO'), 'calcado', 'categoria CHINELO -> calcado');
-eq(classificarBucket('TÊXTIL/ACESSÓRIOS MIZUNO', 'VESTUÁRIO MIZUNO'), 'vestuario', 'segmento TÊXTIL -> vestuario');
+eq(classificarBucket('TÊXTIL/ACESSÓRIOS MIZUNO', 'VESTUÁRIO MIZUNO'), 'vestuario', 'segmento TÊXTIL + categoria VESTUÁRIO -> vestuario');
+eq(classificarBucket('TÊXTIL/ACESSÓRIOS MIZUNO', 'ACESSÓRIOS MIZUNO'), 'acessorio',
+   'MESMO segmento TÊXTIL, mas categoria ACESSÓRIOS -> acessorio, não vestuario (06/09/2026)');
 eq(classificarBucket('Insumos Operacionais', 'Material de Insumo'), 'outros', 'insumo cai em outros (sinalizado, não silencioso)');
 
 /* -------------------------------------------------------------------------- */
@@ -193,11 +195,13 @@ const payloadOcup = construirSnapshotRessuprimento(
   pickingComZerado, { registros: [], colisoes_volume: 0 }, mapaFamilias, { picking_calcado: 10 },
   { arquivo_picking: 'p.txt', arquivo_pulmao: 'x.txt' }
 );
-eq(payloadOcup.ocupacao.picking_calcado.ocupado, 2,
+eq(payloadOcup.ocupacao.picking.calcado.ocupado, 2,
    'endereço com SKU alocado e saldo zero continua contando como posição ocupada');
-eq(payloadOcup.ocupacao.picking_calcado.capacidade, 10, 'capacidade manual da gestão é respeitada');
-eq(payloadOcup.ocupacao.picking_calcado.capacidade_estimada, false,
+eq(payloadOcup.ocupacao.picking.calcado.capacidade, 10, 'capacidade manual da gestão é respeitada');
+eq(payloadOcup.ocupacao.picking.calcado.capacidade_estimada, false,
    'zona com capacidade cadastrada não é marcada como estimada');
+eq(payloadOcup.ocupacao.picking.total.ocupado, 2, 'total da linha Picking soma as 4 zonas (só calçado tem dado aqui)');
+eq(payloadOcup.ocupacao.picking.total.capacidade, 10, 'capacidade do total soma as capacidades das 4 zonas (só calçado=10, resto estimado=0)');
 
 /* -------------------------------------------------------------------------- */
 secao('ocupação — 20/70/80/81-02 são apoio de ressuprimento, não posição de ninguém');
@@ -218,9 +222,9 @@ const payloadFisico = construirSnapshotRessuprimento(
   pickingRua20, { registros: [], colisoes_volume: 0 }, mapaFamilias, {},
   { arquivo_picking: 'p.txt', arquivo_pulmao: 'x.txt' }
 );
-eq(payloadFisico.ocupacao.pulmao.ocupado, 0,
+eq(payloadFisico.ocupacao.pulmao.total.ocupado, 0,
    'rua 20 (reclassificada) NÃO ocupa posição de pulmão — não é porta-pallet fixo');
-eq(payloadFisico.ocupacao.picking_calcado.ocupado, 0,
+eq(payloadFisico.ocupacao.picking.calcado.ocupado, 0,
    'nem de picking — pickingReal já a exclui, e ela não volta em lugar nenhum');
 
 /* -------------------------------------------------------------------------- */
@@ -242,7 +246,7 @@ const payloadTransito = construirSnapshotRessuprimento(
   { registros: [], negativas_excluidas: 0, negativas_unidades: 0 }, pulmaoComTransito, mapaFamilias, { pulmao: 100 },
   { arquivo_picking: 'x.txt', arquivo_pulmao: 'p.txt' }
 );
-eq(payloadTransito.ocupacao.pulmao.ocupado, 1,
+eq(payloadTransito.ocupacao.pulmao.total.ocupado, 1,
    'só a rua 1 (Pulmão de verdade) conta na ocupação -- as de trânsito (500, 26) ficam de fora');
 eq(payloadTransito.transito_pulmao.total_enderecos, 2,
    '2 endereços distintos em trânsito: 500|1|1 (A2+A3, mesmo endereço) e 26|1|2 (A4)');
@@ -311,13 +315,17 @@ const payloadGrupo = construirSnapshotRessuprimento(
 );
 const marcaOly = payloadGrupo.arvore_picking.filter(function (m) { return m.codigo === 'OLYMPIKUS'; })[0];
 const gruposOly = marcaOly.segmentos.map(function (s) { return s.codigo; }).sort();
-eq(gruposOly.join(','), 'CALÇADOS,VESTUÁRIO', 'só 2 grupos no nível 2, nunca o segmento cru "TÊXTIL/ACESSÓRIOS ..."');
+eq(gruposOly.join(','), 'CALÇADOS,CHINELO,VESTUÁRIO',
+   '3 grupos no nível 2 — CHINELO tem grupo próprio (06/09/2026), não fica escondido dentro de CALÇADOS');
 const grupoVest = marcaOly.segmentos.filter(function (s) { return s.codigo === 'VESTUÁRIO'; })[0];
 eq(grupoVest.qtd, 15, 'grupo VESTUÁRIO soma vestuário(10) + meia(5)');
 eq(grupoVest.familias.length, 2, 'grupo VESTUÁRIO tem as 2 famílias (vestuário e meia) por baixo');
 const grupoCalc = marcaOly.segmentos.filter(function (s) { return s.codigo === 'CALÇADOS'; })[0];
-eq(grupoCalc.qtd, 10, 'grupo CALÇADOS soma tênis(7) + chinelo(3)');
-eq(grupoCalc.familias.length, 2, 'grupo CALÇADOS tem as 2 famílias (tênis e chinelo) por baixo');
+eq(grupoCalc.qtd, 7, 'grupo CALÇADOS agora é só tênis(7) — chinelo saiu pro grupo próprio');
+eq(grupoCalc.familias.length, 1, 'grupo CALÇADOS tem só a família de tênis por baixo');
+const grupoChinelo = marcaOly.segmentos.filter(function (s) { return s.codigo === 'CHINELO'; })[0];
+eq(grupoChinelo.qtd, 3, 'grupo CHINELO próprio soma os 3 do chinelo');
+eq(grupoChinelo.familias.length, 1, 'grupo CHINELO tem a família de chinelo por baixo');
 
 /* -------------------------------------------------------------------------- */
 secao('upsertArtigoFamilia — dicionário artigo→família pro Kardex resolver');

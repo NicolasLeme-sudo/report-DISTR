@@ -1967,7 +1967,7 @@ function exportarCSV() {
    SKU/endereço, cruzamento de ressuprimento por segmento e a lista de
    material em validação (FIFO).
    ============================================================ */
-let filtroRessuprimento = 'picking';        // 'picking' | 'pulmao' | 'todos'
+let filtroRessuprimento = 'todos';        // 'todos' | 'picking' | 'pulmao' — padrão "Todos" (06/09/2026)
 let filtroSegmentoRessuprimento = new Set();  // vazio = Todos | multi-seleção dos segmentos da gestão
 let filtroTurnoRessuprimento = new Set();   // vazio = todos os turnos | multi-seleção de T01/T02/T03
 // Filtro de segmento do card "Ressuprimento por dia" — mesmo padrão visual
@@ -2295,7 +2295,11 @@ function linhaArvoreRessuprimento(opts) {
   '</tr>';
 }
 
-const ROT_ZONA = { pulmao: 'Pulmão', picking_meia: 'Picking — Meia', picking_vestuario: 'Picking — Vestuário', picking_calcado: 'Picking — Calçado' };
+// Rótulos das 4 zonas de bucket, reaproveitados nas duas linhas (Picking e
+// Pulmão) — o prefixo (Picking/Pulmão) já vem do título da linha, aqui só o
+// nome do bucket (06/09/2026: Pulmão passou a ter as mesmas 4 zonas do
+// Picking, antes era um bloco só).
+const ROT_BUCKET = { total: 'Total', meia: 'Meia', vestuario: 'Vestuário', acessorio: 'Acessório', calcado: 'Calçado' };
 const ROT_FILTRO_RESSUP = { picking: 'Picking', pulmao: 'Pulmão', todos: 'Todos' };
 
 /* Rosca de ocupação — SVG inline, sem lib (mesma filosofia dos outros
@@ -2332,12 +2336,15 @@ function renderizarEstoqueOperacao(p) {
       'essas unidades <strong>não entram</strong> em nenhum número desta tela até isso ser resolvido.</div>';
   }
 
-  /* ---------- filtro Picking/Pulmão/Todos ---------- */
+  /* ---------- filtro Picking/Pulmão/Todos — "Todos" primeiro e é o padrão
+     (06/09/2026): antes vinha por último e o padrão era "Picking", escondendo
+     segmentos que só têm saldo no Pulmão (ex.: Chinelo) até alguém pensar em
+     trocar o filtro. ---------- */
   const chips = '<div class="filtros">' +
     '<span class="rot-filtro">Ver</span>' +
+    '<span class="chip' + (filtroRessuprimento === 'todos' ? ' on' : '') + '" onclick="alternarFiltroRessuprimento(\'todos\')">Todos</span>' +
     '<span class="chip' + (filtroRessuprimento === 'picking' ? ' on' : '') + '" onclick="alternarFiltroRessuprimento(\'picking\')">Picking</span>' +
     '<span class="chip' + (filtroRessuprimento === 'pulmao' ? ' on' : '') + '" onclick="alternarFiltroRessuprimento(\'pulmao\')">Pulmão</span>' +
-    '<span class="chip' + (filtroRessuprimento === 'todos' ? ' on' : '') + '" onclick="alternarFiltroRessuprimento(\'todos\')">Todos</span>' +
   '</div>';
 
   /* ---------- filtro por segmento (macro, cruza marcas) — recorta tudo abaixo ---------- */
@@ -2381,9 +2388,17 @@ function renderizarEstoqueOperacao(p) {
       '<div class="sub">' + fmtInt(stats.pecas) + ' peças no recorte</div></div>' +
   '</div>';
 
-  /* ---------- ocupação × capacidade: Total + as 4 zonas — sempre global, não segue o filtro ----------
-     São zonas físicas (posições), não um recorte por produto — por isso ficam de fora dos filtros
-     acima, do jeito que já era antes de o filtro de segmento existir. */
+  /* ---------- ocupação × capacidade: 2 linhas (Picking e Pulmão), cada uma com
+     Total + as 4 zonas de bucket — sempre global, não segue o filtro de
+     Picking/Pulmão/Segmento acima (são zonas físicas de posição, não um
+     recorte por produto).
+
+     Virou 2 linhas em 06/09/2026 (antes só Picking tinha as 4 zonas; Pulmão
+     era 1 bloco só) e ACESSÓRIO ganhou zona própria dos dois lados (antes
+     entrava dentro de Vestuário). Como isso divide zonas que antes eram uma
+     só, a maioria das capacidades novas ainda não tem número real da gestão
+     — aparecem com "≈" (estimativa ocupado×1.2) até a gestão levantar e
+     cadastrar em dim_capacidade_zonas. */
   function corOcupacao(dados) {
     return dados.capacidade_estimada ? 'var(--text-muted)' : (dados.pct >= 95 ? 'var(--red)' : dados.pct >= 85 ? 'var(--amber)' : 'var(--olive)');
   }
@@ -2400,25 +2415,23 @@ function renderizarEstoqueOperacao(p) {
       '</div>' +
     '</div>';
   }
-  const oc = p.ocupacao || {};
-  const zonas = [oc.pulmao, oc.picking_meia, oc.picking_vestuario, oc.picking_calcado].filter(Boolean);
-  let totalOcup = null;
-  if (zonas.length) {
-    totalOcup = {
-      ocupado: zonas.reduce(function (s, z) { return s + z.ocupado; }, 0),
-      capacidade: zonas.reduce(function (s, z) { return s + z.capacidade; }, 0),
-      disponivel: zonas.reduce(function (s, z) { return s + z.disponivel; }, 0),
-      capacidade_estimada: zonas.some(function (z) { return z.capacidade_estimada; }),
-    };
-    totalOcup.pct = totalOcup.capacidade > 0 ? totalOcup.ocupado / totalOcup.capacidade * 100 : 0;
+  function linhaOcupacao(titulo, linha) {
+    // linha.total só existe no formato novo (06/09/2026) — um snapshot antigo
+    // ainda não reprocessado guarda o formato achatado de antes (uma zona só,
+    // sem bucket). Não dá pra desenhar as 5 zonas com um dado que não tem
+    // essa forma, então some a linha inteira em vez de mostrar cards vazios.
+    if (!linha || !linha.total) return '';
+    return '<div class="sub" style="margin:14px 0 6px;font-weight:600;color:var(--text-label)">' + titulo + '</div>' +
+      '<div class="kpi-row">' +
+        cardOcupacao(ROT_BUCKET.total, linha.total) +
+        cardOcupacao(ROT_BUCKET.meia, linha.meia) +
+        cardOcupacao(ROT_BUCKET.vestuario, linha.vestuario) +
+        cardOcupacao(ROT_BUCKET.acessorio, linha.acessorio) +
+        cardOcupacao(ROT_BUCKET.calcado, linha.calcado) +
+      '</div>';
   }
-  const kpisOcupacao = '<div class="kpi-row">' +
-    cardOcupacao('Total', totalOcup) +
-    cardOcupacao(ROT_ZONA.pulmao, oc.pulmao) +
-    cardOcupacao(ROT_ZONA.picking_meia, oc.picking_meia) +
-    cardOcupacao(ROT_ZONA.picking_vestuario, oc.picking_vestuario) +
-    cardOcupacao(ROT_ZONA.picking_calcado, oc.picking_calcado) +
-  '</div>';
+  const oc = p.ocupacao || {};
+  const kpisOcupacao = linhaOcupacao('Picking', oc.picking) + linhaOcupacao('Pulmão', oc.pulmao);
 
   const arvoreAtual = arvoreFiltradaRessuprimento(p);
   const totalGeral = arvoreAtual.reduce(function (s, m) { return s + m.qtd; }, 0);
@@ -2628,7 +2641,7 @@ function renderizarEstoqueOperacao(p) {
         '<div class="kpi-row">' +
           '<div class="kpi"><div class="rot">Peças paradas em trânsito/validação</div>' +
             '<div class="val forte" style="color:var(--amber)">' + fmtInt(totalQtd) + '</div>' +
-            '<div class="sub">fora da ocupação de ' + fmtInt((p.ocupacao && p.ocupacao.pulmao ? p.ocupacao.pulmao.ocupado : 0)) + ' posições do Pulmão</div></div>' +
+            '<div class="sub">fora da ocupação de ' + fmtInt((p.ocupacao && p.ocupacao.pulmao && p.ocupacao.pulmao.total ? p.ocupacao.pulmao.total.ocupado : 0)) + ' posições do Pulmão</div></div>' +
           '<div class="kpi"><div class="rot">Endereços com B.O.</div>' +
             '<div class="val forte">' + fmtInt(enderecosDistintos.size) + '</div>' +
             '<div class="sub">em ' + fmtInt(ruas.length) + ' rua(s)</div></div>' +
