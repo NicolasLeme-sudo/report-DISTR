@@ -328,9 +328,24 @@ html { overflow-x: hidden; }
    max-content: sempre larga o suficiente pro MAIOR rótulo da lista caber
    inteiro numa linha só, nunca corta com "…" — pedido do usuário,
    05/09/2026 ("mesmo que as barras diminuam, quero ver 100% do texto").
-   A barra (1fr) é quem cede espaço quando o rótulo é comprido, nunca o nome. */
-.bar-item-rua { grid-template-columns: max-content 1fr 90px; }
-.bar-item-rua .nome { white-space: nowrap; cursor: default; }
+   A barra (1fr) é quem cede espaço quando o rótulo é comprido, nunca o nome.
+
+   Cada `.bar-item` normal é seu PRÓPRIO grid (3 colunas independentes) — com
+   `.bar-list` só um flex column, cada linha mede "max-content" pelo tamanho
+   do SEU PRÓPRIO texto, então rótulos de tamanhos diferentes davam colunas de
+   larguras diferentes por linha ("desalinhado", pedido do usuário,
+   06/09/2026). Pra esta variante o grid vira da LISTA inteira
+   (`.bar-list-rua`), e cada item some da árvore de caixas com
+   `display:contents` — os 3 filhos (nome/trilho/num) caem direto nas colunas
+   do grid pai, então a largura de cada coluna é uma só pra lista inteira
+   (o maior rótulo de todas as linhas), garantindo texto e barra alinhados
+   linha a linha. */
+.bar-list-rua { display: grid; grid-template-columns: max-content 1fr 90px; align-items: center; row-gap: 9px; column-gap: 10px; }
+.bar-item-rua { display: contents; }
+.bar-item-rua .nome { white-space: nowrap; cursor: default; font-size: 11px; font-weight: 600; }
+.bar-item-rua .trilho { background: var(--bg-input); border-radius: 3px; height: 16px; overflow: hidden; }
+.bar-item-rua .preench { height: 100%; border-radius: 3px; }
+.bar-item-rua .num { font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
 /* Barras por dia do Ressuprimento — empilhadas por turno. Colunas de largura
    fixa com rolagem horizontal: um mês de dados não pode espremer a barra até
    ela virar um fio. */
@@ -1993,6 +2008,19 @@ let filtroClassifValidacao = new Set();    // vazio = Todas | multi-seleção de
 let filtroTextoValidacao = '';
 let limiteValidacao = 100;            // quantas linhas carregar na tabela (não afeta o CSV)
 let ordemValidacao = { campo: 'qtd', direcao: 'desc' };
+// Ordenação da lista de barras "por rua" do B.O. em trânsito/validação
+// (06/09/2026) — 'rua' ordena numericamente pelo número da rua, 'qtd' pela
+// quantidade parada ali. Independente de ordemValidacao acima, que ordena a
+// TABELA por endereço+SKU embaixo — são duas listas diferentes.
+let ordemBarrasBO = { campo: 'qtd', direcao: 'desc' };
+function ordenarBarrasBO(campo) {
+  if (ordemBarrasBO.campo === campo) {
+    ordemBarrasBO.direcao = ordemBarrasBO.direcao === 'asc' ? 'desc' : 'asc';
+  } else {
+    ordemBarrasBO = { campo: campo, direcao: 'desc' };
+  }
+  renderizarEstoqueOperacao();
+}
 let dadosMovimentacoes = null;              // snapshot do Kardex (pagina='ressuprimento_mov')
 // Histórico contínuo (tabela ressuprimento_historico_diario), independente
 // de qual foi o último Kardex processado — alimenta o card "Ressuprimento
@@ -2399,8 +2427,17 @@ function renderizarEstoqueOperacao(p) {
      só, a maioria das capacidades novas ainda não tem número real da gestão
      — aparecem com "≈" (estimativa ocupado×1.2) até a gestão levantar e
      cadastrar em dim_capacidade_zonas. */
+  // Cor sempre pela % de ocupação (verde = tranquilo, amarelo = enchendo,
+  // vermelho = cheio/estourado) — ANTES uma zona com capacidade estimada
+  // (ocupado×1,2, sem número real da gestão) virava cinza sem olhar a % de
+  // jeito nenhum. Pedido do usuário (06/09/2026): quer o semáforo em toda
+  // zona, estimada ou não — o "≈" ao lado do rótulo já avisa que é estimativa,
+  // não precisa apagar a cor pra isso. Repare que TODA zona 100% estimada
+  // sempre cai perto de 83,3% (ocupado / (ocupado×1,2) = 1/1,2), então até a
+  // zona mais cheia aparece verde aqui — não é erro de cálculo, é a fórmula
+  // da estimativa; só um número real cadastrado na gestão muda isso de vez.
   function corOcupacao(dados) {
-    return dados.capacidade_estimada ? 'var(--text-muted)' : (dados.pct >= 95 ? 'var(--red)' : dados.pct >= 85 ? 'var(--amber)' : 'var(--olive)');
+    return dados.pct >= 95 ? 'var(--red)' : dados.pct >= 85 ? 'var(--amber)' : 'var(--olive)';
   }
   function cardOcupacao(rotulo, dados) {
     if (!dados) return '';
@@ -2524,9 +2561,17 @@ function renderizarEstoqueOperacao(p) {
       const g = porRua.get(v.rua);
       g.qtd += v.qtd; g.enderecos.add(v.rua + '|' + v.nivel + '|' + v.box);
     });
+    // Ordenação pedida pelo usuário (06/09/2026): por endereço (número da
+    // rua) ou por quantidade, cada uma do maior pro menor ou o inverso —
+    // ordemBarrasBO decide qual campo e direção; mult inverte o sinal do
+    // comparador pra 'asc' sem duplicar a função de comparação.
+    const mult = ordemBarrasBO.direcao === 'asc' ? 1 : -1;
     const ruas = Array.from(porRua.values())
       .map(function (r) { return { rua: r.rua, rotulo: r.rotulo, qtd: r.qtd, enderecos: r.enderecos.size }; })
-      .sort(function (a, b) { return b.qtd - a.qtd; });
+      .sort(function (a, b) {
+        const diff = ordemBarrasBO.campo === 'rua' ? (parseInt(a.rua, 10) - parseInt(b.rua, 10)) : (a.qtd - b.qtd);
+        return mult * diff;
+      });
     const maxRua = ruas.reduce(function (mx, r) { return Math.max(mx, r.qtd); }, 0);
     let barrasBO = '';
     ruas.forEach(function (r) {
@@ -2538,6 +2583,17 @@ function renderizarEstoqueOperacao(p) {
         '<div class="num">' + fmtInt(r.qtd) + ' · ' + fmtInt(r.enderecos) + ' end.</div>' +
       '</div>';
     });
+    function setaOrdemBarrasBO(campo) {
+      if (ordemBarrasBO.campo !== campo) return '';
+      return ' <span style="font-size:9px">' + (ordemBarrasBO.direcao === 'asc' ? '▲' : '▼') + '</span>';
+    }
+    const chipsOrdemBarrasBO = '<div class="filtros" style="margin-bottom:8px">' +
+      '<span class="rot-filtro">Ordenar por</span>' +
+      '<span class="chip' + (ordemBarrasBO.campo === 'qtd' ? ' on' : '') + '" onclick="ordenarBarrasBO(\'qtd\')" ' +
+        'title="Ordenar pela quantidade parada em cada rua">Quantidade' + setaOrdemBarrasBO('qtd') + '</span>' +
+      '<span class="chip' + (ordemBarrasBO.campo === 'rua' ? ' on' : '') + '" onclick="ordenarBarrasBO(\'rua\')" ' +
+        'title="Ordenar pelo número da rua">Endereço' + setaOrdemBarrasBO('rua') + '</span>' +
+    '</div>';
 
     /* ---------- chips de classificação (dinâmico, direto do que existe no arquivo) ---------- */
     const classificacoes = Array.from(new Set(validacaoTudo.map(function (v) { return v.classificacao; }))).sort();
@@ -2646,7 +2702,8 @@ function renderizarEstoqueOperacao(p) {
             '<div class="val forte">' + fmtInt(enderecosDistintos.size) + '</div>' +
             '<div class="sub">em ' + fmtInt(ruas.length) + ' rua(s)</div></div>' +
         '</div>' +
-        '<div class="bar-list" style="margin-bottom:14px">' + barrasBO + '</div>' +
+        chipsOrdemBarrasBO +
+        '<div class="bar-list-rua" style="margin-bottom:14px">' + barrasBO + '</div>' +
         chipsClassif +
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0">' +
           '<input type="text" id="buscaValidacao" placeholder="Buscar (endereço, SKU, nome, qtde, classificação…)" ' +
