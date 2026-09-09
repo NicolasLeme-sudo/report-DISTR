@@ -327,6 +327,18 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
 
   const analiticoAtivo = analitico.registros.filter(function (r) { return !pfasEmbarcadas.has(r.pfa); });
 
+  /* "Em tela" pra quem já foi conferido (Analítico) significa uma coisa só:
+     a PFA ainda aparece na lista VIVA de Pendentes. É prova direta — o
+     próprio sistema operacional ainda está rastreando aquilo hoje — bem mais
+     forte que checar se a nota caiu dentro da janela do arquivo de
+     Embarcadas (prova indireta: "não vi no que saiu" não é o mesmo que "vi
+     que ainda está aqui"). A troca foi motivada por um caso real (09/09/2026,
+     arquivo de Embarcadas mais longo): a janela passou a cobrir quase tudo e
+     "confirmou" como em tela 98 PFAs / 5.648 pç que a operação já tinha
+     dito, na rodada anterior, que não estavam mais em tela — a janela larga
+     escondeu exatamente o backlog que devia aparecer. */
+  const pfasEmPendentes = new Set(pendentesAtivos.map(function (r) { return r.pfa; }));
+
   /* ---------- 2. conferência por PFA: volumes lidos × volumes da PFA ----------
      Volume DISTINTO, não linha: o Analítico traz uma linha por SKU dentro do
      volume, então contar linha diria que uma caixa com 7 pares foi conferida
@@ -412,10 +424,9 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
         segmento_macro: g.segmento_macro, cliente_nome: g.cliente_nome,
         nota: g.nota, data_nota: g.data_nota, dias_nota: g.dias_nota,
         qtde: g.qtde, volumes: g.volumes.size, linhas: g.linhas,
-        // "Dentro da janela": o arquivo de Embarcadas cobre essa data, então a
-        // ausência dela ali é informação de verdade (ainda não saiu). Fora da
-        // janela é só falta de cobertura — não dá pra afirmar nada.
-        confirmado: !!(janelaEmbarcadas && g.data_nota && g.data_nota >= janelaEmbarcadas.de),
+        // Confirmado = a própria PFA ainda está na lista viva de Pendentes.
+        // Não usa mais a janela de Embarcadas pra isso (ver comentário acima).
+        confirmado: pfasEmPendentes.has(g.pfa),
       };
     }).sort(function (a, b) { return b.qtde - a.qtde; });
   }
@@ -435,15 +446,25 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
 
   const totalSemNota = totalizar(semNota, linhasSemNota);
   const totalComNota = totalizar(comNota, linhasComNota);
-  // A mesma soma, partida pela cobertura do arquivo de Embarcadas.
-  function somarColeta(lista) {
-    const pfas = new Set();
-    let qtde = 0;
-    lista.forEach(function (g) { pfas.add(g.pfa); qtde += g.qtde; });
-    return { qtde: qtde, pfas: pfas.size };
+  // A mesma soma, partida por quem ainda está confirmado em Pendentes. Feito
+  // pras DUAS populações (não só "com nota") — é o "bate os dados" pedido
+  // pela operação (09/09/2026): sem nota já bate 1:1 com Pendentes hoje, mas
+  // a checagem fica pronta pra qualquer população que vier a divergir.
+  function somarPorConfirmado(lista) {
+    const conf = lista.filter(function (g) { return g.confirmado; });
+    const naoConf = lista.filter(function (g) { return !g.confirmado; });
+    function somar(l) {
+      const pfas = new Set();
+      let qtde = 0;
+      l.forEach(function (g) { pfas.add(g.pfa); qtde += g.qtde; });
+      return { qtde: qtde, pfas: pfas.size };
+    }
+    return { confirmado: somar(conf), nao_confirmado: somar(naoConf) };
   }
-  const coletaConfirmada = somarColeta(comNota.filter(function (g) { return g.confirmado; }));
-  const coletaNaoConfirmada = somarColeta(comNota.filter(function (g) { return !g.confirmado; }));
+  const nfPorConfirmado = somarPorConfirmado(semNota);
+  const coletaPorConfirmado = somarPorConfirmado(comNota);
+  const coletaConfirmada = coletaPorConfirmado.confirmado;
+  const coletaNaoConfirmada = coletaPorConfirmado.nao_confirmado;
   const notaMaisAntiga = comNota.reduce(function (mx, g) {
     return (g.dias_nota !== null && g.dias_nota > mx.dias) ? { dias: g.dias_nota, data: g.data_nota } : mx;
   }, { dias: 0, data: null });
@@ -486,7 +507,10 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
         pfas: linhasPendentes.length, pares: totalPares, volumes: totalVolumes,
         mais_antiga_dias: maisAntiga.dias, mais_antiga_data: maisAntiga.data,
       },
-      aguardando_nf: totalSemNota,
+      aguardando_nf: Object.assign({}, totalSemNota, {
+        confirmado: nfPorConfirmado.confirmado,
+        nao_confirmado: nfPorConfirmado.nao_confirmado,
+      }),
       aguardando_coleta: Object.assign({}, totalComNota, {
         nota_mais_antiga_dias: notaMaisAntiga.dias,
         nota_mais_antiga_data: notaMaisAntiga.data,

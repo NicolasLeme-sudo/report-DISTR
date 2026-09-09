@@ -193,32 +193,37 @@ eq(snapParcial.pendentes[0].dias_na_etapa, 0, 'entrou na etapa hoje → 0 dias p
 eq(snapParcial.pendentes[0].conferencia, 'parcial',
    'parcial de hoje continua "parcial" — a PFA ainda está andando, não é alarme');
 
-secao('janela do Embarcadas separa o que dá pra confirmar do que não dá');
-// Nota de 25/02 (bem antes da janela) × nota de 01/09 (dentro dela).
-const pendJanela = parsearPfasPendentes([CAB_PEND,
+secao('confirmado = está na lista VIVA de Pendentes (não mais a janela de Embarcadas)');
+// 300001 continua em Pendentes mesmo com nota de 6+ meses (25/02) — ainda em
+// processo, prova direta de que está em tela. 300002 tem nota BEM mais
+// recente (01/09, dentro da janela do arquivo de Embarcadas) mas já SAIU de
+// Pendentes — é exatamente o caso real de 09/09/2026: um arquivo de janela
+// larga "confirmava" como em tela justamente quem a operação já tinha dito
+// que não estava mais lá. A janela do arquivo NÃO pode mais decidir isso.
+const pendConfirma = parsearPfasPendentes([CAB_PEND,
   linhaPend('300001', '01/09', '102', '1', 'Leitura expedicao', '10'),
-  linhaPend('300002', '01/09', '102', '1', 'Leitura expedicao', '20'),
 ].join('\n'), HOJE);
-const anaJanela = parsearPfasAnalitico([CAB_ANA,
-  linhaAna('300001', '900001', '25/02/2026', 'V-1', '102', 'A1', '10,0'), // fora da janela
-  linhaAna('300002', '900002', '01/09/2026', 'V-2', '102', 'A2', '20,0'), // dentro
+const anaConfirma = parsearPfasAnalitico([CAB_ANA,
+  linhaAna('300001', '900001', '25/02/2026', 'V-1', '102', 'A1', '10,0'),
+  linhaAna('300002', '900002', '01/09/2026', 'V-2', '102', 'A2', '20,0'),
 ].join('\n'));
-// Embarcadas cobre 17/08 → 08/09 (nenhuma dessas PFAs saiu)
-const embJanela = parsearPfasEmbarcadas([CAB_EMB,
+// Janela larga (17/08 → 08/09) cobre a nota de 300002 — antes isso bastava
+// pra "confirmar"; agora não basta, porque 300002 não está mais em Pendentes.
+const embConfirma = parsearPfasEmbarcadas([CAB_EMB,
   linhaEmb('999001', '17/08/2026', '800001', '1,0'),
   linhaEmb('999002', '08/09/2026', '800002', '1,0'),
 ].join('\n'));
-const snapJanela = construirSnapshotPfas(pendJanela, anaJanela, embJanela, mapaFamilias, { referencia: HOJE });
-eq(snapJanela.stats.janela_embarcadas.de, '2026-08-17', 'janela começa na nota embarcada mais antiga');
-eq(snapJanela.stats.janela_embarcadas.ate, '2026-09-08', 'e termina na mais recente');
-eq(snapJanela.stats.aguardando_coleta.confirmado.qtde, 20,
-   'nota de 01/09 está DENTRO da janela e não consta como embarcada → confirmadamente parada');
-eq(snapJanela.stats.aguardando_coleta.nao_confirmado.qtde, 10,
-   'nota de 25/02 é anterior à janela → não dá pra afirmar que ainda está lá');
-eq(snapJanela.stats.aguardando_coleta.qtde, 30, 'o total continua sendo a soma dos dois — nada some');
+const snapConfirma = construirSnapshotPfas(pendConfirma, anaConfirma, embConfirma, mapaFamilias, { referencia: HOJE });
+eq(snapConfirma.stats.aguardando_coleta.confirmado.qtde, 10,
+   '300001 ainda está em Pendentes → confirmado mesmo com nota de 6+ meses');
+eq(snapConfirma.stats.aguardando_coleta.nao_confirmado.qtde, 20,
+   '300002 não está mais em Pendentes → não confirmado, mesmo com nota dentro da janela de Embarcadas');
+eq(snapConfirma.stats.aguardando_coleta.qtde, 30, 'o total continua sendo a soma dos dois — nada some');
+eq(snapConfirma.stats.janela_embarcadas.de, '2026-08-17', 'janela do arquivo ainda fica no payload, como contexto');
+eq(snapConfirma.stats.janela_embarcadas.ate, '2026-09-08', 'contexto: só não decide mais o confirmado');
 
 secao('operação do embarque (PWD) é contada, não interpretada');
-const snapOp = construirSnapshotPfas(pendJanela, anaJanela, parsearPfasEmbarcadas([CAB_EMB,
+const snapOp = construirSnapshotPfas(pendConfirma, anaConfirma, parsearPfasEmbarcadas([CAB_EMB,
   linhaEmb('999001', '20/08/2026', '800001', '1,0', 'CROSSDOC'),
   linhaEmb('999002', '21/08/2026', '800002', '1,0', 'CROSSDOC'),
   linhaEmb('999003', '22/08/2026', '800003', '1,0', 'EX000704'),

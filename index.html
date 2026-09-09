@@ -371,6 +371,13 @@ html { overflow-x: hidden; }
    célula a célula. */
 .bar-item-funil.total > * { border-top: 1px solid var(--border); padding-top: 9px; }
 .bar-item-funil.total .nome, .bar-item-funil.total .num { color: var(--text); font-weight: 700; }
+/* A célula do meio na linha de total não tem texto (não tem barra ali), então
+   com `align-items: center` do grid pai ela fica centralizada numa caixa de
+   altura 0 — a borda de cima sobra 8px mais baixa que as das outras 3
+   células, e a linha de baixo vira uma "escada" em vez de reta. Esticar só
+   esta célula (sem mexer nas outras) alinha a borda de todas no topo da
+   linha. */
+.bar-item-funil.total .espaco-total { align-self: stretch; }
 /* Barras por dia do Ressuprimento — empilhadas por turno. Colunas de largura
    fixa com rolagem horizontal: um mês de dados não pode espremer a barra até
    ela virar um fio. */
@@ -2271,10 +2278,12 @@ let dataSnapshotPfas = null;
 let filtroMarcaPfa = new Set();       // vazio = todas
 let filtroSegmentoPfa = new Set();    // vazio = todos
 let filtroFifoPfa = new Set();        // vazio = todas as faixas
-let filtroEtapaFifoPfa = new Set();   // etapa dentro do card de FIFO
-let filtroEtapaColetaPfa = new Set(); // etapa dentro do card de aguardando coleta
-let filtroEtapaTabelaPfa = new Set();  // etapa dentro da tabela "PFAs mais antigas"
-let filtroConfTabelaPfa = new Set();   // conferência (resumida) dentro da tabela
+// Etapa é filtro ÚNICO, na faixa de cima, valendo pra tela inteira — funil,
+// FIFO, aguardando coleta e tabela leem todos do mesmo estado. Antes cada
+// card tinha o seu próprio filtro de etapa; virou 3 cliques pra responder
+// "e só o que está em picking?" em vez de 1.
+let filtroEtapaPfa = new Set();
+let filtroConfTabelaPfa = new Set();   // conferência (resumida) só na tabela
 let filtroTextoPfa = '';
 let limitePfa = 100;
 let ordemPfa = { campo: 'dias', direcao: 'desc' };
@@ -2339,9 +2348,7 @@ function alternarFiltroSetPfa(set, valor, redesenhar) {
 function alternarMarcaPfa(v) { alternarFiltroSetPfa(filtroMarcaPfa, v); }
 function alternarSegmentoPfa(v) { alternarFiltroSetPfa(filtroSegmentoPfa, v); }
 function alternarFifoPfa(v) { alternarFiltroSetPfa(filtroFifoPfa, v); }
-function alternarEtapaFifoPfa(v) { alternarFiltroSetPfa(filtroEtapaFifoPfa, v); }
-function alternarEtapaColetaPfa(v) { alternarFiltroSetPfa(filtroEtapaColetaPfa, v); }
-function alternarEtapaTabelaPfa(v) { alternarFiltroSetPfa(filtroEtapaTabelaPfa, v); }
+function alternarEtapaPfa(v) { alternarFiltroSetPfa(filtroEtapaPfa, v); }
 function alternarConfTabelaPfa(v) { alternarFiltroSetPfa(filtroConfTabelaPfa, v); }
 function filtrarTextoPfa(t) { filtroTextoPfa = t; renderizarPfas(); }
 function alterarLimitePfa(v) { limitePfa = v === 'todos' ? Infinity : Number(v); renderizarPfas(); }
@@ -2363,6 +2370,7 @@ function pendentesFiltradosPfa() {
   return (dadosPfas.pendentes || []).filter(function (r) {
     if (!passaMarcaSegmentoPfa(r)) return false;
     if (filtroFifoPfa.size && !filtroFifoPfa.has(r.faixa_fifo)) return false;
+    if (filtroEtapaPfa.size && !filtroEtapaPfa.has(r.situacao)) return false;
     return true;
   });
 }
@@ -2374,7 +2382,6 @@ function pendentesFiltradosPfa() {
 function linhasTabelaPfa() {
   const busca = filtroTextoPfa.trim().toLowerCase();
   return pendentesFiltradosPfa().filter(function (r) {
-    if (filtroEtapaTabelaPfa.size && !filtroEtapaTabelaPfa.has(r.situacao)) return false;
     if (filtroConfTabelaPfa.size && !filtroConfTabelaPfa.has(grupoConferenciaPfa(r.conferencia))) return false;
     if (!busca) return true;
     const alvo = [r.pfa, r.cliente_nome, r.cliente_codigo, rotEtapaPfa(r.situacao), r.marca,
@@ -2439,13 +2446,20 @@ function renderizarPfas() {
       .map(function (e) { return { valor: e[0], rotulo: e[0] }; });
   }
   // Os 3 grupos entram no mesmo `.filtros-linha` pra ocuparem uma linha só
-  // enquanto couberem, em vez de empilhar 3 faixas no topo da tela.
+  // enquanto couberem, em vez de empilhar 3 faixas no topo da tela. Etapa vai
+  // pra linha de baixo, sozinha — é o filtro que mais muda a leitura da tela
+  // inteira (funil, FIFO, coleta e tabela todos leem dele), então fica com
+  // destaque próprio em vez de disputar espaço com os outros três.
   const chipsTopo = '<div class="filtros-linha">' +
     chipsSet('Marca', filtroMarcaPfa, opcoesDe('marca'), 'alternarMarcaPfa') +
     chipsSet('Segmento', filtroSegmentoPfa, opcoesDe('segmento_macro'), 'alternarSegmentoPfa') +
     chipsSet('FIFO', filtroFifoPfa, (p.faixas_fifo || []).map(function (f) {
       return { valor: f.chave, rotulo: f.rotulo };
     }), 'alternarFifoPfa') +
+  '</div><div class="filtros-linha">' +
+    chipsSet('Etapa', filtroEtapaPfa, (p.etapas || []).map(function (e) {
+      return { valor: e, rotulo: rotEtapaPfa(e) };
+    }), 'alternarEtapaPfa') +
   '</div>';
 
   /* ---------- KPIs ---------- */
@@ -2454,26 +2468,44 @@ function renderizarPfas() {
     return (r.dias_abertos !== null && r.dias_abertos > mx.dias) ? { dias: r.dias_abertos, data: r.data_importacao } : mx;
   }, { dias: 0, data: null });
 
-  // Aguardando NF/coleta seguem marca+segmento (não a faixa de FIFO).
-  const nfFiltrado = (p.aguardando_nf || []).filter(passaMarcaSegmentoPfa);
-  const coletaFiltrado = (p.aguardando_coleta || []).filter(passaMarcaSegmentoPfa);
-  const qtdeNf = nfFiltrado.reduce(function (s, r) { return s + r.qtde; }, 0);
+  // Aguardando NF/coleta vêm do Analítico, que não tem etapa própria — pra
+  // Etapa valer aqui também, cruza pelo número da PFA com a situação atual
+  // em Pendentes. PFA que não aparece mais em Pendentes fica de fora sempre
+  // que algum filtro de etapa estiver ativo (não tem etapa que se afirme).
+  const etapaPorPfa = new Map();
+  (p.pendentes || []).forEach(function (r) { etapaPorPfa.set(r.pfa, r.situacao); });
+  function passaEtapaCruzada(pfa) {
+    return !filtroEtapaPfa.size || filtroEtapaPfa.has(etapaPorPfa.get(pfa));
+  }
+  const nfFiltrado = (p.aguardando_nf || []).filter(function (r) {
+    return passaMarcaSegmentoPfa(r) && passaEtapaCruzada(r.pfa);
+  });
+  const coletaFiltrado = (p.aguardando_coleta || []).filter(function (r) {
+    return passaMarcaSegmentoPfa(r) && passaEtapaCruzada(r.pfa);
+  });
+  // "Confirmado" = a PFA ainda aparece na lista VIVA de Pendentes — prova
+  // direta de que está em tela hoje. Trocou de critério em 09/09/2026: usava
+  // a janela do arquivo de Embarcadas (prova indireta — "não vi no que
+  // saiu"), mas um arquivo de janela mais larga "confirmou" como em tela 98
+  // PFAs / 5.648 pç que a própria operação já tinha dito, na rodada
+  // anterior, que não estavam mais em tela. Presença em Pendentes não
+  // depende da cobertura de nenhum arquivo — não some quando o arquivo
+  // muda. O mesmo corte vale pras DUAS populações (sem nota e com nota).
+  function separarConfirmado(lista) {
+    const conf = lista.filter(function (r) { return r.confirmado; });
+    const naoConf = lista.filter(function (r) { return !r.confirmado; });
+    return {
+      conf: conf, naoConf: naoConf,
+      qtdeConf: conf.reduce(function (s, r) { return s + r.qtde; }, 0),
+      qtdeNaoConf: naoConf.reduce(function (s, r) { return s + r.qtde; }, 0),
+      pfasConf: new Set(conf.map(function (r) { return r.pfa; })).size,
+    };
+  }
+  const nfSep = separarConfirmado(nfFiltrado);
+  const coletaSep = separarConfirmado(coletaFiltrado);
   const qtdeColeta = coletaFiltrado.reduce(function (s, r) { return s + r.qtde; }, 0);
   const pfasColeta = new Set(coletaFiltrado.map(function (r) { return r.pfa; })).size;
-  const pfasNf = new Set(nfFiltrado.map(function (r) { return r.pfa; })).size;
-  // A operação confirmou (09/09/2026) que o backlog velho do Analítico não
-  // está mais em tela — ou saiu fora do range do arquivo de Embarcadas, ou é
-  // B.O. em análise. Então o KPI destaca o que dá pra AFIRMAR (nota dentro da
-  // janela coberta por Embarcadas e ausente dela = realmente não saiu) e
-  // mostra o resto à parte, marcado como não confirmado, em vez de somar tudo
-  // como se fosse trabalho vivo.
-  const coletaConf = coletaFiltrado.filter(function (r) { return r.confirmado; });
-  const coletaNaoConf = coletaFiltrado.filter(function (r) { return !r.confirmado; });
-  const qtdeColetaConf = coletaConf.reduce(function (s2, r) { return s2 + r.qtde; }, 0);
-  const qtdeColetaNaoConf = coletaNaoConf.reduce(function (s2, r) { return s2 + r.qtde; }, 0);
-  const pfasColetaConf = new Set(coletaConf.map(function (r) { return r.pfa; })).size;
-  const janela = p.stats.janela_embarcadas;
-  const coletaMaisAntiga = coletaConf.reduce(function (mx, r) {
+  const coletaMaisAntiga = coletaSep.conf.reduce(function (mx, r) {
     return (r.dias_nota !== null && r.dias_nota > mx.dias) ? { dias: r.dias_nota, data: r.data_nota } : mx;
   }, { dias: 0, data: null });
 
@@ -2487,21 +2519,22 @@ function renderizarPfas() {
       '<div class="val forte" style="color:var(--amber)">' + (maisAntiga.dias ? fmtInt(maisAntiga.dias) + ' dias' : '—') + '</div>' +
       '<div class="sub">' + (maisAntiga.data ? 'importada ' + formatarDataSimples(maisAntiga.data) : 'sem PFA no recorte') + '</div></div>' +
     '<div class="kpi"><div class="rot">Conferido, aguard. nota fiscal</div>' +
-      '<div class="val forte">' + fmtInt(qtdeNf) + ' pç</div>' +
-      '<div class="sub">' + fmtInt(pfasNf) + ' PFAs · sem data, sem FIFO ainda</div></div>' +
+      '<div class="val forte">' + fmtInt(nfSep.qtdeConf) + ' pç</div>' +
+      '<div class="sub">' + fmtInt(nfSep.pfasConf) + ' PFAs · sem data, sem FIFO ainda' +
+      (nfSep.qtdeNaoConf ? ' · +' + fmtInt(nfSep.qtdeNaoConf) + ' pç não confirmados' : '') + '</div></div>' +
     '<div class="kpi"><div class="rot">Com nota, aguard. coleta</div>' +
-      '<div class="val forte" style="color:var(--red)">' + fmtInt(qtdeColetaConf) + ' pç</div>' +
-      '<div class="sub">' + fmtInt(pfasColetaConf) + ' PFAs' +
+      '<div class="val forte" style="color:var(--red)">' + fmtInt(coletaSep.qtdeConf) + ' pç</div>' +
+      '<div class="sub">' + fmtInt(coletaSep.pfasConf) + ' PFAs' +
       (coletaMaisAntiga.dias ? ' · mais antiga há ' + fmtInt(coletaMaisAntiga.dias) + ' dias' : '') +
-      (qtdeColetaNaoConf ? ' · +' + fmtInt(qtdeColetaNaoConf) + ' pç não confirmados' : '') + '</div></div>' +
+      (coletaSep.qtdeNaoConf ? ' · +' + fmtInt(coletaSep.qtdeNaoConf) + ' pç não confirmados' : '') + '</div></div>' +
   '</div>' +
-  (qtdeColetaNaoConf ? '<div class="aviso" style="border-color:var(--amber)">' +
-    '<strong>' + fmtInt(qtdeColetaNaoConf) + ' peças</strong> com nota anterior a ' +
-    (janela ? formatarDataSimples(janela.de) : 'a janela do arquivo') + ' ficam <strong>fora do KPI acima</strong>: ' +
-    'o arquivo de NFs Embarcadas só cobre ' +
-    (janela ? formatarDataSimples(janela.de) + ' a ' + formatarDataSimples(janela.ate) : 'um intervalo curto') +
-    ', então não dá pra confirmar se já saíram. A operação não tem mais esses itens em tela — ' +
-    'provável material fora do range do expedido ou B.O. em análise.</div>' : '');
+  ((coletaSep.qtdeNaoConf || nfSep.qtdeNaoConf) ? '<div class="aviso" style="border-color:var(--amber)">' +
+    (coletaSep.qtdeNaoConf ? '<strong>' + fmtInt(coletaSep.qtdeNaoConf) + ' peças</strong> (aguardando coleta)' : '') +
+    (coletaSep.qtdeNaoConf && nfSep.qtdeNaoConf ? ' e ' : '') +
+    (nfSep.qtdeNaoConf ? '<strong>' + fmtInt(nfSep.qtdeNaoConf) + ' peças</strong> (aguardando nota fiscal)' : '') +
+    ' aparecem no Analítico mas <strong>não estão na lista atual de Pendentes</strong> — ficam fora dos ' +
+    'KPIs acima. A operação confirmou que esse volume não está mais em tela: provável material fora do ' +
+    'range do arquivo de embarque ou B.O. em análise.</div>' : '');
 
   /* ---------- funil por etapa ---------- */
   const porEtapa = new Map();
@@ -2527,16 +2560,13 @@ function renderizarPfas() {
       '<div class="num">' + fmtInt(g.pfas) + '</div>' +
     '</div>';
   });
-  barrasEtapa += '<div class="bar-item-funil total"><div class="nome">TOTAL</div><div></div>' +
+  barrasEtapa += '<div class="bar-item-funil total"><div class="nome">TOTAL</div><div class="espaco-total"></div>' +
     '<div class="num">' + fmtInt(totalParesEtapa) + '</div>' +
     '<div class="num">' + fmtInt(totalPfasEtapa) + '</div></div>';
 
-  /* ---------- FIFO por faixa (com filtro de etapa próprio) ---------- */
-  const paraFifo = filtrados.filter(function (r) {
-    return !filtroEtapaFifoPfa.size || filtroEtapaFifoPfa.has(r.situacao);
-  });
+  /* ---------- FIFO por faixa ---------- */
   const porFaixa = new Map();
-  paraFifo.forEach(function (r) {
+  filtrados.forEach(function (r) {
     if (!r.faixa_fifo) return;
     porFaixa.set(r.faixa_fifo, (porFaixa.get(r.faixa_fifo) || 0) + r.pares);
   });
@@ -2554,19 +2584,9 @@ function renderizarPfas() {
     '</div>';
   });
 
-  /* ---------- aguardando coleta por segmento (filtro de etapa cruzado) ----------
-     O Analítico não tem etapa — quem tem é o Pendentes. O filtro aqui cruza
-     pelo número da PFA; PFA que não está mais em Pendentes (já saiu do fluxo)
-     fica de fora quando há filtro de etapa ativo, porque aí não há etapa que
-     se possa afirmar. */
-  const etapaPorPfa = new Map();
-  (p.pendentes || []).forEach(function (r) { etapaPorPfa.set(r.pfa, r.situacao); });
-  const coletaComEtapa = coletaFiltrado.filter(function (r) {
-    if (!filtroEtapaColetaPfa.size) return true;
-    return filtroEtapaColetaPfa.has(etapaPorPfa.get(r.pfa));
-  });
+  /* ---------- aguardando coleta por segmento ---------- */
   const porSegColeta = new Map();
-  coletaComEtapa.forEach(function (r) {
+  coletaFiltrado.forEach(function (r) {
     porSegColeta.set(r.segmento_macro, (porSegColeta.get(r.segmento_macro) || 0) + r.qtde);
   });
   const segsColeta = Array.from(porSegColeta.entries()).sort(function (a, b) { return b[1] - a[1]; });
@@ -2581,18 +2601,6 @@ function renderizarPfas() {
     '</div>';
   });
 
-  // Etapas disponíveis nos chips dos dois cards — só as que existem no recorte
-  const etapasNoRecorte = (p.etapas || []).filter(function (e) { return porEtapa.has(e); });
-  function chipsEtapa(set, fn) {
-    let h = '<div class="filtros" style="margin-bottom:0"><span class="rot-filtro">Etapa</span>' +
-      '<span class="chip' + (!set.size ? ' on' : '') + '" onclick="' + fn + '(null)">Todas</span>';
-    etapasNoRecorte.forEach(function (e) {
-      h += '<span class="chip' + (set.has(e) ? ' on' : '') + '" onclick="' + fn + '(\'' + escaparJs(e) + '\')">' +
-        escapar(rotEtapaPfa(e)) + '</span>';
-    });
-    if (set.size) h += '<span class="chip" style="color:var(--red)" onclick="' + fn + '(null)">✕ Limpar</span>';
-    return h + '</div>';
-  }
   function chipsConferencia(set, fn) {
     let h = '<div class="filtros" style="margin-bottom:0"><span class="rot-filtro">Conferência</span>' +
       '<span class="chip' + (!set.size ? ' on' : '') + '" onclick="' + fn + '(null)">Todas</span>';
@@ -2680,19 +2688,17 @@ function renderizarPfas() {
         '<div class="section-title">FIFO — dias em aberto</div>' +
         '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Pares por faixa de idade ' +
           '(data de importação da PFA).</p>' +
-        chipsEtapa(filtroEtapaFifoPfa, 'alternarEtapaFifoPfa') +
         '<div class="barras-dia">' + barrasFifo + '</div>' +
       '</div>' +
       '<div class="card">' +
         '<div class="section-title">Com nota, aguardando coleta — por segmento</div>' +
         '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' + fmtInt(qtdeColeta) +
           ' pç já faturadas (' + fmtInt(pfasColeta) + ' PFAs) — única fatia com FIFO real' +
-          (qtdeColetaNaoConf ? ', incluindo ' + fmtInt(qtdeColetaNaoConf) + ' pç não confirmadas contra Embarcadas' : '') +
+          (coletaSep.qtdeNaoConf ? ', incluindo ' + fmtInt(coletaSep.qtdeNaoConf) + ' pç não confirmadas em tela' : '') +
           '.</p>' +
-        chipsEtapa(filtroEtapaColetaPfa, 'alternarEtapaColetaPfa') +
         '<div class="bar-list">' + (barrasSegColeta || '<div class="aviso">Nada aguardando coleta neste recorte.</div>') + '</div>' +
         '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">O Analítico não tem campo de etapa — ' +
-          'o filtro acima cruza pela PFA com a situação atual em Pendentes.</p>' +
+          'o filtro Etapa (no topo da tela) cruza pela PFA com a situação em Pendentes.</p>' +
       '</div>' +
     '</div>' +
     '<div class="card">' +
@@ -2701,7 +2707,6 @@ function renderizarPfas() {
         '<button class="btn-mini" onclick="exportarCSVPfas()">⬇ Exportar CSV</button>' +
       '</div>' +
       '<div class="filtros-linha" style="margin:12px 0 10px">' +
-        chipsEtapa(filtroEtapaTabelaPfa, 'alternarEtapaTabelaPfa') +
         chipsConferencia(filtroConfTabelaPfa, 'alternarConfTabelaPfa') +
       '</div>' +
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0">' +
