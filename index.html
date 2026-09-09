@@ -2273,10 +2273,16 @@ const COR_ETAPA_PFA = {
 };
 const COR_FAIXA_FIFO = { '0-2': '--olive', '3-5': '--olive', '6-10': '--amber', '11+': '--red' };
 
+/* Os 4 estados de conferência. "Parcial" só vira alarme depois de 3 dias
+   parada na etapa (DIAS_PARCIAL_RASTREIO no ingest): a operação confirmou que
+   até aí é fluxo normal — a PFA anda item por item — e que a partir daí quase
+   sempre é corte sinalizado pelo separador, esperando o time de coleta
+   analisar e atender. */
 const ROT_CONFERENCIA = {
-  completa: { rotulo: 'Completa', classe: 'ok' },
-  parcial: { rotulo: 'Parcial', classe: 'warn' },
-  nao_iniciada: { rotulo: 'Não iniciada', classe: 'neutro' },
+  completa: { rotulo: 'Completa', classe: 'ok', dica: 'Todos os volumes da PFA já passaram pela conferência.' },
+  parcial: { rotulo: 'Parcial', classe: 'warn', dica: 'Parte dos volumes conferida — fluxo normal enquanto a PFA continua andando.' },
+  parcial_rastreio: { rotulo: 'Parcial (rastreio)', classe: 'bad', dica: 'Parcial e parada há 3 dias ou mais na mesma etapa — provável corte sinalizado na coleta, esperando análise do time responsável.' },
+  nao_iniciada: { rotulo: 'Não iniciada', classe: 'neutro', dica: 'Nenhum volume desta PFA foi conferido ainda.' },
 };
 
 function alternarFiltroSetPfa(set, valor, redesenhar) {
@@ -2387,7 +2393,19 @@ function renderizarPfas() {
   const qtdeColeta = coletaFiltrado.reduce(function (s, r) { return s + r.qtde; }, 0);
   const pfasColeta = new Set(coletaFiltrado.map(function (r) { return r.pfa; })).size;
   const pfasNf = new Set(nfFiltrado.map(function (r) { return r.pfa; })).size;
-  const coletaMaisAntiga = coletaFiltrado.reduce(function (mx, r) {
+  // A operação confirmou (09/09/2026) que o backlog velho do Analítico não
+  // está mais em tela — ou saiu fora do range do arquivo de Embarcadas, ou é
+  // B.O. em análise. Então o KPI destaca o que dá pra AFIRMAR (nota dentro da
+  // janela coberta por Embarcadas e ausente dela = realmente não saiu) e
+  // mostra o resto à parte, marcado como não confirmado, em vez de somar tudo
+  // como se fosse trabalho vivo.
+  const coletaConf = coletaFiltrado.filter(function (r) { return r.confirmado; });
+  const coletaNaoConf = coletaFiltrado.filter(function (r) { return !r.confirmado; });
+  const qtdeColetaConf = coletaConf.reduce(function (s2, r) { return s2 + r.qtde; }, 0);
+  const qtdeColetaNaoConf = coletaNaoConf.reduce(function (s2, r) { return s2 + r.qtde; }, 0);
+  const pfasColetaConf = new Set(coletaConf.map(function (r) { return r.pfa; })).size;
+  const janela = p.stats.janela_embarcadas;
+  const coletaMaisAntiga = coletaConf.reduce(function (mx, r) {
     return (r.dias_nota !== null && r.dias_nota > mx.dias) ? { dias: r.dias_nota, data: r.data_nota } : mx;
   }, { dias: 0, data: null });
 
@@ -2404,10 +2422,18 @@ function renderizarPfas() {
       '<div class="val forte">' + fmtInt(qtdeNf) + ' pç</div>' +
       '<div class="sub">' + fmtInt(pfasNf) + ' PFAs · sem data, sem FIFO ainda</div></div>' +
     '<div class="kpi"><div class="rot">Com nota, aguard. coleta</div>' +
-      '<div class="val forte" style="color:var(--red)">' + (coletaMaisAntiga.dias ? fmtInt(coletaMaisAntiga.dias) + ' dias' : '—') + '</div>' +
-      '<div class="sub">' + fmtInt(qtdeColeta) + ' pç · ' + fmtInt(pfasColeta) + ' PFAs' +
-      (coletaMaisAntiga.data ? ' · nota mais antiga ' + formatarDataSimples(coletaMaisAntiga.data) : '') + '</div></div>' +
-  '</div>';
+      '<div class="val forte" style="color:var(--red)">' + fmtInt(qtdeColetaConf) + ' pç</div>' +
+      '<div class="sub">' + fmtInt(pfasColetaConf) + ' PFAs' +
+      (coletaMaisAntiga.dias ? ' · mais antiga há ' + fmtInt(coletaMaisAntiga.dias) + ' dias' : '') +
+      (qtdeColetaNaoConf ? ' · +' + fmtInt(qtdeColetaNaoConf) + ' pç não confirmados' : '') + '</div></div>' +
+  '</div>' +
+  (qtdeColetaNaoConf ? '<div class="aviso" style="border-color:var(--amber)">' +
+    '<strong>' + fmtInt(qtdeColetaNaoConf) + ' peças</strong> com nota anterior a ' +
+    (janela ? formatarDataSimples(janela.de) : 'a janela do arquivo') + ' ficam <strong>fora do KPI acima</strong>: ' +
+    'o arquivo de NFs Embarcadas só cobre ' +
+    (janela ? formatarDataSimples(janela.de) + ' a ' + formatarDataSimples(janela.ate) : 'um intervalo curto') +
+    ', então não dá pra confirmar se já saíram. A operação não tem mais esses itens em tela — ' +
+    'provável material fora do range do expedido ou B.O. em análise.</div>' : '');
 
   /* ---------- funil por etapa ---------- */
   const porEtapa = new Map();
@@ -2530,15 +2556,17 @@ function renderizarPfas() {
       'onclick="ordenarPfa(\'' + campo + '\')" title="Ordenar por ' + rotulo + '">' + rotulo + setaPfa(campo) + '</th>';
   }
   const linhasHtml = carregadas.map(function (r) {
-    const c = ROT_CONFERENCIA[r.conferencia];
-    const cor = c.classe === 'ok' ? 'var(--olive)' : c.classe === 'warn' ? 'var(--amber)' : 'var(--text-muted)';
-    const fundo = c.classe === 'ok' ? 'var(--olive-soft)' : c.classe === 'warn' ? 'var(--amber-soft)' : 'var(--bg-input)';
+    const c = ROT_CONFERENCIA[r.conferencia] || ROT_CONFERENCIA.nao_iniciada;
+    const cor = c.classe === 'ok' ? 'var(--olive)' : c.classe === 'warn' ? 'var(--amber)'
+      : c.classe === 'bad' ? 'var(--red)' : 'var(--text-muted)';
+    const fundo = c.classe === 'ok' ? 'var(--olive-soft)' : c.classe === 'warn' ? 'var(--amber-soft)'
+      : c.classe === 'bad' ? 'var(--red-soft)' : 'var(--bg-input)';
     return '<tr><th class="centro">' + escapar(r.pfa) + '</th>' +
       '<td class="centro">' + escapar(r.cliente_nome) + '</td>' +
       '<td class="centro">' + escapar(r.marca) + ' · ' + escapar(r.segmento_macro) + '</td>' +
       '<td class="centro">' + escapar(rotEtapaPfa(r.situacao)) + '</td>' +
-      '<td class="centro"><span style="display:inline-block;padding:2px 8px;border-radius:20px;' +
-        'font-size:10.5px;font-weight:600;background:' + fundo + ';color:' + cor + '">' +
+      '<td class="centro"><span title="' + escapar(c.dica) + '" style="display:inline-block;padding:2px 8px;' +
+        'border-radius:20px;font-size:10.5px;font-weight:600;background:' + fundo + ';color:' + cor + '">' +
         c.rotulo + ' · ' + fmtInt(r.conferencia_lidos) + '/' + fmtInt(r.conferencia_total) + '</span></td>' +
       '<td>' + fmtInt(r.pares) + '</td>' +
       '<td>' + (r.dias_abertos === null ? '—' : fmtInt(r.dias_abertos)) + '</td></tr>';
@@ -2581,7 +2609,9 @@ function renderizarPfas() {
       '<div class="card">' +
         '<div class="section-title">Com nota, aguardando coleta — por segmento</div>' +
         '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' + fmtInt(qtdeColeta) +
-          ' pç já faturadas (' + fmtInt(pfasColeta) + ' PFAs) — única fatia com FIFO real.</p>' +
+          ' pç já faturadas (' + fmtInt(pfasColeta) + ' PFAs) — única fatia com FIFO real' +
+          (qtdeColetaNaoConf ? ', incluindo ' + fmtInt(qtdeColetaNaoConf) + ' pç não confirmadas contra Embarcadas' : '') +
+          '.</p>' +
         chipsEtapa(filtroEtapaColetaPfa, 'alternarEtapaColetaPfa') +
         '<div class="bar-list">' + (barrasSegColeta || '<div class="aviso">Nada aguardando coleta neste recorte.</div>') + '</div>' +
         '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">O Analítico não tem campo de etapa — ' +
@@ -2618,7 +2648,9 @@ function renderizarPfas() {
       '</tr></thead><tbody>' + linhasHtml + linhaTotal + '</tbody></table></div>' +
       '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Conferência compara os volumes já ' +
         'lidos no Analítico com o total de volumes da PFA: <strong>Não iniciada</strong> nenhum lido · ' +
-        '<strong>Parcial</strong> alguns · <strong>Completa</strong> todos.</p>' +
+        '<strong>Parcial</strong> alguns · <strong>Completa</strong> todos. Parcial parada há 3 dias ou mais ' +
+        'na mesma etapa vira <strong style="color:var(--red)">Parcial (rastreio)</strong> — provável corte ' +
+        'sinalizado na coleta, esperando análise.</p>' +
     '</div>';
 }
 

@@ -146,7 +146,10 @@ secao('conferência — volume DISTINTO lido × total de volumes da PFA');
 function conf(pfa) { return snap.pendentes.filter(function (r) { return r.pfa === pfa; })[0]; }
 eq(conf('235651').conferencia, 'completa', '235651: 1 de 1 volume lido → completa');
 eq(conf('235651').conferencia_lidos + '/' + conf('235651').conferencia_total, '1/1', 'razão exibida na tela');
-eq(conf('236153').conferencia, 'parcial', '236153: 1 de 2 volumes → parcial (2 SKUs no mesmo volume não viram 2)');
+// 236153 entrou na etapa em 28/08 (11 dias parada) — parcial que passa de 3
+// dias vira caso de rastreio, não fluxo normal.
+eq(conf('236153').conferencia, 'parcial_rastreio',
+   '236153: 1 de 2 volumes E parada há 11 dias → parcial em rastreio');
 eq(conf('236153').conferencia_lidos + '/' + conf('236153').conferencia_total, '1/2', 'razão 1/2');
 eq(conf('237746').conferencia, 'nao_iniciada', '237746: nenhum volume lido → não iniciada');
 eq(conf('237746').conferencia_lidos + '/' + conf('237746').conferencia_total, '0/5', 'razão 0/5');
@@ -174,6 +177,55 @@ secao('sem arquivo de embarcadas o snapshot ainda sai (só não filtra nada)');
 const snapSemEmb = construirSnapshotPfas(pendCompleto, anaCompleto, { registros: [] }, mapaFamilias, { referencia: HOJE });
 eq(snapSemEmb.pendentes.length, 5, 'sem Embarcadas, a PFA que já saiu continua contando (por isso o aviso na tela)');
 eq(snapSemEmb.stats.excluidas_por_embarque.pfas, 0, 'nada excluído');
+
+/* -------------------------------------------------------------------------- */
+secao('parcial recente ainda é fluxo normal — só vira rastreio a partir de 3 dias');
+// Mesma PFA parcial (1 de 2 volumes), mas entrou na etapa HOJE.
+const pendParcialNova = parsearPfasPendentes([CAB_PEND,
+  ['DISTR', '250000', '08/09', 'CL-1-1', 'CLIENTE', '105', 'EBM', '00585', 'T', '', '', 'ROD', '2',
+   'Em picking', '08/09', '', '', '0', '0', '0', '0', '10', '5', 'N', '', '', '', '', '', '', '25', '1'].join('|'),
+].join('\n'), HOJE);
+const anaParcialNova = parsearPfasAnalitico([CAB_ANA,
+  linhaAna('250000', '0', '', 'V-Z', '105', 'A9', '5,0'),
+].join('\n'));
+const snapParcial = construirSnapshotPfas(pendParcialNova, anaParcialNova, { registros: [] }, mapaFamilias, { referencia: HOJE });
+eq(snapParcial.pendentes[0].dias_na_etapa, 0, 'entrou na etapa hoje → 0 dias parada');
+eq(snapParcial.pendentes[0].conferencia, 'parcial',
+   'parcial de hoje continua "parcial" — a PFA ainda está andando, não é alarme');
+
+secao('janela do Embarcadas separa o que dá pra confirmar do que não dá');
+// Nota de 25/02 (bem antes da janela) × nota de 01/09 (dentro dela).
+const pendJanela = parsearPfasPendentes([CAB_PEND,
+  linhaPend('300001', '01/09', '102', '1', 'Leitura expedicao', '10'),
+  linhaPend('300002', '01/09', '102', '1', 'Leitura expedicao', '20'),
+].join('\n'), HOJE);
+const anaJanela = parsearPfasAnalitico([CAB_ANA,
+  linhaAna('300001', '900001', '25/02/2026', 'V-1', '102', 'A1', '10,0'), // fora da janela
+  linhaAna('300002', '900002', '01/09/2026', 'V-2', '102', 'A2', '20,0'), // dentro
+].join('\n'));
+// Embarcadas cobre 17/08 → 08/09 (nenhuma dessas PFAs saiu)
+const embJanela = parsearPfasEmbarcadas([CAB_EMB,
+  linhaEmb('999001', '17/08/2026', '800001', '1,0'),
+  linhaEmb('999002', '08/09/2026', '800002', '1,0'),
+].join('\n'));
+const snapJanela = construirSnapshotPfas(pendJanela, anaJanela, embJanela, mapaFamilias, { referencia: HOJE });
+eq(snapJanela.stats.janela_embarcadas.de, '2026-08-17', 'janela começa na nota embarcada mais antiga');
+eq(snapJanela.stats.janela_embarcadas.ate, '2026-09-08', 'e termina na mais recente');
+eq(snapJanela.stats.aguardando_coleta.confirmado.qtde, 20,
+   'nota de 01/09 está DENTRO da janela e não consta como embarcada → confirmadamente parada');
+eq(snapJanela.stats.aguardando_coleta.nao_confirmado.qtde, 10,
+   'nota de 25/02 é anterior à janela → não dá pra afirmar que ainda está lá');
+eq(snapJanela.stats.aguardando_coleta.qtde, 30, 'o total continua sendo a soma dos dois — nada some');
+
+secao('operação do embarque (PWD) é contada, não interpretada');
+const snapOp = construirSnapshotPfas(pendJanela, anaJanela, parsearPfasEmbarcadas([CAB_EMB,
+  linhaEmb('999001', '20/08/2026', '800001', '1,0', 'CROSSDOC'),
+  linhaEmb('999002', '21/08/2026', '800002', '1,0', 'CROSSDOC'),
+  linhaEmb('999003', '22/08/2026', '800003', '1,0', 'EX000704'),
+].join('\n')), mapaFamilias, { referencia: HOJE });
+eq(snapOp.stats.embarcadas_por_operacao[0].operacao, 'CROSSDOC', 'operação mais frequente vem primeiro');
+eq(snapOp.stats.embarcadas_por_operacao[0].notas, 2, 'com a contagem de notas');
+eq(snapOp.stats.embarcadas_por_operacao.length, 2, 'duas operações distintas no arquivo');
 
 /* -------------------------------------------------------------------------- */
 console.log(falhas === 0 ? '\nTODOS OS TESTES PASSARAM' : '\n' + falhas + ' TESTE(S) FALHARAM');

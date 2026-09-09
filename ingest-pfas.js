@@ -51,6 +51,13 @@ const FAIXAS_FIFO_PFA = [
   { chave: '11+', rotulo: '11+ dias', ate: Infinity },
 ];
 
+/* Conferência parcial que passa disso PARADA na etapa vira caso de rastreio:
+   confirmado com a operação (09/09/2026) — a partir de ~3 dias, quase sempre
+   é corte sinalizado pelo separador na coleta, que o time responsável analisa
+   e atende se necessário. Antes disso é fluxo normal (a PFA anda item por
+   item), e por isso não pode virar alarme. */
+const DIAS_PARCIAL_RASTREIO = 3;
+
 function faixaFifoPfa(dias) {
   for (let i = 0; i < FAIXAS_FIFO_PFA.length; i++) {
     if (dias <= FAIXAS_FIFO_PFA[i].ate) return FAIXAS_FIFO_PFA[i].chave;
@@ -154,6 +161,13 @@ function parsearPfasPendentes(textoArquivo, referenciaISO) {
       qt_volumes: window.numeroBR(p[12]),
       situacao: (p[13] || '').trim(),
       data_situacao: dataDDMMComAno(p[14], hoje),
+      // Quanto tempo a PFA está PARADA na etapa atual — relógio diferente do
+      // dias_abertos (que conta desde a importação). É este que a operação
+      // usa pra decidir se a conferência parcial virou caso de rastreio.
+      dias_na_etapa: (function () {
+        const d = dataDDMMComAno(p[14], hoje);
+        return d ? diasEntre(d, hoje) : null;
+      })(),
       nota_fiscal: (p[15] || '').trim(),
       pares: window.numeroBR(p[21]),
       box: (p[22] || '').trim(),
@@ -216,9 +230,14 @@ function parsearPfasAnalitico(textoArquivo) {
    ============================================================================
    EMP;ESTABE;DATNOT;NUMPFA;CODSER;SCDSER;NUMNOT;VALTOT;QTDTOT;PWD;DATMOD
 
-   PWD ainda não tem significado confirmado pela operação (pergunta 06 do
-   plano) — é lido e guardado como veio, sem interpretar, pra virar filtro
-   depois se fizer sentido.
+   PWD identifica a OPERAÇÃO (ou o usuário) que fez o embarque — relatório
+   novo, a operação ainda está fechando a definição exata (09/09/2026). O que
+   já está confirmado: "CROSSDOC" é transferência entre DISTR e E-COMM, feita
+   pra receber material sem custo fiscal extra (em vez de o e-commerce comprar,
+   as outras unidades transferem pra distribuidora e a distribuidora transfere
+   pro e-commerce). Ou seja: cross-docking NÃO é venda — some do pendente pelo
+   mesmo motivo, mas é bom conseguir separar um do outro na hora de explicar
+   um número. Por isso o campo é guardado e contado por operação.
    ============================================================================ */
 function parsearPfasEmbarcadas(textoArquivo) {
   const linhas = String(textoArquivo || '').split(/\r?\n/);
@@ -281,6 +300,24 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
      conversa: é a medida do atraso da fonte de Pendentes. */
   const pfasEmbarcadas = new Set(embarcadas.registros.map(function (e) { return e.pfa; }));
 
+  /* A JANELA do arquivo de Embarcadas importa tanto quanto o conteúdo: ele
+     cobre só um intervalo (o real de 08/09/2026 vai de 17/08 a 08/09), então
+     nota ANTERIOR a essa janela não pode ser confirmada nem desmentida por
+     ele. A operação confirmou (09/09/2026) que o backlog de 6+ meses do
+     Analítico não está mais em tela — ou saiu fora do range, ou é B.O. em
+     análise. Marcar essa fatia como "não confirmada" evita que ela engorde o
+     número de "aguardando coleta" como se fosse trabalho vivo. */
+  const datasEmb = embarcadas.registros.map(function (e) { return e.data_nota; }).filter(Boolean).sort();
+  const janelaEmbarcadas = datasEmb.length
+    ? { de: datasEmb[0], ate: datasEmb[datasEmb.length - 1] }
+    : null;
+
+  const porOperacao = new Map();
+  embarcadas.registros.forEach(function (e) {
+    const op = e.operacao || '—';
+    porOperacao.set(op, (porOperacao.get(op) || 0) + 1);
+  });
+
   const pendentesAtivos = [];
   let excluidasPfas = 0, excluidasPares = 0;
   pendentes.registros.forEach(function (r) {
@@ -302,20 +339,25 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
     volumesPorPfa.get(r.pfa).add(r.volume);
   });
 
-  function statusConferencia(pfa, qtVolumes) {
+  function statusConferencia(pfa, qtVolumes, diasNaEtapa) {
     const lidos = volumesPorPfa.has(pfa) ? volumesPorPfa.get(pfa).size : 0;
     const total = qtVolumes || 0;
     // Sem saber o total não dá pra dizer "completa" — trata como parcial
     // assumida em vez de fingir certeza que o dado não sustenta.
     let status = 'nao_iniciada';
     if (lidos > 0) status = (total > 0 && lidos >= total) ? 'completa' : 'parcial';
+    // Parcial parada há muito tempo deixa de ser fluxo normal e vira tarefa —
+    // é um status à parte pra tela poder gritar só com o que merece grito.
+    if (status === 'parcial' && diasNaEtapa !== null && diasNaEtapa >= DIAS_PARCIAL_RASTREIO) {
+      status = 'parcial_rastreio';
+    }
     return { status: status, volumes_lidos: lidos, volumes_total: total };
   }
 
   /* ---------- 3. linhas de Pendentes, já enriquecidas ---------- */
   const linhasPendentes = pendentesAtivos.map(function (r) {
     const e = enriquecer(r.familia_codigo);
-    const conf = statusConferencia(r.pfa, r.qt_volumes);
+    const conf = statusConferencia(r.pfa, r.qt_volumes, r.dias_na_etapa);
     return {
       pfa: r.pfa,
       data_importacao: r.data_importacao,
@@ -323,6 +365,7 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
       faixa_fifo: r.dias_abertos === null ? null : faixaFifoPfa(r.dias_abertos),
       situacao: r.situacao,
       data_situacao: r.data_situacao,
+      dias_na_etapa: r.dias_na_etapa,
       cliente_codigo: r.cliente_codigo,
       cliente_nome: r.cliente_nome,
       familia_codigo: r.familia_codigo,
@@ -369,6 +412,10 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
         segmento_macro: g.segmento_macro, cliente_nome: g.cliente_nome,
         nota: g.nota, data_nota: g.data_nota, dias_nota: g.dias_nota,
         qtde: g.qtde, volumes: g.volumes.size, linhas: g.linhas,
+        // "Dentro da janela": o arquivo de Embarcadas cobre essa data, então a
+        // ausência dela ali é informação de verdade (ainda não saiu). Fora da
+        // janela é só falta de cobertura — não dá pra afirmar nada.
+        confirmado: !!(janelaEmbarcadas && g.data_nota && g.data_nota >= janelaEmbarcadas.de),
       };
     }).sort(function (a, b) { return b.qtde - a.qtde; });
   }
@@ -388,6 +435,15 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
 
   const totalSemNota = totalizar(semNota, linhasSemNota);
   const totalComNota = totalizar(comNota, linhasComNota);
+  // A mesma soma, partida pela cobertura do arquivo de Embarcadas.
+  function somarColeta(lista) {
+    const pfas = new Set();
+    let qtde = 0;
+    lista.forEach(function (g) { pfas.add(g.pfa); qtde += g.qtde; });
+    return { qtde: qtde, pfas: pfas.size };
+  }
+  const coletaConfirmada = somarColeta(comNota.filter(function (g) { return g.confirmado; }));
+  const coletaNaoConfirmada = somarColeta(comNota.filter(function (g) { return !g.confirmado; }));
   const notaMaisAntiga = comNota.reduce(function (mx, g) {
     return (g.dias_nota !== null && g.dias_nota > mx.dias) ? { dias: g.dias_nota, data: g.data_nota } : mx;
   }, { dias: 0, data: null });
@@ -434,11 +490,17 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
       aguardando_coleta: Object.assign({}, totalComNota, {
         nota_mais_antiga_dias: notaMaisAntiga.dias,
         nota_mais_antiga_data: notaMaisAntiga.data,
+        confirmado: coletaConfirmada,
+        nao_confirmado: coletaNaoConfirmada,
       }),
       // O que o arquivo de Embarcadas tirou do pendente — a medida do atraso
       // da fonte, não um detalhe de implementação: fica visível na tela.
       excluidas_por_embarque: { pfas: excluidasPfas, pares: excluidasPares },
       embarcadas_no_arquivo: embarcadas.registros.length,
+      janela_embarcadas: janelaEmbarcadas,
+      embarcadas_por_operacao: Array.from(porOperacao.entries())
+        .map(function (e) { return { operacao: e[0], notas: e[1] }; })
+        .sort(function (a, b) { return b.notas - a.notas; }),
     },
 
     familias_nao_mapeadas: Array.from(familiasNaoMapeadas).sort(),
