@@ -2051,9 +2051,23 @@ let filtroRessuprimento = 'todos';        // 'todos' | 'picking' | 'pulmao' — 
 // Endereço (posição ocupada) e Itens (peça ocupada) são a MESMA zona lida por
 // duas réguas diferentes — recalculadas do zero cada uma com sua própria
 // capacidade (pedido da operação, 09/09/2026). Não é multi-seleção: é uma
-// visão ou a outra, nunca as duas juntas no mesmo cartão.
-let modoOcupacao = 'endereco';            // 'endereco' | 'itens'
-function alternarModoOcupacao(v) { modoOcupacao = v; renderizarEstoqueOperacao(); }
+// visão ou a outra dentro de cada linha. Picking e Pulmão têm estado PRÓPRIO
+// (09/09/2026): dá pra olhar o Picking em peça e o Pulmão em endereço ao
+// mesmo tempo, que é como a operação compara os dois lados.
+let modoOcupacaoPicking = 'endereco';     // 'endereco' | 'itens'
+let modoOcupacaoPulmao = 'endereco';      // 'endereco' | 'itens'
+function alternarModoOcupacao(secao, v) {
+  if (secao === 'pulmao') modoOcupacaoPulmao = v;
+  else modoOcupacaoPicking = v;
+  renderizarEstoqueOperacao();
+}
+
+/* Chips de segmento em ordem alfabética (pt-BR, respeitando acento e cedilha:
+   ACESSÓRIO < CALÇADO < CHINELO < CHUTEIRA < MEIA < VESTUÁRIO). Pedido da
+   gestão (09/09/2026) pra achar o segmento sempre no mesmo lugar, em vez de
+   ele pular de posição conforme a quantidade do dia. Vale só pros CHIPS —
+   gráfico de barras continua ordenado por quantidade, que ali é ranking. */
+function ordemAlfabetica(a, b) { return String(a).localeCompare(String(b), 'pt-BR'); }
 let filtroSegmentoRessuprimento = new Set();  // vazio = Todos | multi-seleção dos segmentos da gestão
 let filtroTurnoRessuprimento = new Set();   // vazio = todos os turnos | multi-seleção de T01/T02/T03
 // Filtro de segmento do card "Ressuprimento por dia" — mesmo padrão visual
@@ -2458,7 +2472,11 @@ function renderizarPfas() {
   // destaque próprio em vez de disputar espaço com os outros três.
   const chipsTopo = '<div class="filtros-linha">' +
     chipsSet('Marca', filtroMarcaPfa, opcoesDe('marca'), 'alternarMarcaPfa') +
-    chipsSet('Segmento', filtroSegmentoPfa, opcoesDe('segmento_macro'), 'alternarSegmentoPfa') +
+    chipsSet('Segmento', filtroSegmentoPfa,
+      // Segmento em ordem alfabética (Marca continua por volume, que ali ajuda
+      // a achar a marca grande primeiro).
+      opcoesDe('segmento_macro').sort(function (a, b) { return ordemAlfabetica(a.rotulo, b.rotulo); }),
+      'alternarSegmentoPfa') +
     chipsSet('FIFO', filtroFifoPfa, (p.faixas_fifo || []).map(function (f) {
       return { valor: f.chave, rotulo: f.rotulo };
     }), 'alternarFifoPfa') +
@@ -2955,10 +2973,15 @@ function renderizarEstoqueOperacao(p) {
 
   /* ---------- filtro por segmento (macro, cruza marcas) — recorta tudo abaixo ---------- */
   const segmentosDisponiveis = p['por_segmento_macro_' + filtroRessuprimento] || [];
+  // Chips em ordem alfabética; o array original segue por quantidade porque é
+  // ele que alimenta o gráfico de barras logo abaixo (lá a ordem é ranking).
+  const segmentosEmChip = segmentosDisponiveis.slice().sort(function (a, b) {
+    return ordemAlfabetica(a.nome, b.nome);
+  });
   let chipsSegmento = '<div class="filtros">' +
     '<span class="rot-filtro">Segmento</span>' +
     '<span class="chip' + (!filtroSegmentoRessuprimento.size ? ' on' : '') + '" onclick="alternarFiltroSegmentoRessuprimento(null)">Todos</span>';
-  segmentosDisponiveis.forEach(function (s) {
+  segmentosEmChip.forEach(function (s) {
     chipsSegmento += '<span class="chip' + (filtroSegmentoRessuprimento.has(s.codigo) ? ' on' : '') +
       '" onclick="alternarFiltroSegmentoRessuprimento(\'' + escaparJs(s.codigo) + '\')">' + escapar(s.nome) + '</span>';
   });
@@ -3017,10 +3040,7 @@ function renderizarEstoqueOperacao(p) {
   function corOcupacao(dados) {
     return dados.pct >= 95 ? 'var(--red)' : dados.pct >= 85 ? 'var(--amber)' : 'var(--olive)';
   }
-  // "pos." (posição) no modo Endereço, "pç" (peça) no modo Itens — mesma
-  // dado, unidade que muda porque a régua de "ocupado" mudou.
-  const unidadeOcup = modoOcupacao === 'itens' ? 'pç' : 'pos.';
-  function cardOcupacao(rotulo, dados) {
+  function cardOcupacao(rotulo, dados, unidade) {
     if (!dados) return '';
     const cor = corOcupacao(dados);
     return '<div class="kpi kpi-ocup">' +
@@ -3028,35 +3048,53 @@ function renderizarEstoqueOperacao(p) {
       '<div>' +
         '<div class="rot">' + rotulo + (dados.capacidade_estimada ? ' <span title="Capacidade ainda não validada com a gestão — usando ocupado × 1.2 como estimativa provisória">≈</span>' : '') + '</div>' +
         '<div class="val forte" style="color:' + cor + '">' + fmtPct(dados.pct) + '</div>' +
-        '<div class="sub">' + fmtInt(dados.ocupado) + ' / ' + fmtInt(dados.capacidade) + ' ' + unidadeOcup +
+        '<div class="sub">' + fmtInt(dados.ocupado) + ' / ' + fmtInt(dados.capacidade) + ' ' + unidade +
           (dados.capacidade_estimada ? ' (estimada)' : '') + ' · ' + fmtInt(dados.disponivel) + ' livres</div>' +
       '</div>' +
     '</div>';
   }
-  function linhaOcupacao(titulo, linha) {
-    // linha.total só existe no formato novo (06/09/2026) — um snapshot antigo
-    // ainda não reprocessado guarda o formato achatado de antes (uma zona só,
-    // sem bucket). Não dá pra desenhar as 5 zonas com um dado que não tem
-    // essa forma, então some a linha inteira em vez de mostrar cards vazios.
-    if (!linha || !linha.total) return '';
-    return '<div class="sub" style="margin:14px 0 6px;font-weight:600;color:var(--text-label)">' + titulo + '</div>' +
+  /* Uma linha (Picking ou Pulmão) desenha o próprio toggle ao lado do título e
+     lê a árvore que o SEU modo pedir — as duas linhas são independentes.
+     "pos. alocadas" e não só "pos.": o que a régua de endereço conta é posição
+     ALOCADA a um SKU, esteja ela com peça ou vazia esperando ressuprimento
+     (critério validado contra a planilha de Ocupação da gestão em 02/09/2026).
+     Dizer só "pos." dava a entender "posição com material", que é outra coisa
+     — essa é a régua de Itens. */
+  function linhaOcupacao(titulo, secao, modo) {
+    const arvore = (modo === 'itens' ? p.ocupacao_itens : p.ocupacao) || {};
+    const linha = arvore[secao];
+    const cabecalho = '<div class="filtros" style="margin:14px 0 6px">' +
+      '<span style="font-size:11px;font-weight:600;color:var(--text-label)">' + titulo + '</span>' +
+      '<span class="chip' + (modo === 'endereco' ? ' on' : '') +
+        '" onclick="alternarModoOcupacao(\'' + secao + '\',\'endereco\')">Endereços</span>' +
+      '<span class="chip' + (modo === 'itens' ? ' on' : '') +
+        '" onclick="alternarModoOcupacao(\'' + secao + '\',\'itens\')">Itens</span>' +
+    '</div>';
+    // Sem dado NÃO pode sumir da tela em silêncio (foi o que aconteceu ao ligar
+    // "Itens" num snapshot antigo, 09/09/2026): a linha some inteira e parece
+    // bug. Mostra o título, o toggle e o porquê.
+    if (!linha || !linha.total) {
+      return cabecalho + '<div class="aviso" style="border-color:var(--amber)">' +
+        (modo === 'itens'
+          ? 'Este snapshot foi gerado <strong>antes</strong> da visão por itens. Suba os arquivos de ' +
+            'Picking e Pulmão de novo em <strong>Admin › Abastecimento</strong> — aí a ocupação em peças ' +
+            'aparece (e as capacidades novas entram junto).'
+          : 'Snapshot em formato antigo, sem a divisão por segmento desta linha. ' +
+            'Suba os arquivos de novo em <strong>Admin › Abastecimento</strong>.') +
+      '</div>';
+    }
+    const unidade = modo === 'itens' ? 'pç' : 'pos. alocadas';
+    return cabecalho +
       '<div class="kpi-row">' +
-        cardOcupacao(ROT_BUCKET.total, linha.total) +
-        cardOcupacao(ROT_BUCKET.meia, linha.meia) +
-        cardOcupacao(ROT_BUCKET.vestuario, linha.vestuario) +
-        cardOcupacao(ROT_BUCKET.acessorio, linha.acessorio) +
-        cardOcupacao(ROT_BUCKET.calcado, linha.calcado) +
+        cardOcupacao(ROT_BUCKET.total, linha.total, unidade) +
+        cardOcupacao(ROT_BUCKET.meia, linha.meia, unidade) +
+        cardOcupacao(ROT_BUCKET.vestuario, linha.vestuario, unidade) +
+        cardOcupacao(ROT_BUCKET.acessorio, linha.acessorio, unidade) +
+        cardOcupacao(ROT_BUCKET.calcado, linha.calcado, unidade) +
       '</div>';
   }
-  // Endereço (posição ocupada) e Itens (peça ocupada) são duas árvores
-  // INDEPENDENTES no payload (ocupacao / ocupacao_itens) — o toggle só troca
-  // qual delas alimenta os cartões, sem recalcular nada aqui na tela.
-  const oc = (modoOcupacao === 'itens' ? p.ocupacao_itens : p.ocupacao) || {};
-  const chipsModoOcup = '<div class="filtros" style="margin:2px 0 4px">' +
-    '<span class="chip' + (modoOcupacao === 'endereco' ? ' on' : '') + '" onclick="alternarModoOcupacao(\'endereco\')">Endereços</span>' +
-    '<span class="chip' + (modoOcupacao === 'itens' ? ' on' : '') + '" onclick="alternarModoOcupacao(\'itens\')">Itens</span>' +
-  '</div>';
-  const kpisOcupacao = chipsModoOcup + linhaOcupacao('Picking', oc.picking) + linhaOcupacao('Pulmão', oc.pulmao);
+  const kpisOcupacao = linhaOcupacao('Picking', 'picking', modoOcupacaoPicking) +
+    linhaOcupacao('Pulmão', 'pulmao', modoOcupacaoPulmao);
 
   const arvoreAtual = arvoreFiltradaRessuprimento(p);
   const totalGeral = arvoreAtual.reduce(function (s, m) { return s + m.qtd; }, 0);
@@ -3587,7 +3625,7 @@ function blocoMovimentacoes() {
       if (!segmentosDoDia.has(h.segmento)) segmentosDoDia.set(h.segmento, 0);
       segmentosDoDia.set(h.segmento, segmentosDoDia.get(h.segmento) + h.pecas);
     });
-    const segmentosOrdenados = Array.from(segmentosDoDia.entries()).sort(function (a, b) { return b[1] - a[1]; });
+    const segmentosOrdenados = Array.from(segmentosDoDia.keys()).sort(ordemAlfabetica).map(function (seg) { return [seg]; });
     chipsSegmentoDia = '<div class="filtros">' +
       '<span class="rot-filtro">Segmento</span>' +
       '<span class="chip' + (!filtroSegmentoRessuprimentoDia.size ? ' on' : '') +
