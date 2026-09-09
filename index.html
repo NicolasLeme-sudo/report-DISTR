@@ -293,6 +293,12 @@ html { overflow-x: hidden; }
 .chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
 .sep-filtro { width: 1px; height: 18px; background: var(--border); margin: 0 8px; }
 
+/* Grupos de filtro lado a lado. Cada `.filtros` continua sendo uma linha
+   própria de chips; o que muda é o pai, que os acomoda em sequência e só
+   quebra quando não couber mais — 3 grupos curtos ocupam 1 linha em vez de 3. */
+.filtros-linha { display: flex; align-items: center; gap: 6px 22px; flex-wrap: wrap; margin-bottom: 14px; }
+.filtros-linha > .filtros { margin-bottom: 0; }
+
 /* ============================================================
    6) BARRA DE COMPOSIÇÃO (gráfico)
    Barra empilhada horizontal — mostra a participação de cada
@@ -346,6 +352,25 @@ html { overflow-x: hidden; }
 .bar-item-rua .trilho { background: var(--bg-input); border-radius: 3px; height: 16px; overflow: hidden; }
 .bar-item-rua .preench { height: 100%; border-radius: 3px; }
 .bar-item-rua .num { font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Funil de PFAs: mesma ideia do grid compartilhado acima, mas com DUAS colunas
+   numéricas — pares e PFAs deixam de dividir a mesma célula separadas por um
+   "·", que não quebrava o suficiente pra leitura. Cabeçalho e linha de total
+   entram como itens normais do mesmo grid, então tudo fica alinhado sozinho. */
+.bar-list-funil { display: grid; grid-template-columns: max-content 1fr 92px 76px; align-items: center; row-gap: 9px; column-gap: 12px; }
+.bar-item-funil { display: contents; }
+.bar-item-funil .nome { white-space: nowrap; font-size: 11px; font-weight: 600; }
+.bar-item-funil .trilho { background: var(--bg-input); border-radius: 3px; height: 16px; overflow: hidden; }
+.bar-item-funil .preench { height: 100%; border-radius: 3px; }
+.bar-item-funil .num { font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
+.bar-item-funil.cabecalho > * {
+  font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-label); font-weight: 600;
+}
+/* `display: contents` some com a caixa da linha, então a régua do total vai
+   célula a célula. */
+.bar-item-funil.total > * { border-top: 1px solid var(--border); padding-top: 9px; }
+.bar-item-funil.total .nome, .bar-item-funil.total .num { color: var(--text); font-weight: 700; }
 /* Barras por dia do Ressuprimento — empilhadas por turno. Colunas de largura
    fixa com rolagem horizontal: um mês de dados não pode espremer a barra até
    ela virar um fio. */
@@ -2248,6 +2273,8 @@ let filtroSegmentoPfa = new Set();    // vazio = todos
 let filtroFifoPfa = new Set();        // vazio = todas as faixas
 let filtroEtapaFifoPfa = new Set();   // etapa dentro do card de FIFO
 let filtroEtapaColetaPfa = new Set(); // etapa dentro do card de aguardando coleta
+let filtroEtapaTabelaPfa = new Set();  // etapa dentro da tabela "PFAs mais antigas"
+let filtroConfTabelaPfa = new Set();   // conferência (resumida) dentro da tabela
 let filtroTextoPfa = '';
 let limitePfa = 100;
 let ordemPfa = { campo: 'dias', direcao: 'desc' };
@@ -2285,6 +2312,24 @@ const ROT_CONFERENCIA = {
   nao_iniciada: { rotulo: 'Não iniciada', classe: 'neutro', dica: 'Nenhum volume desta PFA foi conferido ainda.' },
 };
 
+/* A tabela filtra por um resumo da conferência, não pelos 4 estados: o
+   "Parcial (rastreio)" é o MESMO estado "Parcial" com um relógio estourado,
+   então dar dois chips pra ele obrigaria a marcar os dois pra ver "tudo que
+   está parcial". O chip agrupa (3 opções); o selo na linha continua
+   distinguindo o rastreio, que é onde a informação importa. */
+const GRUPO_CONFERENCIA = {
+  completa: 'completa',
+  parcial: 'parcial',
+  parcial_rastreio: 'parcial',
+  nao_iniciada: 'nao_iniciada',
+};
+const GRUPOS_CONFERENCIA = [
+  { valor: 'completa', rotulo: 'Completa' },
+  { valor: 'parcial', rotulo: 'Parcial' },
+  { valor: 'nao_iniciada', rotulo: 'Não iniciada' },
+];
+function grupoConferenciaPfa(c) { return GRUPO_CONFERENCIA[c] || 'nao_iniciada'; }
+
 function alternarFiltroSetPfa(set, valor, redesenhar) {
   if (valor === null) set.clear();
   else if (set.has(valor)) set.delete(valor);
@@ -2296,6 +2341,8 @@ function alternarSegmentoPfa(v) { alternarFiltroSetPfa(filtroSegmentoPfa, v); }
 function alternarFifoPfa(v) { alternarFiltroSetPfa(filtroFifoPfa, v); }
 function alternarEtapaFifoPfa(v) { alternarFiltroSetPfa(filtroEtapaFifoPfa, v); }
 function alternarEtapaColetaPfa(v) { alternarFiltroSetPfa(filtroEtapaColetaPfa, v); }
+function alternarEtapaTabelaPfa(v) { alternarFiltroSetPfa(filtroEtapaTabelaPfa, v); }
+function alternarConfTabelaPfa(v) { alternarFiltroSetPfa(filtroConfTabelaPfa, v); }
 function filtrarTextoPfa(t) { filtroTextoPfa = t; renderizarPfas(); }
 function alterarLimitePfa(v) { limitePfa = v === 'todos' ? Infinity : Number(v); renderizarPfas(); }
 function ordenarPfa(campo) {
@@ -2317,6 +2364,24 @@ function pendentesFiltradosPfa() {
     if (!passaMarcaSegmentoPfa(r)) return false;
     if (filtroFifoPfa.size && !filtroFifoPfa.has(r.faixa_fifo)) return false;
     return true;
+  });
+}
+
+/* Recorte da tabela "PFAs mais antigas": filtros do topo + etapa + conferência
+   + busca. Fica numa função só porque a tela e o CSV precisam responder
+   exatamente à mesma pergunta — o "Mostrar N" é corte de exibição e entra
+   depois, só na tela. */
+function linhasTabelaPfa() {
+  const busca = filtroTextoPfa.trim().toLowerCase();
+  return pendentesFiltradosPfa().filter(function (r) {
+    if (filtroEtapaTabelaPfa.size && !filtroEtapaTabelaPfa.has(r.situacao)) return false;
+    if (filtroConfTabelaPfa.size && !filtroConfTabelaPfa.has(grupoConferenciaPfa(r.conferencia))) return false;
+    if (!busca) return true;
+    const alvo = [r.pfa, r.cliente_nome, r.cliente_codigo, rotEtapaPfa(r.situacao), r.marca,
+      r.segmento_macro, r.familia_codigo, r.transportadora_nome, r.cluster,
+      (ROT_CONFERENCIA[r.conferencia] || ROT_CONFERENCIA.nao_iniciada).rotulo,
+      r.marca + ' · ' + r.segmento_macro, String(r.pares), String(r.dias_abertos)].join(' ').toLowerCase();
+    return alvo.indexOf(busca) !== -1;
   });
 }
 
@@ -2373,12 +2438,15 @@ function renderizarPfas() {
     return Array.from(vistos.entries()).sort(function (a, b) { return b[1] - a[1]; })
       .map(function (e) { return { valor: e[0], rotulo: e[0] }; });
   }
-  const chipsTopo =
+  // Os 3 grupos entram no mesmo `.filtros-linha` pra ocuparem uma linha só
+  // enquanto couberem, em vez de empilhar 3 faixas no topo da tela.
+  const chipsTopo = '<div class="filtros-linha">' +
     chipsSet('Marca', filtroMarcaPfa, opcoesDe('marca'), 'alternarMarcaPfa') +
     chipsSet('Segmento', filtroSegmentoPfa, opcoesDe('segmento_macro'), 'alternarSegmentoPfa') +
     chipsSet('FIFO', filtroFifoPfa, (p.faixas_fifo || []).map(function (f) {
       return { valor: f.chave, rotulo: f.rotulo };
-    }), 'alternarFifoPfa');
+    }), 'alternarFifoPfa') +
+  '</div>';
 
   /* ---------- KPIs ---------- */
   const pares = filtrados.reduce(function (s, r) { return s + r.pares; }, 0);
@@ -2443,18 +2511,25 @@ function renderizarPfas() {
     g.pares += r.pares; g.pfas++;
   });
   const maxEtapa = Array.from(porEtapa.values()).reduce(function (mx, g) { return Math.max(mx, g.pares); }, 0);
-  let barrasEtapa = '';
+  let barrasEtapa = '<div class="bar-item-funil cabecalho"><div class="nome"></div><div></div>' +
+    '<div class="num">Pares</div><div class="num">PFAs</div></div>';
+  let totalParesEtapa = 0, totalPfasEtapa = 0;
   (p.etapas || []).forEach(function (e) {
     const g = porEtapa.get(e);
     if (!g) return;
+    totalParesEtapa += g.pares; totalPfasEtapa += g.pfas;
     const larg = maxEtapa > 0 ? g.pares / maxEtapa * 100 : 0;
-    barrasEtapa += '<div class="bar-item bar-item-rua">' +
+    barrasEtapa += '<div class="bar-item-funil">' +
       '<div class="nome">' + escapar(rotEtapaPfa(e)) + '</div>' +
       '<div class="trilho"><div class="preench" style="width:' + larg + '%;background:var(' +
         (COR_ETAPA_PFA[e] || '--accent') + ')"></div></div>' +
-      '<div class="num">' + fmtInt(g.pares) + ' · ' + fmtInt(g.pfas) + '</div>' +
+      '<div class="num">' + fmtInt(g.pares) + '</div>' +
+      '<div class="num">' + fmtInt(g.pfas) + '</div>' +
     '</div>';
   });
+  barrasEtapa += '<div class="bar-item-funil total"><div class="nome">TOTAL</div><div></div>' +
+    '<div class="num">' + fmtInt(totalParesEtapa) + '</div>' +
+    '<div class="num">' + fmtInt(totalPfasEtapa) + '</div></div>';
 
   /* ---------- FIFO por faixa (com filtro de etapa próprio) ---------- */
   const paraFifo = filtrados.filter(function (r) {
@@ -2509,7 +2584,7 @@ function renderizarPfas() {
   // Etapas disponíveis nos chips dos dois cards — só as que existem no recorte
   const etapasNoRecorte = (p.etapas || []).filter(function (e) { return porEtapa.has(e); });
   function chipsEtapa(set, fn) {
-    let h = '<div class="filtros" style="margin-bottom:10px"><span class="rot-filtro">Etapa</span>' +
+    let h = '<div class="filtros" style="margin-bottom:0"><span class="rot-filtro">Etapa</span>' +
       '<span class="chip' + (!set.size ? ' on' : '') + '" onclick="' + fn + '(null)">Todas</span>';
     etapasNoRecorte.forEach(function (e) {
       h += '<span class="chip' + (set.has(e) ? ' on' : '') + '" onclick="' + fn + '(\'' + escaparJs(e) + '\')">' +
@@ -2518,19 +2593,19 @@ function renderizarPfas() {
     if (set.size) h += '<span class="chip" style="color:var(--red)" onclick="' + fn + '(null)">✕ Limpar</span>';
     return h + '</div>';
   }
+  function chipsConferencia(set, fn) {
+    let h = '<div class="filtros" style="margin-bottom:0"><span class="rot-filtro">Conferência</span>' +
+      '<span class="chip' + (!set.size ? ' on' : '') + '" onclick="' + fn + '(null)">Todas</span>';
+    GRUPOS_CONFERENCIA.forEach(function (g) {
+      h += '<span class="chip' + (set.has(g.valor) ? ' on' : '') + '" onclick="' + fn + '(\'' +
+        escaparJs(g.valor) + '\')">' + escapar(g.rotulo) + '</span>';
+    });
+    if (set.size) h += '<span class="chip" style="color:var(--red)" onclick="' + fn + '(null)">✕ Limpar</span>';
+    return h + '</div>';
+  }
 
   /* ---------- tabela "PFAs mais antigas" ---------- */
-  const busca = filtroTextoPfa.trim().toLowerCase();
-  let linhasTabela = filtrados;
-  if (busca) {
-    linhasTabela = linhasTabela.filter(function (r) {
-      const alvo = [r.pfa, r.cliente_nome, r.cliente_codigo, rotEtapaPfa(r.situacao), r.marca,
-        r.segmento_macro, r.familia_codigo, r.transportadora_nome, r.cluster,
-        ROT_CONFERENCIA[r.conferencia].rotulo, r.marca + ' · ' + r.segmento_macro,
-        String(r.pares), String(r.dias_abertos)].join(' ').toLowerCase();
-      return alvo.indexOf(busca) !== -1;
-    });
-  }
+  let linhasTabela = linhasTabelaPfa();
   const mult = ordemPfa.direcao === 'asc' ? 1 : -1;
   linhasTabela = linhasTabela.slice().sort(function (a, b) {
     let d = 0;
@@ -2572,9 +2647,11 @@ function renderizarPfas() {
       '<td>' + (r.dias_abertos === null ? '—' : fmtInt(r.dias_abertos)) + '</td></tr>';
   }).join('');
   const totalTabela = linhasTabela.reduce(function (s, r) { return s + r.pares; }, 0);
+  const diasMaxTabela = linhasTabela.reduce(function (mx, r) { return Math.max(mx, r.dias_abertos || 0); }, 0);
   const linhaTotal = '<tr class="total"><th class="centro">TOTAL</th>' +
     '<td class="centro" colspan="3">' + fmtInt(linhasTabela.length) + ' PFA(s) no recorte</td>' +
-    '<td class="centro">—</td><td>' + fmtInt(totalTabela) + '</td><td>—</td></tr>';
+    '<td class="centro">—</td><td>' + fmtInt(totalTabela) + '</td>' +
+    '<td>' + (diasMaxTabela ? fmtInt(diasMaxTabela) : '—') + '</td></tr>';
 
   /* ---------- avisos ---------- */
   let avisos = '';
@@ -2596,7 +2673,7 @@ function renderizarPfas() {
       '<div class="section-title">Funil — PFAs pendentes por etapa</div>' +
       '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Pares por etapa, picking → ' +
         'expedição · ' + fmtInt(filtrados.length) + ' PFAs no recorte.</p>' +
-      '<div class="bar-list-rua">' + barrasEtapa + '</div>' +
+      '<div class="bar-list-funil">' + barrasEtapa + '</div>' +
     '</div>' +
     '<div class="grid2">' +
       '<div class="card">' +
@@ -2622,6 +2699,10 @@ function renderizarPfas() {
       '<div class="section-title" style="display:flex;align-items:center;justify-content:space-between">' +
         '<span>PFAs mais antigas em tela</span>' +
         '<button class="btn-mini" onclick="exportarCSVPfas()">⬇ Exportar CSV</button>' +
+      '</div>' +
+      '<div class="filtros-linha" style="margin:12px 0 10px">' +
+        chipsEtapa(filtroEtapaTabelaPfa, 'alternarEtapaTabelaPfa') +
+        chipsConferencia(filtroConfTabelaPfa, 'alternarConfTabelaPfa') +
       '</div>' +
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0">' +
         '<input type="text" id="buscaPfa" placeholder="Buscar (PFA, cliente, etapa, marca, cluster…)" ' +
@@ -2650,24 +2731,17 @@ function renderizarPfas() {
         'lidos no Analítico com o total de volumes da PFA: <strong>Não iniciada</strong> nenhum lido · ' +
         '<strong>Parcial</strong> alguns · <strong>Completa</strong> todos. Parcial parada há 3 dias ou mais ' +
         'na mesma etapa vira <strong style="color:var(--red)">Parcial (rastreio)</strong> — provável corte ' +
-        'sinalizado na coleta, esperando análise.</p>' +
+        'sinalizado na coleta, esperando análise. O filtro <strong>Parcial</strong> acima traz as duas, ' +
+        'já que rastreio é a mesma parcial com o relógio estourado.</p>' +
     '</div>';
 }
 
 function exportarCSVPfas() {
   if (!dadosPfas) return;
-  // Exporta o recorte inteiro dos filtros (inclusive a busca), nunca só as
-  // linhas carregadas na tela — mesmo contrato do CSV do card de B.O.
-  const busca = filtroTextoPfa.trim().toLowerCase();
-  let linhas = pendentesFiltradosPfa();
-  if (busca) {
-    linhas = linhas.filter(function (r) {
-      const alvo = [r.pfa, r.cliente_nome, r.cliente_codigo, rotEtapaPfa(r.situacao), r.marca,
-        r.segmento_macro, r.familia_codigo, r.transportadora_nome, r.cluster,
-        ROT_CONFERENCIA[r.conferencia].rotulo].join(' ').toLowerCase();
-      return alvo.indexOf(busca) !== -1;
-    });
-  }
+  // Mesmo recorte da tabela — marca, segmento, FIFO, etapa, conferência e
+  // busca. O "Mostrar N" NÃO entra: ele é corte de exibição, então 100 na tela
+  // com 1.000 no recorte exporta as 1.000.
+  const linhas = linhasTabelaPfa();
   const saida = [['PFA', 'Data importacao', 'Dias em aberto', 'Etapa', 'Cliente', 'Marca', 'Segmento',
     'Familia', 'Transportadora', 'Cluster', 'Volumes', 'Pares', 'Conferencia', 'Volumes lidos', 'Volumes total']];
   linhas.forEach(function (r) {
