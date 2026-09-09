@@ -2304,6 +2304,7 @@ let filtroFifoPfa = new Set();        // vazio = todas as faixas
 // "e só o que está em picking?" em vez de 1.
 let filtroEtapaPfa = new Set();
 let filtroConfTabelaPfa = new Set();   // conferência (resumida) só na tabela
+let filtroOrigemTabelaPfa = new Set(); // Lojas / S/Carro / Cliente, só na tabela
 let filtroTextoPfa = '';
 let limitePfa = 100;
 let ordemPfa = { campo: 'dias', direcao: 'desc' };
@@ -2359,6 +2360,29 @@ const GRUPOS_CONFERENCIA = [
 ];
 function grupoConferenciaPfa(c) { return GRUPO_CONFERENCIA[c] || 'nao_iniciada'; }
 
+/* Origem do pedido — não vem pronta em nenhum arquivo, é inferida do nome do
+   cliente e da transportadora (confirmado com a operação, 09/09/2026):
+     - S/CARRO: cliente é a própria Vulcabras E a transportadora é "S/CARRO"
+       (reabastecimento de loja própria, sem transportadora definida ainda)
+     - LOJAS:   cliente é a própria Vulcabras nos demais casos (loja própria
+       com transportadora já definida)
+     - CLIENTE: todo o resto — venda de verdade pra terceiro
+   A ordem do teste importa: S/CARRO é um recorte DENTRO de "cliente
+   Vulcabras", então precisa ser checado antes de cair no balde geral LOJAS. */
+const ORIGENS_PFA = [
+  { valor: 'lojas', rotulo: 'Lojas' },
+  { valor: 'scarro', rotulo: 'S/Carro' },
+  { valor: 'cliente', rotulo: 'Cliente' },
+];
+function classificarOrigemPfa(r) {
+  const cliente = (r.cliente_nome || '').toUpperCase();
+  const ehVulcabras = cliente.indexOf('VULCABRAS') !== -1;
+  if (!ehVulcabras) return 'cliente';
+  const transportadora = (r.transportadora_nome || '').toUpperCase();
+  if (transportadora.indexOf('S/CARRO') !== -1) return 'scarro';
+  return 'lojas';
+}
+
 function alternarFiltroSetPfa(set, valor, redesenhar) {
   if (valor === null) set.clear();
   else if (set.has(valor)) set.delete(valor);
@@ -2370,6 +2394,7 @@ function alternarSegmentoPfa(v) { alternarFiltroSetPfa(filtroSegmentoPfa, v); }
 function alternarFifoPfa(v) { alternarFiltroSetPfa(filtroFifoPfa, v); }
 function alternarEtapaPfa(v) { alternarFiltroSetPfa(filtroEtapaPfa, v); }
 function alternarConfTabelaPfa(v) { alternarFiltroSetPfa(filtroConfTabelaPfa, v); }
+function alternarOrigemTabelaPfa(v) { alternarFiltroSetPfa(filtroOrigemTabelaPfa, v); }
 function filtrarTextoPfa(t) {
   filtroTextoPfa = t;
   // renderizarPfas() troca o innerHTML inteiro do bloco — o próprio <input>
@@ -2418,6 +2443,7 @@ function linhasTabelaPfa() {
   const busca = filtroTextoPfa.trim().toLowerCase();
   return pendentesFiltradosPfa().filter(function (r) {
     if (filtroConfTabelaPfa.size && !filtroConfTabelaPfa.has(grupoConferenciaPfa(r.conferencia))) return false;
+    if (filtroOrigemTabelaPfa.size && !filtroOrigemTabelaPfa.has(classificarOrigemPfa(r))) return false;
     if (!busca) return true;
     const alvo = [r.pfa, r.cliente_nome, r.cliente_codigo, rotEtapaPfa(r.situacao), r.marca,
       r.segmento_macro, r.familia_codigo, r.transportadora_nome, r.cluster,
@@ -2651,6 +2677,17 @@ function renderizarPfas() {
     return h + '</div>';
   }
 
+  function chipsOrigemPfa(set, fn) {
+    let h = '<div class="filtros" style="margin-bottom:0"><span class="rot-filtro">Origem</span>' +
+      '<span class="chip' + (!set.size ? ' on' : '') + '" onclick="' + fn + '(null)">Todas</span>';
+    ORIGENS_PFA.forEach(function (o) {
+      h += '<span class="chip' + (set.has(o.valor) ? ' on' : '') + '" onclick="' + fn + '(\'' +
+        escaparJs(o.valor) + '\')">' + escapar(o.rotulo) + '</span>';
+    });
+    if (set.size) h += '<span class="chip" style="color:var(--red)" onclick="' + fn + '(null)">✕ Limpar</span>';
+    return h + '</div>';
+  }
+
   /* ---------- tabela "PFAs mais antigas" ---------- */
   let linhasTabela = linhasTabelaPfa();
   const mult = ordemPfa.direcao === 'asc' ? 1 : -1;
@@ -2706,6 +2743,12 @@ function renderizarPfas() {
     avisos += '<div class="aviso" style="border-color:var(--amber)">Este snapshot subiu <strong>sem o arquivo de ' +
       'NFs Embarcadas</strong> — PFA que já saiu ainda pode estar contando como pendente aqui.</div>';
   }
+  if (p.stats.pfas_duplicadas_no_arquivo) {
+    avisos += '<div class="aviso" style="border-color:var(--red)"><strong>' +
+      fmtInt(p.stats.pfas_duplicadas_no_arquivo) + ' PFA(s) vieram repetidas</strong> no arquivo de Pendentes ' +
+      'deste abastecimento — foi usada só a última ocorrência de cada uma, mas o arquivo original provavelmente ' +
+      'saiu errado da extração. Vale confirmar antes do próximo upload.</div>';
+  }
   if ((p.familias_nao_mapeadas || []).length) {
     avisos += '<div class="aviso">Famílias sem marca cadastrada em <code>dim_familias</code>: ' +
       escapar(p.familias_nao_mapeadas.join(', ')) + '.</div>';
@@ -2747,6 +2790,7 @@ function renderizarPfas() {
       '</div>' +
       '<div class="filtros-linha" style="margin:12px 0 10px">' +
         chipsConferencia(filtroConfTabelaPfa, 'alternarConfTabelaPfa') +
+        chipsOrigemPfa(filtroOrigemTabelaPfa, 'alternarOrigemTabelaPfa') +
       '</div>' +
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0">' +
         '<input type="text" id="buscaPfa" placeholder="Buscar (PFA, cliente, etapa, marca, cluster…)" ' +

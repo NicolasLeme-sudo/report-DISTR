@@ -130,8 +130,11 @@ function hojeISO() {
 function parsearPfasPendentes(textoArquivo, referenciaISO) {
   const hoje = referenciaISO || hojeISO();
   const linhas = String(textoArquivo || '').split(/\r?\n/);
-  const registros = [];
+  // Chave = número da PFA, não índice de linha: é assim que o dedup abaixo
+  // consegue substituir a ocorrência anterior em vez de só ignorar a repetida.
+  const porPfa = new Map();
   let semData = 0;
+  let linhasDuplicadas = 0; // conta OCORRÊNCIAS extras, não PFAs distintas
 
   for (let i = 0; i < linhas.length; i++) {
     const linha = linhas[i];
@@ -145,10 +148,17 @@ function parsearPfasPendentes(textoArquivo, referenciaISO) {
     const pfa = (p[1] || '').trim();
     if (!pfa) continue;
 
+    if (porPfa.has(pfa)) linhasDuplicadas++;
+
     const dataImportacao = dataDDMMComAno(p[2], hoje);
     if (!dataImportacao) semData++;
 
-    registros.push({
+    // Uma PFA repetida no arquivo SUBSTITUI a ocorrência anterior (fica só a
+    // última) em vez de as duas somarem no relatório — sem isso, cada
+    // duplicata de abastecimento dobra pares/volumes silenciosamente em todo
+    // KPI que soma por PFA. `sem_data` acima já contou as duas passagens de
+    // propósito: a divergência de data também é sinal de arquivo mal extraído.
+    porPfa.set(pfa, {
       pfa: pfa,
       data_importacao: dataImportacao,
       dias_abertos: dataImportacao ? diasEntre(dataImportacao, hoje) : null,
@@ -176,7 +186,7 @@ function parsearPfasPendentes(textoArquivo, referenciaISO) {
     });
   }
 
-  return { registros: registros, sem_data: semData };
+  return { registros: Array.from(porPfa.values()), sem_data: semData, pfas_duplicadas: linhasDuplicadas };
 }
 
 /* ============================================================================
@@ -517,6 +527,11 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
         confirmado: coletaConfirmada,
         nao_confirmado: coletaNaoConfirmada,
       }),
+      // Linhas repetidas no PRÓPRIO arquivo de Pendentes (mesma PFA duas vezes
+      // na extração) — sinal de abastecimento errado, não de dado real. Fica
+      // visível pelo mesmo motivo que excluidas_por_embarque: é medida da
+      // qualidade da fonte, não detalhe de implementação escondido.
+      pfas_duplicadas_no_arquivo: pendentes.pfas_duplicadas || 0,
       // O que o arquivo de Embarcadas tirou do pendente — a medida do atraso
       // da fonte, não um detalhe de implementação: fica visível na tela.
       excluidas_por_embarque: { pfas: excluidasPfas, pares: excluidasPares },
@@ -541,6 +556,12 @@ async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileE
   const pendentes = parsearPfasPendentes(await filePendentes.text());
   if (pendentes.registros.length === 0) {
     throw new Error('Nenhuma linha reconhecida no arquivo de PFAs Pendentes. Confira se é a extração com o cabeçalho ESTAB|PRE-FATURA|…, sem reformatação.');
+  }
+  if (pendentes.pfas_duplicadas) {
+    avisar(
+      'Atenção: ' + pendentes.pfas_duplicadas.toLocaleString('pt-BR') +
+      ' PFA(s) apareceram repetidas no arquivo de Pendentes — usada só a última ocorrência de cada. Confira a extração.'
+    );
   }
 
   avisar('Lendo Analítico…');

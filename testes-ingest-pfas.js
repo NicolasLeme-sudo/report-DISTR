@@ -63,6 +63,22 @@ eq(pend.registros[0].dias_abertos, 18, 'idade em dias calculada contra a referê
 eq(pend.registros[1].familia_codigo, '105', 'família preservada com zero à esquerda');
 
 /* -------------------------------------------------------------------------- */
+secao('parsearPfasPendentes — PFA repetida no arquivo não soma em dobro (abastecimento errado)');
+const pendDup = parsearPfasPendentes([CAB_PEND,
+  linhaPend('235651', '21/08', '102', '5', 'Leitura expedicao', '118'),
+  linhaPend('242263', '01/09', '105', '3', 'Nao disp. picking', '144'),
+  linhaPend('235651', '21/08', '102', '5', 'Em picking', '118'), // mesma PFA, etapa avançou
+].join('\n'), HOJE);
+eq(pendDup.registros.length, 2, 'PFA duplicada vira 1 registro só, não 2 (soma não dobra)');
+eq(pendDup.pfas_duplicadas, 1, 'contador de duplicidade aponta a 1 ocorrência extra');
+const linha235651 = pendDup.registros.find(function (r) { return r.pfa === '235651'; });
+eq(linha235651.situacao, 'Em picking', 'fica valendo a ÚLTIMA ocorrência da PFA no arquivo, não a primeira');
+const pendSemDup = parsearPfasPendentes([CAB_PEND,
+  linhaPend('235651', '21/08', '102', '5', 'Leitura expedicao', '118'),
+].join('\n'), HOJE);
+eq(pendSemDup.pfas_duplicadas, 0, 'arquivo sem repetição não acusa duplicidade nenhuma');
+
+/* -------------------------------------------------------------------------- */
 secao('parsearPfasAnalitico — NOTA=0 é conferido SEM nota, não é nota número zero');
 const CAB_ANA = 'EMPRESA;ESTABELECIMENTO;TIPCLI;CODCLI;SCDCLI;RAZAO_SOCIAL;PFA;SERIE;SUBSER;NOTA;DATA_NOTA;OPERACAO;SEQ_VOLUME;VOLUME;FAMILIA;DESC_FAMILIA;ARTIGO;DESC_ARTIGO;COR;TAMANHO;QTDE;CODBAR';
 function linhaAna(pfa, nota, dataNota, volume, fam, artigo, qtde) {
