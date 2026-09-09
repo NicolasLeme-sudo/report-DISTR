@@ -2370,7 +2370,22 @@ function alternarSegmentoPfa(v) { alternarFiltroSetPfa(filtroSegmentoPfa, v); }
 function alternarFifoPfa(v) { alternarFiltroSetPfa(filtroFifoPfa, v); }
 function alternarEtapaPfa(v) { alternarFiltroSetPfa(filtroEtapaPfa, v); }
 function alternarConfTabelaPfa(v) { alternarFiltroSetPfa(filtroConfTabelaPfa, v); }
-function filtrarTextoPfa(t) { filtroTextoPfa = t; renderizarPfas(); }
+function filtrarTextoPfa(t) {
+  filtroTextoPfa = t;
+  // renderizarPfas() troca o innerHTML inteiro do bloco — o próprio <input>
+  // onde a pessoa está digitando é destruído e recriado, o que tirava o foco
+  // e derrubava a rolagem da página pro topo a cada letra (mesmo bug já
+  // corrigido em filtrarSemPlano/filtrarTextoValidacao).
+  const scrollY = window.scrollY;
+  const cursor = t.length;
+  renderizarPfas();
+  const input = document.getElementById('buscaPfa');
+  if (input) {
+    input.focus();
+    input.setSelectionRange(cursor, cursor);
+  }
+  window.scrollTo(0, scrollY);
+}
 function alterarLimitePfa(v) { limitePfa = v === 'todos' ? Infinity : Number(v); renderizarPfas(); }
 function ordenarPfa(campo) {
   if (ordemPfa.campo === campo) ordemPfa.direcao = ordemPfa.direcao === 'asc' ? 'desc' : 'asc';
