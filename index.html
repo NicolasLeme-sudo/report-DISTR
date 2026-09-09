@@ -998,7 +998,6 @@ tr.total > th, tr.total > td {
     <div class="sidebar-section-label">Operação</div>
     <div class="menu-item" id="menuStart" onclick="mostrarSecao('start')">
       <span class="icone">📊</span> Start Inicial
-      <span class="badge-em-construcao">Em construção</span>
     </div>
     <div class="menu-item" id="menuRessuprimento" onclick="mostrarSecao('ressuprimento')">
       <span class="icone">📦</span> Ressuprimento
@@ -1040,12 +1039,7 @@ tr.total > th, tr.total > td {
 
   <main class="conteudo">
     <section class="secao" id="secao-start">
-      <div class="placeholder">
-        <span class="icone-grande">📊</span>
-        <h3>Start Inicial</h3>
-        <p>Painel inicial do report — indicadores que precisam de atenção
-          e a porta de entrada da operação. Em desenvolvimento.</p>
-      </div>
+      <div id="start-conteudo"><div class="loading-msg">Carregando snapshot…</div></div>
     </section>
 
     <section class="secao" id="secao-ressuprimento">
@@ -1125,6 +1119,38 @@ tr.total > th, tr.total > td {
         <div class="log" id="logIngestKardex"></div>
       </div>
 
+      <div class="section-title" style="margin-top:24px">PFAs em tela (Start Inicial)</div>
+      <div class="card">
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+          Alimenta o <strong>Start Inicial</strong>: o que está parado, em qual etapa e há quanto tempo.
+          Os dois primeiros são obrigatórios; o de <strong>NFs Embarcadas</strong> é o que tira do
+          pendente o que já saiu — sem ele, PFA já embarcada continua contando como parada.
+        </p>
+        <ul style="font-size:12px;color:var(--text-muted);margin:-6px 0 14px 18px;padding:0">
+          <li><strong>PFAs Pendentes</strong> (.txt, "|") — uma linha por PFA, com etapa e data de importação.</li>
+          <li><strong>Analítico de volume pendente de leitura</strong> (.csv, ";") — volumes já conferidos,
+            com e sem nota fiscal emitida.</li>
+          <li><strong>NFs Embarcadas</strong> (.csv, ";") — opcional, o que já saiu.</li>
+        </ul>
+        <div class="dropzone" id="dropzonePfaPend">
+          <span id="dropzonePfaPendTexto">Clique para selecionar o .txt de <strong>PFAs Pendentes</strong></span>
+          <input type="file" id="inputPfaPend" accept=".txt,text/plain" style="display:none">
+        </div>
+        <div class="dropzone" id="dropzonePfaAna" style="margin-top:10px">
+          <span id="dropzonePfaAnaTexto">Clique para selecionar o .csv do <strong>Analítico</strong></span>
+          <input type="file" id="inputPfaAna" accept=".csv,text/csv" style="display:none">
+        </div>
+        <div class="dropzone" id="dropzonePfaEmb" style="margin-top:10px">
+          <span id="dropzonePfaEmbTexto">Clique para selecionar o .csv de <strong>NFs Embarcadas</strong> (opcional)</span>
+          <input type="file" id="inputPfaEmb" accept=".csv,text/csv" style="display:none">
+        </div>
+        <button class="btn-mini" id="btnProcessarPfas" style="margin-top:12px" disabled>
+          Processar PFAs
+        </button>
+        <div class="aviso ok" id="okIngestPfas" style="display:none;margin-top:10px"></div>
+        <div class="log" id="logIngestPfas"></div>
+      </div>
+
       <div class="section-title" style="margin-top:24px">Base de Ativos (turno real do colaborador)</div>
       <div class="card">
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
@@ -1187,6 +1213,7 @@ tr.total > th, tr.total > td {
 <script src="ingest-ressuprimento.js"></script>
 <script src="ingest-movimentacoes.js"></script>
 <script src="ingest-colaboradores.js"></script>
+<script src="ingest-pfas.js"></script>
 <!-- SheetJS — só usado na tela de Admin, pra ler a base de Ativos (.xlsx) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="distr-fluxo.js"></script>
@@ -1310,7 +1337,7 @@ function corDoTema(nome) {
    NAVEGAÇÃO
    ============================================================ */
 const TITULOS = {
-  start: 'Start Inicial',
+  start: 'Start Inicial — PFAs em tela',
   ressuprimento: 'Ressuprimento',
   estoqueop: '🏪 Estoque',
   estoque: 'Balanço e Detalhamento de Estoque',
@@ -1337,6 +1364,7 @@ function atualizarSubtituloSecao(secao) {
   else if (secao === 'distr') iso = window.DistrFluxo ? DistrFluxo.dataSnapshot() : null;
   else if (secao === 'estoqueop') iso = dataSnapshotRessuprimento;
   else if (secao === 'ressuprimento') iso = dataSnapshotMovimentacoes;
+  else if (secao === 'start') iso = dataSnapshotPfas;
   el.textContent = iso ? 'Última atualização: ' + formatarDataHora(iso) : '';
 }
 window.atualizarSubtituloSecao = atualizarSubtituloSecao;
@@ -1346,6 +1374,7 @@ window.atualizarSubtituloSecao = atualizarSubtituloSecao;
 // chamado 1x no login).
 let distrFluxoCarregado = false;
 let ressuprimentoCarregado = false;
+let pfasCarregado = false;
 
 function mostrarSecao(secao) {
   // Trava de rota: esconder o item do menu não basta, porque a navegação
@@ -1377,6 +1406,10 @@ function mostrarSecao(secao) {
   if ((secao === 'ressuprimento' || secao === 'estoqueop') && !ressuprimentoCarregado) {
     ressuprimentoCarregado = true;
     carregarRessuprimento();
+  }
+  if (secao === 'start' && !pfasCarregado) {
+    pfasCarregado = true;
+    carregarPfas();
   }
 }
 
@@ -2192,6 +2225,434 @@ async function carregarHistoricoOperadorRessuprimento() {
   } catch (e) {
     historicoOperadorRessuprimento = [];
   }
+}
+
+/* ============================================================
+   START INICIAL — PFAs EM TELA
+   ------------------------------------------------------------
+   Lê o snapshot gravado por ingest-pfas.js (pagina='pfas') e monta a tela
+   aprovada em 09/09/2026: funil por etapa, FIFO por idade da PFA e o que já
+   está conferido esperando nota/coleta.
+
+   Os filtros do topo (Marca/Segmento/FIFO) recortam TUDO que vem do arquivo
+   de Pendentes. Marca e Segmento também recortam o bloco de "aguardando
+   coleta" (os dois lados têm marca e segmento com o mesmo significado), mas
+   a FAIXA DE FIFO não: lá o relógio é a data da NOTA, não a da importação —
+   aplicar as mesmas faixas (0–2/3–5/6–10/11+) num backlog que chega a 195
+   dias jogaria tudo num balde só e diria muito pouco.
+   ============================================================ */
+let dadosPfas = null;
+let dataSnapshotPfas = null;
+let filtroMarcaPfa = new Set();       // vazio = todas
+let filtroSegmentoPfa = new Set();    // vazio = todos
+let filtroFifoPfa = new Set();        // vazio = todas as faixas
+let filtroEtapaFifoPfa = new Set();   // etapa dentro do card de FIFO
+let filtroEtapaColetaPfa = new Set(); // etapa dentro do card de aguardando coleta
+let filtroTextoPfa = '';
+let limitePfa = 100;
+let ordemPfa = { campo: 'dias', direcao: 'desc' };
+
+const ROT_ETAPA_PFA = {
+  'Nao disp. picking': 'Não disp. picking',
+  'Disp. p/ picking': 'Disp. p/ picking',
+  'Em picking': 'Em picking',
+  'Leitura expedicao': 'Leitura expedição',
+  'Gerar Nota Fiscal': 'Gerar Nota Fiscal',
+};
+function rotEtapaPfa(e) { return ROT_ETAPA_PFA[e] || e || '—'; }
+
+/* Cor da etapa no funil: não é semáforo de "ruim", é posição no fluxo — o
+   material anda da esquerda (ainda nem liberado) pra direita (só falta a
+   nota). Vermelho fica reservado pro fim da fila, que é onde parar dói mais. */
+const COR_ETAPA_PFA = {
+  'Nao disp. picking': '--text-muted',
+  'Disp. p/ picking': '--accent',
+  'Em picking': '--accent',
+  'Leitura expedicao': '--amber',
+  'Gerar Nota Fiscal': '--red',
+};
+const COR_FAIXA_FIFO = { '0-2': '--olive', '3-5': '--olive', '6-10': '--amber', '11+': '--red' };
+
+const ROT_CONFERENCIA = {
+  completa: { rotulo: 'Completa', classe: 'ok' },
+  parcial: { rotulo: 'Parcial', classe: 'warn' },
+  nao_iniciada: { rotulo: 'Não iniciada', classe: 'neutro' },
+};
+
+function alternarFiltroSetPfa(set, valor, redesenhar) {
+  if (valor === null) set.clear();
+  else if (set.has(valor)) set.delete(valor);
+  else set.add(valor);
+  if (redesenhar !== false) renderizarPfas();
+}
+function alternarMarcaPfa(v) { alternarFiltroSetPfa(filtroMarcaPfa, v); }
+function alternarSegmentoPfa(v) { alternarFiltroSetPfa(filtroSegmentoPfa, v); }
+function alternarFifoPfa(v) { alternarFiltroSetPfa(filtroFifoPfa, v); }
+function alternarEtapaFifoPfa(v) { alternarFiltroSetPfa(filtroEtapaFifoPfa, v); }
+function alternarEtapaColetaPfa(v) { alternarFiltroSetPfa(filtroEtapaColetaPfa, v); }
+function filtrarTextoPfa(t) { filtroTextoPfa = t; renderizarPfas(); }
+function alterarLimitePfa(v) { limitePfa = v === 'todos' ? Infinity : Number(v); renderizarPfas(); }
+function ordenarPfa(campo) {
+  if (ordemPfa.campo === campo) ordemPfa.direcao = ordemPfa.direcao === 'asc' ? 'desc' : 'asc';
+  else ordemPfa = { campo: campo, direcao: campo === 'pfa' || campo === 'cliente' ? 'asc' : 'desc' };
+  renderizarPfas();
+}
+
+/* Recorte comum: marca e segmento valem pros dois lados da tela; a faixa de
+   FIFO só faz sentido em cima do que veio de Pendentes (ver comentário do
+   topo). */
+function passaMarcaSegmentoPfa(r) {
+  if (filtroMarcaPfa.size && !filtroMarcaPfa.has(r.marca)) return false;
+  if (filtroSegmentoPfa.size && !filtroSegmentoPfa.has(r.segmento_macro)) return false;
+  return true;
+}
+function pendentesFiltradosPfa() {
+  return (dadosPfas.pendentes || []).filter(function (r) {
+    if (!passaMarcaSegmentoPfa(r)) return false;
+    if (filtroFifoPfa.size && !filtroFifoPfa.has(r.faixa_fifo)) return false;
+    return true;
+  });
+}
+
+async function carregarPfas() {
+  const alvo = document.getElementById('start-conteudo');
+  const { data, error } = await supabaseClient.from('dashboard_snapshots')
+    .select('payload, gerado_em').eq('pagina', 'pfas')
+    .order('gerado_em', { ascending: false }).limit(1);
+  if (error) {
+    alvo.innerHTML = '<div class="aviso erro">Erro ao carregar o snapshot: ' + escapar(error.message) + '</div>';
+    return;
+  }
+  if (!data || !data.length) {
+    alvo.innerHTML = '<div class="aviso">Nenhum snapshot de PFAs publicado ainda. ' +
+      'Envie os arquivos pela tela <strong>Admin › Abastecimento › PFAs em tela</strong>.</div>';
+    return;
+  }
+  dadosPfas = data[0].payload;
+  dataSnapshotPfas = data[0].gerado_em;
+  atualizarSubtituloSecao('start');
+  renderizarPfas();
+}
+
+function renderizarPfas() {
+  if (!dadosPfas) return;
+  const p = dadosPfas;
+  const filtrados = pendentesFiltradosPfa();
+
+  /* ---------- chips do topo ---------- */
+  function chipsSet(rotulo, set, opcoes, fn) {
+    let h = '<div class="filtros"><span class="rot-filtro">' + rotulo + '</span>' +
+      '<span class="chip' + (!set.size ? ' on' : '') + '" onclick="' + fn + '(null)">Todos</span>';
+    opcoes.forEach(function (o) {
+      h += '<span class="chip' + (set.has(o.valor) ? ' on' : '') + '" onclick="' + fn + '(\'' +
+        escaparJs(o.valor) + '\')">' + escapar(o.rotulo) + '</span>';
+    });
+    if (set.size) {
+      h += '<span class="chip" style="color:var(--red)" onclick="' + fn + '(null)">✕ Limpar filtro</span>';
+    }
+    return h + '</div>';
+  }
+  // Opções saem do próprio snapshot (não de uma lista fixa): marca/segmento
+  // novos aparecem sozinhos, sem precisar mexer no código.
+  function opcoesDe(campo) {
+    const vistos = new Map();
+    (p.pendentes || []).forEach(function (r) {
+      if (!r[campo]) return;
+      vistos.set(r[campo], (vistos.get(r[campo]) || 0) + r.pares);
+    });
+    (p.aguardando_coleta || []).forEach(function (r) {
+      if (!r[campo]) return;
+      vistos.set(r[campo], (vistos.get(r[campo]) || 0) + r.qtde);
+    });
+    return Array.from(vistos.entries()).sort(function (a, b) { return b[1] - a[1]; })
+      .map(function (e) { return { valor: e[0], rotulo: e[0] }; });
+  }
+  const chipsTopo =
+    chipsSet('Marca', filtroMarcaPfa, opcoesDe('marca'), 'alternarMarcaPfa') +
+    chipsSet('Segmento', filtroSegmentoPfa, opcoesDe('segmento_macro'), 'alternarSegmentoPfa') +
+    chipsSet('FIFO', filtroFifoPfa, (p.faixas_fifo || []).map(function (f) {
+      return { valor: f.chave, rotulo: f.rotulo };
+    }), 'alternarFifoPfa');
+
+  /* ---------- KPIs ---------- */
+  const pares = filtrados.reduce(function (s, r) { return s + r.pares; }, 0);
+  const maisAntiga = filtrados.reduce(function (mx, r) {
+    return (r.dias_abertos !== null && r.dias_abertos > mx.dias) ? { dias: r.dias_abertos, data: r.data_importacao } : mx;
+  }, { dias: 0, data: null });
+
+  // Aguardando NF/coleta seguem marca+segmento (não a faixa de FIFO).
+  const nfFiltrado = (p.aguardando_nf || []).filter(passaMarcaSegmentoPfa);
+  const coletaFiltrado = (p.aguardando_coleta || []).filter(passaMarcaSegmentoPfa);
+  const qtdeNf = nfFiltrado.reduce(function (s, r) { return s + r.qtde; }, 0);
+  const qtdeColeta = coletaFiltrado.reduce(function (s, r) { return s + r.qtde; }, 0);
+  const pfasColeta = new Set(coletaFiltrado.map(function (r) { return r.pfa; })).size;
+  const pfasNf = new Set(nfFiltrado.map(function (r) { return r.pfa; })).size;
+  const coletaMaisAntiga = coletaFiltrado.reduce(function (mx, r) {
+    return (r.dias_nota !== null && r.dias_nota > mx.dias) ? { dias: r.dias_nota, data: r.data_nota } : mx;
+  }, { dias: 0, data: null });
+
+  const exc = p.stats.excluidas_por_embarque;
+  const kpis = '<div class="kpi-row">' +
+    '<div class="kpi"><div class="rot">PFAs pendentes</div>' +
+      '<div class="val forte">' + fmtInt(filtrados.length) + '</div>' +
+      '<div class="sub">' + fmtInt(pares) + ' pares' +
+      (exc.pfas ? ' · já sem ' + fmtInt(exc.pfas) + ' PFA(s) embarcada(s)' : '') + '</div></div>' +
+    '<div class="kpi"><div class="rot">Mais antiga em tela</div>' +
+      '<div class="val forte" style="color:var(--amber)">' + (maisAntiga.dias ? fmtInt(maisAntiga.dias) + ' dias' : '—') + '</div>' +
+      '<div class="sub">' + (maisAntiga.data ? 'importada ' + formatarDataSimples(maisAntiga.data) : 'sem PFA no recorte') + '</div></div>' +
+    '<div class="kpi"><div class="rot">Conferido, aguard. nota fiscal</div>' +
+      '<div class="val forte">' + fmtInt(qtdeNf) + ' pç</div>' +
+      '<div class="sub">' + fmtInt(pfasNf) + ' PFAs · sem data, sem FIFO ainda</div></div>' +
+    '<div class="kpi"><div class="rot">Com nota, aguard. coleta</div>' +
+      '<div class="val forte" style="color:var(--red)">' + (coletaMaisAntiga.dias ? fmtInt(coletaMaisAntiga.dias) + ' dias' : '—') + '</div>' +
+      '<div class="sub">' + fmtInt(qtdeColeta) + ' pç · ' + fmtInt(pfasColeta) + ' PFAs' +
+      (coletaMaisAntiga.data ? ' · nota mais antiga ' + formatarDataSimples(coletaMaisAntiga.data) : '') + '</div></div>' +
+  '</div>';
+
+  /* ---------- funil por etapa ---------- */
+  const porEtapa = new Map();
+  filtrados.forEach(function (r) {
+    if (!porEtapa.has(r.situacao)) porEtapa.set(r.situacao, { pares: 0, pfas: 0 });
+    const g = porEtapa.get(r.situacao);
+    g.pares += r.pares; g.pfas++;
+  });
+  const maxEtapa = Array.from(porEtapa.values()).reduce(function (mx, g) { return Math.max(mx, g.pares); }, 0);
+  let barrasEtapa = '';
+  (p.etapas || []).forEach(function (e) {
+    const g = porEtapa.get(e);
+    if (!g) return;
+    const larg = maxEtapa > 0 ? g.pares / maxEtapa * 100 : 0;
+    barrasEtapa += '<div class="bar-item bar-item-rua">' +
+      '<div class="nome">' + escapar(rotEtapaPfa(e)) + '</div>' +
+      '<div class="trilho"><div class="preench" style="width:' + larg + '%;background:var(' +
+        (COR_ETAPA_PFA[e] || '--accent') + ')"></div></div>' +
+      '<div class="num">' + fmtInt(g.pares) + ' · ' + fmtInt(g.pfas) + '</div>' +
+    '</div>';
+  });
+
+  /* ---------- FIFO por faixa (com filtro de etapa próprio) ---------- */
+  const paraFifo = filtrados.filter(function (r) {
+    return !filtroEtapaFifoPfa.size || filtroEtapaFifoPfa.has(r.situacao);
+  });
+  const porFaixa = new Map();
+  paraFifo.forEach(function (r) {
+    if (!r.faixa_fifo) return;
+    porFaixa.set(r.faixa_fifo, (porFaixa.get(r.faixa_fifo) || 0) + r.pares);
+  });
+  const maxFaixa = Array.from(porFaixa.values()).reduce(function (mx, v) { return Math.max(mx, v); }, 0);
+  let barrasFifo = '';
+  (p.faixas_fifo || []).forEach(function (f) {
+    const v = porFaixa.get(f.chave) || 0;
+    const alt = maxFaixa > 0 ? (v / maxFaixa) * 100 : 0;
+    barrasFifo += '<div class="col-dia" title="' + escapar(f.rotulo) + ' · ' + fmtInt(v) + ' pares">' +
+      '<div class="valor-dia">' + (v > 0 ? fmtInt(v) : '') + '</div>' +
+      '<div class="pilha" style="height:' + alt + '%">' +
+        '<div class="seg" style="height:100%;background:var(' + (COR_FAIXA_FIFO[f.chave] || '--accent') + ')"></div>' +
+      '</div>' +
+      '<div class="rot-dia">' + escapar(f.rotulo) + '</div>' +
+    '</div>';
+  });
+
+  /* ---------- aguardando coleta por segmento (filtro de etapa cruzado) ----------
+     O Analítico não tem etapa — quem tem é o Pendentes. O filtro aqui cruza
+     pelo número da PFA; PFA que não está mais em Pendentes (já saiu do fluxo)
+     fica de fora quando há filtro de etapa ativo, porque aí não há etapa que
+     se possa afirmar. */
+  const etapaPorPfa = new Map();
+  (p.pendentes || []).forEach(function (r) { etapaPorPfa.set(r.pfa, r.situacao); });
+  const coletaComEtapa = coletaFiltrado.filter(function (r) {
+    if (!filtroEtapaColetaPfa.size) return true;
+    return filtroEtapaColetaPfa.has(etapaPorPfa.get(r.pfa));
+  });
+  const porSegColeta = new Map();
+  coletaComEtapa.forEach(function (r) {
+    porSegColeta.set(r.segmento_macro, (porSegColeta.get(r.segmento_macro) || 0) + r.qtde);
+  });
+  const segsColeta = Array.from(porSegColeta.entries()).sort(function (a, b) { return b[1] - a[1]; });
+  const maxSegColeta = segsColeta.reduce(function (mx, e) { return Math.max(mx, e[1]); }, 0);
+  let barrasSegColeta = '';
+  segsColeta.forEach(function (e) {
+    const larg = maxSegColeta > 0 ? e[1] / maxSegColeta * 100 : 0;
+    barrasSegColeta += '<div class="bar-item">' +
+      '<div class="nome">' + escapar(e[0]) + '</div>' +
+      '<div class="trilho"><div class="preench" style="width:' + larg + '%;background:var(--accent)"></div></div>' +
+      '<div class="num">' + fmtInt(e[1]) + '</div>' +
+    '</div>';
+  });
+
+  // Etapas disponíveis nos chips dos dois cards — só as que existem no recorte
+  const etapasNoRecorte = (p.etapas || []).filter(function (e) { return porEtapa.has(e); });
+  function chipsEtapa(set, fn) {
+    let h = '<div class="filtros" style="margin-bottom:10px"><span class="rot-filtro">Etapa</span>' +
+      '<span class="chip' + (!set.size ? ' on' : '') + '" onclick="' + fn + '(null)">Todas</span>';
+    etapasNoRecorte.forEach(function (e) {
+      h += '<span class="chip' + (set.has(e) ? ' on' : '') + '" onclick="' + fn + '(\'' + escaparJs(e) + '\')">' +
+        escapar(rotEtapaPfa(e)) + '</span>';
+    });
+    if (set.size) h += '<span class="chip" style="color:var(--red)" onclick="' + fn + '(null)">✕ Limpar</span>';
+    return h + '</div>';
+  }
+
+  /* ---------- tabela "PFAs mais antigas" ---------- */
+  const busca = filtroTextoPfa.trim().toLowerCase();
+  let linhasTabela = filtrados;
+  if (busca) {
+    linhasTabela = linhasTabela.filter(function (r) {
+      const alvo = [r.pfa, r.cliente_nome, r.cliente_codigo, rotEtapaPfa(r.situacao), r.marca,
+        r.segmento_macro, r.familia_codigo, r.transportadora_nome, r.cluster,
+        ROT_CONFERENCIA[r.conferencia].rotulo, r.marca + ' · ' + r.segmento_macro,
+        String(r.pares), String(r.dias_abertos)].join(' ').toLowerCase();
+      return alvo.indexOf(busca) !== -1;
+    });
+  }
+  const mult = ordemPfa.direcao === 'asc' ? 1 : -1;
+  linhasTabela = linhasTabela.slice().sort(function (a, b) {
+    let d = 0;
+    switch (ordemPfa.campo) {
+      case 'pfa': d = String(a.pfa).localeCompare(String(b.pfa), 'pt-BR', { numeric: true }); break;
+      case 'cliente': d = String(a.cliente_nome).localeCompare(String(b.cliente_nome), 'pt-BR'); break;
+      case 'marca': d = (a.marca + a.segmento_macro).localeCompare(b.marca + b.segmento_macro, 'pt-BR'); break;
+      case 'etapa': d = (p.etapas || []).indexOf(a.situacao) - (p.etapas || []).indexOf(b.situacao); break;
+      case 'conferencia': d = (a.conferencia_lidos / (a.conferencia_total || 1)) - (b.conferencia_lidos / (b.conferencia_total || 1)); break;
+      case 'pares': d = a.pares - b.pares; break;
+      default: d = (a.dias_abertos || 0) - (b.dias_abertos || 0);
+    }
+    return mult * d;
+  });
+  const carregadas = Number.isFinite(limitePfa) ? linhasTabela.slice(0, limitePfa) : linhasTabela;
+
+  function setaPfa(campo) {
+    if (ordemPfa.campo !== campo) return '';
+    return ' <span style="font-size:9px">' + (ordemPfa.direcao === 'asc' ? '▲' : '▼') + '</span>';
+  }
+  function thPfa(campo, rotulo, classe) {
+    return '<th class="' + (classe || '') + '" style="cursor:pointer;user-select:none" ' +
+      'onclick="ordenarPfa(\'' + campo + '\')" title="Ordenar por ' + rotulo + '">' + rotulo + setaPfa(campo) + '</th>';
+  }
+  const linhasHtml = carregadas.map(function (r) {
+    const c = ROT_CONFERENCIA[r.conferencia];
+    const cor = c.classe === 'ok' ? 'var(--olive)' : c.classe === 'warn' ? 'var(--amber)' : 'var(--text-muted)';
+    const fundo = c.classe === 'ok' ? 'var(--olive-soft)' : c.classe === 'warn' ? 'var(--amber-soft)' : 'var(--bg-input)';
+    return '<tr><th class="centro">' + escapar(r.pfa) + '</th>' +
+      '<td class="centro">' + escapar(r.cliente_nome) + '</td>' +
+      '<td class="centro">' + escapar(r.marca) + ' · ' + escapar(r.segmento_macro) + '</td>' +
+      '<td class="centro">' + escapar(rotEtapaPfa(r.situacao)) + '</td>' +
+      '<td class="centro"><span style="display:inline-block;padding:2px 8px;border-radius:20px;' +
+        'font-size:10.5px;font-weight:600;background:' + fundo + ';color:' + cor + '">' +
+        c.rotulo + ' · ' + fmtInt(r.conferencia_lidos) + '/' + fmtInt(r.conferencia_total) + '</span></td>' +
+      '<td>' + fmtInt(r.pares) + '</td>' +
+      '<td>' + (r.dias_abertos === null ? '—' : fmtInt(r.dias_abertos)) + '</td></tr>';
+  }).join('');
+  const totalTabela = linhasTabela.reduce(function (s, r) { return s + r.pares; }, 0);
+  const linhaTotal = '<tr class="total"><th class="centro">TOTAL</th>' +
+    '<td class="centro" colspan="3">' + fmtInt(linhasTabela.length) + ' PFA(s) no recorte</td>' +
+    '<td class="centro">—</td><td>' + fmtInt(totalTabela) + '</td><td>—</td></tr>';
+
+  /* ---------- avisos ---------- */
+  let avisos = '';
+  if (!p.arquivo_embarcadas) {
+    avisos += '<div class="aviso" style="border-color:var(--amber)">Este snapshot subiu <strong>sem o arquivo de ' +
+      'NFs Embarcadas</strong> — PFA que já saiu ainda pode estar contando como pendente aqui.</div>';
+  }
+  if ((p.familias_nao_mapeadas || []).length) {
+    avisos += '<div class="aviso">Famílias sem marca cadastrada em <code>dim_familias</code>: ' +
+      escapar(p.familias_nao_mapeadas.join(', ')) + '.</div>';
+  }
+
+  document.getElementById('start-conteudo').innerHTML =
+    avisos +
+    '<div class="kicker">Abastecimento — PFAs em tela</div>' +
+    chipsTopo +
+    kpis +
+    '<div class="card">' +
+      '<div class="section-title">Funil — PFAs pendentes por etapa</div>' +
+      '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Pares por etapa, picking → ' +
+        'expedição · ' + fmtInt(filtrados.length) + ' PFAs no recorte.</p>' +
+      '<div class="bar-list-rua">' + barrasEtapa + '</div>' +
+    '</div>' +
+    '<div class="grid2">' +
+      '<div class="card">' +
+        '<div class="section-title">FIFO — dias em aberto</div>' +
+        '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Pares por faixa de idade ' +
+          '(data de importação da PFA).</p>' +
+        chipsEtapa(filtroEtapaFifoPfa, 'alternarEtapaFifoPfa') +
+        '<div class="barras-dia">' + barrasFifo + '</div>' +
+      '</div>' +
+      '<div class="card">' +
+        '<div class="section-title">Com nota, aguardando coleta — por segmento</div>' +
+        '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' + fmtInt(qtdeColeta) +
+          ' pç já faturadas (' + fmtInt(pfasColeta) + ' PFAs) — única fatia com FIFO real.</p>' +
+        chipsEtapa(filtroEtapaColetaPfa, 'alternarEtapaColetaPfa') +
+        '<div class="bar-list">' + (barrasSegColeta || '<div class="aviso">Nada aguardando coleta neste recorte.</div>') + '</div>' +
+        '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">O Analítico não tem campo de etapa — ' +
+          'o filtro acima cruza pela PFA com a situação atual em Pendentes.</p>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card">' +
+      '<div class="section-title" style="display:flex;align-items:center;justify-content:space-between">' +
+        '<span>PFAs mais antigas em tela</span>' +
+        '<button class="btn-mini" onclick="exportarCSVPfas()">⬇ Exportar CSV</button>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0">' +
+        '<input type="text" id="buscaPfa" placeholder="Buscar (PFA, cliente, etapa, marca, cluster…)" ' +
+          'value="' + escapar(filtroTextoPfa) + '" oninput="filtrarTextoPfa(this.value)" ' +
+          'style="padding:6px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);' +
+          'border:1px solid var(--border);font-size:12px;flex:1 1 260px;max-width:360px">' +
+        '<span style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-muted)">' +
+          '<label for="limitePfa">Mostrar</label>' +
+          '<select id="limitePfa" onchange="alterarLimitePfa(this.value)" ' +
+            'style="padding:5px 8px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border);font-size:12px">' +
+            [10, 50, 100, 200, 500].map(function (n) {
+              return '<option value="' + n + '"' + (limitePfa === n ? ' selected' : '') + '>' + n + '</option>';
+            }).join('') +
+            '<option value="todos"' + (!Number.isFinite(limitePfa) ? ' selected' : '') + '>Todos</option>' +
+          '</select>' +
+        '</span>' +
+      '</div>' +
+      '<p style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Exibindo ' + fmtInt(carregadas.length) +
+        ' de ' + fmtInt(linhasTabela.length) + ' linha(s).</p>' +
+      '<div class="tabela-rolavel"><table class="arvore"><thead><tr>' +
+        thPfa('pfa', 'PFA', 'centro') + thPfa('cliente', 'Cliente', 'centro') +
+        thPfa('marca', 'Marca / Segmento', 'centro') + thPfa('etapa', 'Etapa atual', 'centro') +
+        thPfa('conferencia', 'Conferência', 'centro') + thPfa('pares', 'Pares') + thPfa('dias', 'Dias') +
+      '</tr></thead><tbody>' + linhasHtml + linhaTotal + '</tbody></table></div>' +
+      '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Conferência compara os volumes já ' +
+        'lidos no Analítico com o total de volumes da PFA: <strong>Não iniciada</strong> nenhum lido · ' +
+        '<strong>Parcial</strong> alguns · <strong>Completa</strong> todos.</p>' +
+    '</div>';
+}
+
+function exportarCSVPfas() {
+  if (!dadosPfas) return;
+  // Exporta o recorte inteiro dos filtros (inclusive a busca), nunca só as
+  // linhas carregadas na tela — mesmo contrato do CSV do card de B.O.
+  const busca = filtroTextoPfa.trim().toLowerCase();
+  let linhas = pendentesFiltradosPfa();
+  if (busca) {
+    linhas = linhas.filter(function (r) {
+      const alvo = [r.pfa, r.cliente_nome, r.cliente_codigo, rotEtapaPfa(r.situacao), r.marca,
+        r.segmento_macro, r.familia_codigo, r.transportadora_nome, r.cluster,
+        ROT_CONFERENCIA[r.conferencia].rotulo].join(' ').toLowerCase();
+      return alvo.indexOf(busca) !== -1;
+    });
+  }
+  const saida = [['PFA', 'Data importacao', 'Dias em aberto', 'Etapa', 'Cliente', 'Marca', 'Segmento',
+    'Familia', 'Transportadora', 'Cluster', 'Volumes', 'Pares', 'Conferencia', 'Volumes lidos', 'Volumes total']];
+  linhas.forEach(function (r) {
+    saida.push([r.pfa, r.data_importacao || '', r.dias_abertos === null ? '' : r.dias_abertos,
+      rotEtapaPfa(r.situacao), r.cliente_nome, r.marca, r.segmento_macro, r.familia_codigo,
+      r.transportadora_nome, r.cluster, r.qt_volumes, r.pares,
+      ROT_CONFERENCIA[r.conferencia].rotulo, r.conferencia_lidos, r.conferencia_total]);
+  });
+  const csv = saida.map(function (l) {
+    return l.map(function (c) { return '"' + String(c === null || c === undefined ? '' : c).replace(/"/g, '""') + '"'; }).join(';');
+  }).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'pfas-em-tela-distribuidora.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 async function carregarRessuprimento() {
@@ -3645,6 +4106,71 @@ document.getElementById('btnProcessarKardex').addEventListener('click', async fu
     arquivoKardexSelecionado = null;
     document.getElementById('inputKardex').value = '';
     atualizarEstadoDropzoneKardex();
+  } catch (e) {
+    escrever('ERRO: ' + (e && e.message ? e.message : String(e)));
+    console.error(e);
+    btn.disabled = false;
+  }
+});
+
+/* ---------- PFAs em tela (Pendentes + Analítico + Embarcadas) ----------
+   Embarcadas é opcional de propósito (o botão libera com os dois primeiros):
+   sem ele a tela ainda serve, só não consegue tirar do pendente o que já
+   saiu — e avisa isso no topo da tela em vez de mostrar número inflado
+   calado. */
+let arquivoPfaPendSelecionado = null;
+let arquivoPfaAnaSelecionado = null;
+let arquivoPfaEmbSelecionado = null;
+function atualizarEstadoDropzonePfas() {
+  document.getElementById('btnProcessarPfas').disabled = !(arquivoPfaPendSelecionado && arquivoPfaAnaSelecionado);
+  document.getElementById('dropzonePfaPendTexto').textContent = arquivoPfaPendSelecionado
+    ? '✓ ' + arquivoPfaPendSelecionado.name : 'Clique para selecionar o .txt de PFAs Pendentes';
+  document.getElementById('dropzonePfaAnaTexto').textContent = arquivoPfaAnaSelecionado
+    ? '✓ ' + arquivoPfaAnaSelecionado.name : 'Clique para selecionar o .csv do Analítico';
+  document.getElementById('dropzonePfaEmbTexto').textContent = arquivoPfaEmbSelecionado
+    ? '✓ ' + arquivoPfaEmbSelecionado.name : 'Clique para selecionar o .csv de NFs Embarcadas (opcional)';
+}
+[['dropzonePfaPend', 'inputPfaPend'], ['dropzonePfaAna', 'inputPfaAna'], ['dropzonePfaEmb', 'inputPfaEmb']]
+  .forEach(function (par) {
+    document.getElementById(par[0]).addEventListener('click', function () {
+      document.getElementById(par[1]).click();
+    });
+  });
+document.getElementById('inputPfaPend').addEventListener('change', function (ev) {
+  arquivoPfaPendSelecionado = (ev.target.files && ev.target.files[0]) || null;
+  atualizarEstadoDropzonePfas();
+});
+document.getElementById('inputPfaAna').addEventListener('change', function (ev) {
+  arquivoPfaAnaSelecionado = (ev.target.files && ev.target.files[0]) || null;
+  atualizarEstadoDropzonePfas();
+});
+document.getElementById('inputPfaEmb').addEventListener('change', function (ev) {
+  arquivoPfaEmbSelecionado = (ev.target.files && ev.target.files[0]) || null;
+  atualizarEstadoDropzonePfas();
+});
+document.getElementById('btnProcessarPfas').addEventListener('click', async function () {
+  const log = document.getElementById('logIngestPfas');
+  const ok = document.getElementById('okIngestPfas');
+  ok.style.display = 'none';
+  log.textContent = '';
+  const escrever = function (msg) { log.textContent += msg + '\n'; log.scrollTop = log.scrollHeight; };
+  const btn = document.getElementById('btnProcessarPfas');
+  btn.disabled = true;
+  try {
+    await window.processarPfas(supabaseClient, arquivoPfaPendSelecionado, arquivoPfaAnaSelecionado,
+      arquivoPfaEmbSelecionado, escrever);
+    escrever('Recarregando o Start Inicial em segundo plano…');
+    pfasCarregado = true;
+    await carregarPfas();
+    ok.textContent = '✔ Processado com sucesso — pode selecionar o próximo arquivo.';
+    ok.style.display = '';
+    arquivoPfaPendSelecionado = null;
+    arquivoPfaAnaSelecionado = null;
+    arquivoPfaEmbSelecionado = null;
+    document.getElementById('inputPfaPend').value = '';
+    document.getElementById('inputPfaAna').value = '';
+    document.getElementById('inputPfaEmb').value = '';
+    atualizarEstadoDropzonePfas();
   } catch (e) {
     escrever('ERRO: ' + (e && e.message ? e.message : String(e)));
     console.error(e);
