@@ -46,10 +46,11 @@
                         confiável no cruzamento de ressuprimento (função
                         pulmaoApoioPorEan abaixo).
    ============================================================================ */
-const RUAS_PULMAO_BOAS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14'];
+const RUAS_PULMAO_BOAS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '11', '12', '13', '14'];
 const CLASSIF_RUA_PULMAO = {};
 RUAS_PULMAO_BOAS.forEach(function (r) { CLASSIF_RUA_PULMAO[r] = { grupo: 'PULMAO', rotulo: 'Pulmão' }; });
 Object.assign(CLASSIF_RUA_PULMAO, {
+  '10':  { grupo: 'VALIDACAO', rotulo: 'Sujeira - Movimentação Antiga' }, // confirmado pela operação, 09/09/2026: 136 endereços / 24.584 pç de acessório que não é estoque de verdade, some da capacidade de Acessório mas não do total de Pulmão.
   '21':  { grupo: 'VALIDACAO', rotulo: 'Transitório - Ressuprimento (Antigo)' },
   '24':  { grupo: 'VALIDACAO', rotulo: 'Sujeira' },
   '26':  { grupo: 'VALIDACAO', rotulo: 'Sujeira' },

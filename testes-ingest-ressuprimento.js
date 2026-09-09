@@ -307,6 +307,36 @@ eq(endTransito500.skus, 2, 'e conta os 2 SKUs distintos que dividem esse endere�
 ok(/Baixar Ressuprimento/.test(endTransito500.classif_rotulo), 'carrega o rótulo da classificação da rua (500 = Baixar Ressuprimento)');
 
 /* -------------------------------------------------------------------------- */
+secao('ocupação — Rua 10 do Pulmão é sujeira de movimentação antiga, não acessório de verdade');
+// Confirmado pela operação (09/09/2026): a Rua 10 tem saldo endereçado de uma
+// movimentação antiga (136 endereços / 24.584 pç no arquivo real, 100%
+// Acessório) que não é estoque de verdade. Contá-la inflava a % de Acessório
+// do Pulmão pra mais de 100% (200.061/194.208 em peça) mesmo com as ruas
+// certas (11-14) tranquilas a 77%. Mesmo raciocínio das ruas 24/26 (Sujeira)
+// -- conta no total físico de Pulmão, mas sai da capacidade por bucket.
+const pulmaoComRua10 = {
+  registros: [
+    { familia_codigo: '104', artigo_codigo: 'A9', cor: 'PT', tamanho: '40', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '10', nivel: '1', box: '1', dt_cri: null, qtd: 50, codbar: '' },
+    { familia_codigo: '104', artigo_codigo: 'A9', cor: 'PT', tamanho: '40', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '11', nivel: '1', box: '1', dt_cri: null, qtd: 30, codbar: '' },
+  ],
+  colisoes_volume: 0,
+};
+const mapaFamiliasAcess = new Map([
+  ['104', { marca: 'MIZUNO', categoria: 'ACESSÓRIOS MIZUNO', segmento: 'TÊXTIL/ACESSÓRIOS MIZUNO' }],
+]);
+const payloadRua10 = construirSnapshotRessuprimento(
+  { registros: [], negativas_excluidas: 0, negativas_unidades: 0 }, pulmaoComRua10, mapaFamiliasAcess, { pulmao_acessorio: 100 },
+  { arquivo_picking: 'x.txt', arquivo_pulmao: 'p.txt' }
+);
+eq(payloadRua10.ocupacao.pulmao.acessorio.ocupado, 1,
+   'só a Rua 11 (Acessório de verdade) conta na ocupação -- a Rua 10 fica de fora, igual às ruas de trânsito');
+eq(payloadRua10.transito_pulmao.total_enderecos, 1, 'a Rua 10 vira B.O. em trânsito/validação, não some sem explicação');
+const endRua10 = payloadRua10.transito_pulmao.enderecos.find(function (e) { return e.rua === '10'; });
+eq(endRua10.qtd, 50, 'peça da Rua 10 continua visível no card de trânsito');
+ok(/Sujeira/.test(endRua10.classif_rotulo), 'rótulo identifica como sujeira de movimentação antiga');
+
+
+/* -------------------------------------------------------------------------- */
 secao('segmentoMacro — os 6 baldes da gestão, cruzando todas as marcas');
 eq(segmentoMacro('TÊXTIL/ACESSÓRIOS MIZUNO', 'VESTUÁRIO MIZUNO'), 'VESTUÁRIO',
    'vestuário não é engolido pelo "ACESSÓRIOS" que vem no nome do segmento');
