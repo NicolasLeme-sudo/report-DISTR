@@ -204,6 +204,56 @@ eq(payloadOcup.ocupacao.picking.total.ocupado, 2, 'total da linha Picking soma a
 eq(payloadOcup.ocupacao.picking.total.capacidade, 10, 'capacidade do total soma as capacidades das 4 zonas (só calçado=10, resto estimado=0)');
 
 /* -------------------------------------------------------------------------- */
+secao('ocupação em ITENS — recalculada do zero, peça de propósito diferente de endereço');
+// Mesmo cenário acima (2 endereços de calçado, um com saldo 4 e outro
+// zerado), mas agora pedindo a árvore de peças. As duas visões têm que
+// divergir de propósito: 2 endereços ocupados, mas só 4 peças (o endereço
+// zerado conta pra um lado e não conta pro outro).
+const pickingComCativado = {
+  registros: [
+    { familia_codigo: '101', artigo_codigo: 'A5', cor: 'PT', tamanho: '40', ean: 'E5', rua: '81', nivel: '1', box: '1', qtd: 4, qtd_cativado: 3, qtd_gap_reservado: 0 },
+    { familia_codigo: '101', artigo_codigo: 'A6', cor: 'PT', tamanho: '41', ean: 'E6', rua: '81', nivel: '1', box: '2', qtd: 0, qtd_cativado: 0, qtd_gap_reservado: 0 },
+  ],
+  negativas_excluidas: 0, negativas_unidades: 0,
+};
+const payloadItens = construirSnapshotRessuprimento(
+  pickingComCativado, { registros: [], colisoes_volume: 0 }, mapaFamilias,
+  { picking_calcado: 10 }, // capacidade em ENDEREÇO
+  { arquivo_picking: 'p.txt', arquivo_pulmao: 'x.txt' },
+  { picking_calcado: 1000 } // capacidade em ITENS — mapa INDEPENDENTE do de endereço
+);
+eq(payloadItens.ocupacao.picking.calcado.ocupado, 2, 'endereço continua contando 2 posições, sem mudança');
+eq(payloadItens.ocupacao_itens.picking.calcado.ocupado, 7,
+   'peça soma qtd + qtd_cativado (4+3), não conta o endereço zerado como "cheio"');
+eq(payloadItens.ocupacao_itens.picking.calcado.capacidade, 1000,
+   'capacidade em itens vem do mapa PRÓPRIO de itens, não do mapa de endereço (10)');
+eq(payloadItens.ocupacao_itens.picking.calcado.capacidade_estimada, false,
+   'zona com capacidade de itens cadastrada não é estimada');
+eq(payloadItens.ocupacao_itens.picking.total.ocupado, 7, 'total de itens soma as 4 zonas em peça, não em endereço');
+
+// Zona sem capacidade de itens cadastrada cai no mesmo fallback do endereço
+// (ocupado×1.2) — independente pra cada árvore.
+const payloadItensSemCap = construirSnapshotRessuprimento(
+  pickingComCativado, { registros: [], colisoes_volume: 0 }, mapaFamilias,
+  { picking_calcado: 10 }, { arquivo_picking: 'p.txt', arquivo_pulmao: 'x.txt' }, {}
+);
+eq(payloadItensSemCap.ocupacao_itens.picking.calcado.capacidade_estimada, true,
+   'sem capacidadesItensManual, a zona de itens vira estimada (ocupado×1.2) mesmo com endereço fechado');
+eq(payloadItensSemCap.ocupacao_itens.picking.calcado.capacidade, Math.round(7 * 1.2),
+   'estimativa de itens usa o ocupado EM PEÇA (7), não o de endereço (2)');
+eq(payloadItensSemCap.ocupacao.picking.calcado.capacidade_estimada, false,
+   'endereço continua fechado (10) independente do que acontece na árvore de itens');
+
+// Chamada sem o 6º argumento (código antigo/teste antigo) não pode quebrar —
+// ocupacao_itens simplesmente cai toda em estimativa.
+const payloadSemArg = construirSnapshotRessuprimento(
+  pickingComCativado, { registros: [], colisoes_volume: 0 }, mapaFamilias,
+  { picking_calcado: 10 }, { arquivo_picking: 'p.txt', arquivo_pulmao: 'x.txt' }
+);
+eq(payloadSemArg.ocupacao_itens.picking.calcado.ocupado, 7,
+   'sem o 6º argumento, ocupacao_itens ainda existe e mede peça corretamente (só a capacidade vira estimada)');
+
+/* -------------------------------------------------------------------------- */
 secao('ocupação — 20/70/80/81-02 são apoio de ressuprimento, não posição de ninguém');
 // Confirmado pela operação (03/09/2026): essas ruas contam como Pulmão no
 // CRUZAMENTO de apoio (não são posição de picking), mas ficam de fora da

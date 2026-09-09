@@ -330,8 +330,9 @@ function parsearPulmao(textoArquivo) {
    manual usa ocupado × 1.2 (decisão da operação, provisório até a capacidade
    real ser levantada).
    ============================================================================ */
-function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidadesManual, meta) {
+function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidadesManual, meta, capacidadesItensManual) {
   const cap = capacidadesManual || {};
+  const capItens = capacidadesItensManual || {};
   const familiasNaoMapeadas = new Set();
 
   function infoFamilia(codigo) {
@@ -401,15 +402,26 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     });
     return enderecos.size;
   }
-  function zona(nome, ocupado) {
-    const capacidade = cap[nome] || Math.round(ocupado * 1.2);
+  /* Peças = qtd disponível + cativado, o mesmo gabarito de `saldo_picking`
+     mais abaixo (Pulmão não tem cativado, soma só `qtd`). É uma régua
+     DIFERENTE de propósito da de endereço, não um jeito alternativo de medir
+     a mesma coisa: uma posição alocada com saldo zero conta 100% no
+     endereço e 0 aqui — as duas visões (pedidas pela operação, 09/09/2026)
+     vão divergir por isso, e é esperado. */
+  function pecasOcupadas(lista) {
+    return lista.reduce(function (s, r) { return s + (r.qtd || 0) + (r.qtd_cativado || 0); }, 0);
+  }
+  function fazZona(capMap, nome, ocupado) {
+    const capacidade = capMap[nome] || Math.round(ocupado * 1.2);
     return {
       capacidade: capacidade, ocupado: ocupado,
       pct: capacidade > 0 ? (ocupado / capacidade) * 100 : 0,
       disponivel: Math.max(0, capacidade - ocupado),
-      capacidade_estimada: !cap[nome], // true = ainda é ocupado×1.2, não o número real da gestão
+      capacidade_estimada: !capMap[nome], // true = ainda é ocupado×1.2, não o número real da gestão
     };
   }
+  // Mantido por compatibilidade com o resto da função (que só mede endereço).
+  function zona(nome, ocupado) { return fazZona(cap, nome, ocupado); }
   /* OCUPAÇÃO: as ruas 20/70/80/81-02 contam como Pulmão no CRUZAMENTO de apoio
      (confirmado pela operação, 03/09/2026 — não são posição de picking), mas
      NÃO entram na contagem de posições de nenhuma das duas zonas. Não são
@@ -446,7 +458,10 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
   function zonaBucket(prefixo, bucket, lista) {
     return zona(prefixo + '_' + bucket, posicoesOcupadas(lista.filter(function (r) { return r.bucket === bucket; })));
   }
-  function zonaTotal(nomeTotal, subzonas) {
+  function fazZonaBucket(capMap, medir, prefixo, bucket, lista) {
+    return fazZona(capMap, prefixo + '_' + bucket, medir(lista.filter(function (r) { return r.bucket === bucket; })));
+  }
+  function fazZonaTotal(subzonas) {
     const capacidade = subzonas.reduce(function (s, z) { return s + z.capacidade; }, 0);
     const ocupado = subzonas.reduce(function (s, z) { return s + z.ocupado; }, 0);
     return {
@@ -456,26 +471,32 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
       capacidade_estimada: subzonas.some(function (z) { return z.capacidade_estimada; }),
     };
   }
-  const pickingPorBucket = {
-    meia: zonaBucket('picking', 'meia', pickingReal),
-    vestuario: zonaBucket('picking', 'vestuario', pickingReal),
-    acessorio: zonaBucket('picking', 'acessorio', pickingReal),
-    calcado: zonaBucket('picking', 'calcado', pickingReal),
-  };
-  const pulmaoPorBucket = {
-    meia: zonaBucket('pulmao', 'meia', pulmaoFisico),
-    vestuario: zonaBucket('pulmao', 'vestuario', pulmaoFisico),
-    acessorio: zonaBucket('pulmao', 'acessorio', pulmaoFisico),
-    calcado: zonaBucket('pulmao', 'calcado', pulmaoFisico),
-  };
-  const ocupacao = {
-    picking: Object.assign({
-      total: zonaTotal('picking_total', [pickingPorBucket.meia, pickingPorBucket.vestuario, pickingPorBucket.acessorio, pickingPorBucket.calcado]),
-    }, pickingPorBucket),
-    pulmao: Object.assign({
-      total: zonaTotal('pulmao_total', [pulmaoPorBucket.meia, pulmaoPorBucket.vestuario, pulmaoPorBucket.acessorio, pulmaoPorBucket.calcado]),
-    }, pulmaoPorBucket),
-  };
+  // Monta as 2 linhas (Picking/Pulmão) × 5 zonas (4 buckets + total) pra um
+  // critério de medição só — chamada uma vez pra endereço, outra pra peça,
+  // sem duplicar a árvore.
+  function montarOcupacao(capMap, medir) {
+    const pB = {
+      meia: fazZonaBucket(capMap, medir, 'picking', 'meia', pickingReal),
+      vestuario: fazZonaBucket(capMap, medir, 'picking', 'vestuario', pickingReal),
+      acessorio: fazZonaBucket(capMap, medir, 'picking', 'acessorio', pickingReal),
+      calcado: fazZonaBucket(capMap, medir, 'picking', 'calcado', pickingReal),
+    };
+    const uB = {
+      meia: fazZonaBucket(capMap, medir, 'pulmao', 'meia', pulmaoFisico),
+      vestuario: fazZonaBucket(capMap, medir, 'pulmao', 'vestuario', pulmaoFisico),
+      acessorio: fazZonaBucket(capMap, medir, 'pulmao', 'acessorio', pulmaoFisico),
+      calcado: fazZonaBucket(capMap, medir, 'pulmao', 'calcado', pulmaoFisico),
+    };
+    return {
+      picking: Object.assign({ total: fazZonaTotal([pB.meia, pB.vestuario, pB.acessorio, pB.calcado]) }, pB),
+      pulmao: Object.assign({ total: fazZonaTotal([uB.meia, uB.vestuario, uB.acessorio, uB.calcado]) }, uB),
+    };
+  }
+  const ocupacao = montarOcupacao(cap, posicoesOcupadas);
+  // Segunda árvore, mesma forma, medida em peças — recalculada do zero (não
+  // é o número de endereço convertido) com a capacidade já segregada por
+  // item (pedido da operação, 09/09/2026).
+  const ocupacaoItens = montarOcupacao(capItens, pecasOcupadas);
 
   /* ---------- B.O. em trânsito: saldo parado nas ruas de trânsito/validação
      do Pulmão, por ENDEREÇO — pra gestão enxergar onde o material está
@@ -694,6 +715,7 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
         'resolver quando houver como separar os dois motivos.',
     },
     ocupacao: ocupacao,
+    ocupacao_itens: ocupacaoItens,
     // Saldo parado nas ruas de trânsito/validação do Pulmão, por endereço —
     // fica de fora da ocupação×capacidade acima, mas precisa aparecer em
     // algum lugar pra virar B.O. visível pra gestão (pedido 05/09/2026).
@@ -794,16 +816,20 @@ async function processarRessuprimento(supabaseClient, filePicking, filePulmao, o
   avisar('Carregando gabarito de famílias e capacidades…');
   const [linhasFam, linhasCap] = await Promise.all([
     window.lerTudoPaginado(supabaseClient, 'dim_familias', 'codigo, marca, categoria, segmento'),
-    supabaseClient.from('dim_capacidade_zonas').select('zona, capacidade').then(function (r) { return r.data || []; }),
+    supabaseClient.from('dim_capacidade_zonas').select('zona, capacidade, capacidade_itens').then(function (r) { return r.data || []; }),
   ]);
   const mapaFamilias = new Map(linhasFam.map(function (f) { return [f.codigo, f]; }));
   const capacidadesManual = {};
-  linhasCap.forEach(function (c) { capacidadesManual[c.zona] = c.capacidade; });
+  const capacidadesItensManual = {};
+  linhasCap.forEach(function (c) {
+    capacidadesManual[c.zona] = c.capacidade;
+    if (c.capacidade_itens != null) capacidadesItensManual[c.zona] = c.capacidade_itens;
+  });
 
   avisar('Cruzando Picking × Pulmão…');
   const payload = construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidadesManual, {
     arquivo_picking: filePicking.name, arquivo_pulmao: filePulmao.name,
-  });
+  }, capacidadesItensManual);
 
   avisar('Gravando snapshot…');
   const { error } = await supabaseClient.from('dashboard_snapshots').insert({

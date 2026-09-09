@@ -2048,6 +2048,12 @@ function exportarCSV() {
    material em validação (FIFO).
    ============================================================ */
 let filtroRessuprimento = 'todos';        // 'todos' | 'picking' | 'pulmao' — padrão "Todos" (06/09/2026)
+// Endereço (posição ocupada) e Itens (peça ocupada) são a MESMA zona lida por
+// duas réguas diferentes — recalculadas do zero cada uma com sua própria
+// capacidade (pedido da operação, 09/09/2026). Não é multi-seleção: é uma
+// visão ou a outra, nunca as duas juntas no mesmo cartão.
+let modoOcupacao = 'endereco';            // 'endereco' | 'itens'
+function alternarModoOcupacao(v) { modoOcupacao = v; renderizarEstoqueOperacao(); }
 let filtroSegmentoRessuprimento = new Set();  // vazio = Todos | multi-seleção dos segmentos da gestão
 let filtroTurnoRessuprimento = new Set();   // vazio = todos os turnos | multi-seleção de T01/T02/T03
 // Filtro de segmento do card "Ressuprimento por dia" — mesmo padrão visual
@@ -3011,6 +3017,9 @@ function renderizarEstoqueOperacao(p) {
   function corOcupacao(dados) {
     return dados.pct >= 95 ? 'var(--red)' : dados.pct >= 85 ? 'var(--amber)' : 'var(--olive)';
   }
+  // "pos." (posição) no modo Endereço, "pç" (peça) no modo Itens — mesma
+  // dado, unidade que muda porque a régua de "ocupado" mudou.
+  const unidadeOcup = modoOcupacao === 'itens' ? 'pç' : 'pos.';
   function cardOcupacao(rotulo, dados) {
     if (!dados) return '';
     const cor = corOcupacao(dados);
@@ -3019,7 +3028,7 @@ function renderizarEstoqueOperacao(p) {
       '<div>' +
         '<div class="rot">' + rotulo + (dados.capacidade_estimada ? ' <span title="Capacidade ainda não validada com a gestão — usando ocupado × 1.2 como estimativa provisória">≈</span>' : '') + '</div>' +
         '<div class="val forte" style="color:' + cor + '">' + fmtPct(dados.pct) + '</div>' +
-        '<div class="sub">' + fmtInt(dados.ocupado) + ' / ' + fmtInt(dados.capacidade) + ' pos.' +
+        '<div class="sub">' + fmtInt(dados.ocupado) + ' / ' + fmtInt(dados.capacidade) + ' ' + unidadeOcup +
           (dados.capacidade_estimada ? ' (estimada)' : '') + ' · ' + fmtInt(dados.disponivel) + ' livres</div>' +
       '</div>' +
     '</div>';
@@ -3039,8 +3048,15 @@ function renderizarEstoqueOperacao(p) {
         cardOcupacao(ROT_BUCKET.calcado, linha.calcado) +
       '</div>';
   }
-  const oc = p.ocupacao || {};
-  const kpisOcupacao = linhaOcupacao('Picking', oc.picking) + linhaOcupacao('Pulmão', oc.pulmao);
+  // Endereço (posição ocupada) e Itens (peça ocupada) são duas árvores
+  // INDEPENDENTES no payload (ocupacao / ocupacao_itens) — o toggle só troca
+  // qual delas alimenta os cartões, sem recalcular nada aqui na tela.
+  const oc = (modoOcupacao === 'itens' ? p.ocupacao_itens : p.ocupacao) || {};
+  const chipsModoOcup = '<div class="filtros" style="margin:2px 0 4px">' +
+    '<span class="chip' + (modoOcupacao === 'endereco' ? ' on' : '') + '" onclick="alternarModoOcupacao(\'endereco\')">Endereços</span>' +
+    '<span class="chip' + (modoOcupacao === 'itens' ? ' on' : '') + '" onclick="alternarModoOcupacao(\'itens\')">Itens</span>' +
+  '</div>';
+  const kpisOcupacao = chipsModoOcup + linhaOcupacao('Picking', oc.picking) + linhaOcupacao('Pulmão', oc.pulmao);
 
   const arvoreAtual = arvoreFiltradaRessuprimento(p);
   const totalGeral = arvoreAtual.reduce(function (s, m) { return s + m.qtd; }, 0);
@@ -3307,7 +3323,7 @@ function renderizarEstoqueOperacao(p) {
 
   document.getElementById('estoqueop-conteudo').innerHTML =
     avisos +
-    '<div class="kicker">Ocupação de posições — Pulmão e Picking</div>' +
+    '<div class="kicker">Ocupação — Pulmão e Picking</div>' +
     chips +
     chipsSegmento +
     kpisSku +
