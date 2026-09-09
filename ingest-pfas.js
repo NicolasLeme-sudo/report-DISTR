@@ -105,6 +105,26 @@ function diasEntre(deISO, ateISO) {
   return Math.round(ms / 86400000);
 }
 
+/* Dias ÚTEIS entre duas datas "AAAA-MM-DD" (conta sábado/domingo fora),
+   exclusivo na ponta de início — usado só pro SLA de 1 dia útil da PFA
+   retrabalhada (ver PFA_RETRABALHADA_SLA_DIAS_UTEIS abaixo). Não tenta ser
+   um calendário de feriados; a operação confirmou (09/09/2026) que fim de
+   semana já cobre o caso real, feriado fica pra uma 2ª rodada se aparecer. */
+function diasUteisEntre(deISO, ateISO) {
+  if (!deISO || !ateISO) return null;
+  const de = new Date(deISO + 'T12:00:00Z');
+  const ate = new Date(ateISO + 'T12:00:00Z');
+  if (isNaN(de.getTime()) || isNaN(ate.getTime())) return null;
+  let dias = 0;
+  const cursor = new Date(de.getTime());
+  while (cursor.getTime() < ate.getTime()) {
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    const dow = cursor.getUTCDay(); // 0 = domingo, 6 = sábado
+    if (dow !== 0 && dow !== 6) dias++;
+  }
+  return dias;
+}
+
 function hojeISO() {
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -278,6 +298,75 @@ function parsearPfasEmbarcadas(textoArquivo) {
   return { registros: registros };
 }
 
+/* Estados possíveis de uma linha de ajuste, na ordem em que aparecem no
+   e-mail do comercial (ver especificação validada em 09/09/2026). */
+const TIPOS_AJUSTE_PFA = ['AJUSTE', 'CANCELAMENTO', 'BO_POS_NF', 'AD_DEVOLUCAO'];
+
+/* SLA de leadtime de uma PFA "retrabalhada" (nascida de um AJUSTE): ela não
+   repete conferência nem separação, só reetiqueta — por isso o prazo real é
+   bem mais curto que o FIFO normal de uma PFA original. */
+const PFA_RETRABALHADA_SLA_DIAS_UTEIS = 1;
+
+/* ============================================================================
+   PARSE — AJUSTES DE PFA (.csv, ";") — planilha manual da assistente
+   ============================================================================
+   tipo;encomenda;pfa_antiga;pfa_nova;cliente_codigo;cliente_nome;artigo;
+   cor_tam;qtde_total_nf;qtde_inicial;qtde_pos_ajuste;motivo;
+   data_solicitacao;solicitante
+
+   Uma linha por evento (ajuste, cancelamento, B.O. pós-NF ou devolução por
+   AD), lançada manualmente a partir do e-mail do comercial — não tem fonte
+   sistêmica pra isso ainda. `encomenda` é a chave que sobrevive a uma PFA
+   sendo renumerada mais de uma vez (242018→242305→242410): cruzar direto
+   PFA-antiga↔PFA-nova obrigaria "andar a corrente" a cada novo ajuste.
+
+   DE-PARA (artigo substituto cobrindo o corte inteiro) não tem coluna
+   própria: a assistente preenche qtde_inicial = qtde_pos_ajuste, e a perda
+   líquida (calculada abaixo, nunca lida do arquivo) sai zero sozinha.
+   ============================================================================ */
+function parsearAjustesPfa(textoArquivo) {
+  const linhas = String(textoArquivo || '').split(/\r?\n/);
+  const registros = [];
+  let linhasInvalidas = 0;
+
+  for (let i = 0; i < linhas.length; i++) {
+    const linha = linhas[i];
+    if (!linha.trim()) continue;
+    if (/^tipo\s*;/i.test(linha)) continue;
+
+    const p = linha.split(';');
+    if (p.length < 14) continue;
+
+    const tipo = (p[0] || '').trim().toUpperCase();
+    const encomenda = (p[1] || '').trim();
+    const pfaAntiga = (p[2] || '').trim();
+    const artigo = (p[6] || '').trim();
+    if (TIPOS_AJUSTE_PFA.indexOf(tipo) === -1 || !encomenda || !pfaAntiga || !artigo) {
+      linhasInvalidas++;
+      continue;
+    }
+
+    registros.push({
+      tipo: tipo,
+      encomenda: encomenda,
+      pfa_antiga: pfaAntiga,
+      pfa_nova: (p[3] || '').trim() || null,
+      cliente_codigo: (p[4] || '').trim(),
+      cliente_nome: (p[5] || '').trim(),
+      artigo: artigo,
+      cor_tam: (p[7] || '').trim(),
+      qtde_total_nf: window.numeroBR(p[8]),
+      qtde_inicial: window.numeroBR(p[9]),
+      qtde_pos_ajuste: window.numeroBR(p[10]),
+      motivo: (p[11] || '').trim(),
+      data_solicitacao: dataDDMMAAAA(p[12]),
+      solicitante: (p[13] || '').trim(),
+    });
+  }
+
+  return { registros: registros, linhas_invalidas: linhasInvalidas };
+}
+
 /* ============================================================================
    AGREGAÇÃO
    ============================================================================
@@ -287,9 +376,10 @@ function parsearPfasEmbarcadas(textoArquivo) {
    de FIFO) fica em arrays por PFA, pequenos o bastante pro navegador recortar
    na hora sem ida ao banco — mesmo padrão de `validacao`/`historico`.
    ============================================================================ */
-function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, meta) {
+function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, meta, ajustes) {
   const hoje = (meta && meta.referencia) || hojeISO();
   const familiasNaoMapeadas = new Set();
+  const ajustesLista = (ajustes && ajustes.registros) || [];
 
   function infoFamilia(codigo) {
     const f = mapaFamilias.get(codigo);
@@ -328,14 +418,47 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
     porOperacao.set(op, (porOperacao.get(op) || 0) + 1);
   });
 
+  /* ---------- 1.5 PFA baixada por ajuste/cancelamento some do pendente ----------
+     Mesmo mecanismo acima, mesma exclusão ANTES de somar. `pfa_antiga` de um
+     AJUSTE ou CANCELAMENTO é excluída na hora — mesmo que o arquivo do dia
+     ainda a liste (atraso da fonte) — porque o material já está associado a
+     outra PFA (ou saiu de vez). AD_DEVOLUCAO é tratada à parte (item 1.6):
+     ela nunca aparece em Pendentes (a PFA já tem nota emitida), só em
+     "aguardando coleta". Um `Set` simples de pfa_antiga já resolve o caso de
+     ajuste em cadeia (242018→242305→242410) sem precisar andar pela
+     encomenda: 242305 é `pfa_antiga` de uma 2ª linha o dia que for cortada de
+     novo, e sai da conta sozinha quando isso acontecer. */
+  const pfasAjustadas = new Set();
+  ajustesLista.forEach(function (a) {
+    if (a.tipo === 'AJUSTE' || a.tipo === 'CANCELAMENTO') pfasAjustadas.add(a.pfa_antiga);
+  });
+  const pfasComAD = new Set();
+  ajustesLista.forEach(function (a) { if (a.tipo === 'AD_DEVOLUCAO') pfasComAD.add(a.pfa_antiga); });
+
+  const todasPfasPendentesArquivo = new Set(pendentes.registros.map(function (r) { return r.pfa; }));
+
   const pendentesAtivos = [];
   let excluidasPfas = 0, excluidasPares = 0;
+  let excluidasPorAjustePfas = 0, excluidasPorAjustePares = 0;
   pendentes.registros.forEach(function (r) {
     if (pfasEmbarcadas.has(r.pfa)) { excluidasPfas++; excluidasPares += r.pares; return; }
+    if (pfasAjustadas.has(r.pfa)) { excluidasPorAjustePfas++; excluidasPorAjustePares += r.pares; return; }
     pendentesAtivos.push(r);
   });
 
-  const analiticoAtivo = analitico.registros.filter(function (r) { return !pfasEmbarcadas.has(r.pfa); });
+  /* ---------- 1.6 devolução por AD tira a PFA inteira de "aguardando coleta" ----------
+     AD_DEVOLUCAO nunca aparece em Pendentes (a PFA já tem nota emitida — o
+     corte é depois da NF), então não entra na exclusão acima. Ela vive só no
+     Analítico, como "com nota, aguardando coleta" — e sai de lá inteira
+     (qtde_total_nf, não só a diferença), porque o comercial recusou mandar
+     o resto: o prejuízo é a PFA toda, não o que faltava originalmente. */
+  let excluidasPorAdPfas = 0, excluidasPorAdQtde = 0;
+  const analiticoAtivo = analitico.registros.filter(function (r) {
+    if (pfasEmbarcadas.has(r.pfa) || pfasAjustadas.has(r.pfa)) return false;
+    if (pfasComAD.has(r.pfa)) { excluidasPorAdQtde += r.qtde; return false; }
+    return true;
+  });
+  excluidasPorAdPfas = pfasComAD.size;
 
   /* "Em tela" pra quem já foi conferido (Analítico) significa uma coisa só:
      a PFA ainda aparece na lista VIVA de Pendentes. É prova direta — o
@@ -376,10 +499,27 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
     return { status: status, volumes_lidos: lidos, volumes_total: total };
   }
 
+  /* PFA "nova" de um AJUSTE é reconhecida por aparecer como `pfa_nova` de
+     alguma linha — não precisa de campo próprio no arquivo de Pendentes.
+     O leadtime dela é o SLA curto (PFA_RETRABALHADA_SLA_DIAS_UTEIS), contado
+     a partir da PRÓPRIA data de importação dela (quando entrou em Pendentes
+     de verdade), não da data do e-mail — a assistente pode lançar o ajuste
+     antes do sistema importar a PFA nova. */
+  const pfaNovaParaAjuste = new Map();
+  ajustesLista.forEach(function (a) {
+    if (a.tipo === 'AJUSTE' && a.pfa_nova) pfaNovaParaAjuste.set(a.pfa_nova, a);
+  });
+
   /* ---------- 3. linhas de Pendentes, já enriquecidas ---------- */
   const linhasPendentes = pendentesAtivos.map(function (r) {
     const e = enriquecer(r.familia_codigo);
     const conf = statusConferencia(r.pfa, r.qt_volumes, r.dias_na_etapa);
+    const ehRetrabalhada = pfaNovaParaAjuste.has(r.pfa);
+    const diasUteisRetrabalho = ehRetrabalhada && r.data_importacao
+      ? diasUteisEntre(r.data_importacao, hoje) : null;
+    const situacaoPfa = !ehRetrabalhada ? 'normal'
+      : (diasUteisRetrabalho !== null && diasUteisRetrabalho > PFA_RETRABALHADA_SLA_DIAS_UTEIS)
+        ? 'retrabalhada_atrasada' : 'retrabalhada';
     return {
       pfa: r.pfa,
       data_importacao: r.data_importacao,
@@ -401,6 +541,10 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
       conferencia: conf.status,
       conferencia_lidos: conf.volumes_lidos,
       conferencia_total: conf.volumes_total,
+      // 'normal' | 'retrabalhada' | 'retrabalhada_atrasada' — só existe
+      // porque esta PFA é o "pfa_nova" de algum ajuste (ver mapa acima).
+      situacao_pfa: situacaoPfa,
+      dias_uteis_retrabalho: diasUteisRetrabalho,
     };
   });
 
@@ -497,6 +641,29 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
     }
   });
 
+  /* ---------- 7. Ajustes de PFA — perda líquida por linha ----------
+     perda_liquida = max(0, qtde_inicial − qtde_pos_ajuste). Mesma fórmula
+     pros 4 tipos — cobre DE-PARA de graça (as duas quantidades vêm iguais,
+     perda sai zero) sem precisar de coluna extra na planilha. A tela agrega
+     por tipo E por período (data_solicitacao), filtrando este array —
+     nenhuma soma pronta aqui além da que precisa cruzar com Pendentes. */
+  const ajustesPayload = ajustesLista.map(function (a) {
+    const perdaLiquida = Math.max(0, (a.qtde_inicial || 0) - (a.qtde_pos_ajuste || 0));
+    return {
+      tipo: a.tipo, encomenda: a.encomenda, pfa_antiga: a.pfa_antiga, pfa_nova: a.pfa_nova,
+      cliente_nome: a.cliente_nome, artigo: a.artigo, cor_tam: a.cor_tam,
+      qtde_total_nf: a.qtde_total_nf, qtde_inicial: a.qtde_inicial, qtde_pos_ajuste: a.qtde_pos_ajuste,
+      perda_liquida: perdaLiquida, motivo: a.motivo, data_solicitacao: a.data_solicitacao,
+      solicitante: a.solicitante,
+      // Só existe pra AJUSTE com pfa_nova: a PFA nova ainda não apareceu em
+      // NENHUMA extração de Pendentes até hoje (não é "não está mais ativa
+      // hoje" — é "nunca foi vista"). Enquanto isso, ela conta como "em
+      // aberto" em vez de virar sujeira silenciosa.
+      aguardando_import_pfa_nova: a.tipo === 'AJUSTE' && !!a.pfa_nova && !todasPfasPendentesArquivo.has(a.pfa_nova),
+    };
+  });
+  const ajustesAbertos = ajustesPayload.filter(function (a) { return a.aguardando_import_pfa_nova; });
+
   return {
     arquivo_pendentes: (meta && meta.arquivo_pendentes) || null,
     arquivo_analitico: (meta && meta.arquivo_analitico) || null,
@@ -508,6 +675,11 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
     // Aguardando embarque, nas duas populações que NUNCA devem ser somadas
     aguardando_nf: semNota,
     aguardando_coleta: comNota,
+    // Ajuste/cancelamento/B.O. pós-NF/AD — lançados manualmente, cruzados por
+    // encomenda/PFA com o que está em tela. A tela agrega e filtra por
+    // período em cima deste array; nada aqui já vem somado por tipo.
+    ajustes: ajustesPayload,
+    ajustes_em_aberto: ajustesAbertos.length,
 
     etapas: ORDEM_ETAPA_PFA.concat(etapasVistas),
     faixas_fifo: FAIXAS_FIFO_PFA.map(function (f) { return { chave: f.chave, rotulo: f.rotulo }; }),
@@ -535,6 +707,11 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
       // O que o arquivo de Embarcadas tirou do pendente — a medida do atraso
       // da fonte, não um detalhe de implementação: fica visível na tela.
       excluidas_por_embarque: { pfas: excluidasPfas, pares: excluidasPares },
+      // PFA antiga baixada por ajuste/cancelamento — mesma lógica, fonte
+      // diferente (ajustes_pfa em vez do arquivo de Embarcadas).
+      excluidas_por_ajuste: { pfas: excluidasPorAjustePfas, pares: excluidasPorAjustePares },
+      // Devolução por AD tirou a PFA inteira de "aguardando coleta".
+      excluidas_por_ad: { pfas: excluidasPorAdPfas, qtde: excluidasPorAdQtde },
       embarcadas_no_arquivo: embarcadas.registros.length,
       janela_embarcadas: janelaEmbarcadas,
       embarcadas_por_operacao: Array.from(porOperacao.entries())
@@ -589,12 +766,22 @@ async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileE
   const linhasFam = await window.lerTudoPaginado(supabaseClient, 'dim_familias', 'codigo, marca, categoria, segmento');
   const mapaFamilias = new Map(linhasFam.map(function (f) { return [f.codigo, f]; }));
 
-  avisar('Cruzando os três arquivos…');
+  // ajustes_pfa é lido fresco a cada upload de PFAs — mesmo padrão de
+  // dim_familias acima. Subir só a planilha de ajustes (Admin › Ajustes de
+  // PFA) grava a tabela na hora, mas os cards e a exclusão do pendente só
+  // refletem no PRÓXIMO upload de Pendentes/Analítico/Embarcadas — não tem
+  // como recalcular sem os arquivos brutos, que não ficam guardados.
+  avisar('Carregando ajustes de PFA…');
+  const linhasAjustes = await window.lerTudoPaginado(supabaseClient, 'ajustes_pfa',
+    'tipo, encomenda, pfa_antiga, pfa_nova, cliente_nome, artigo, cor_tam, qtde_total_nf, qtde_inicial, qtde_pos_ajuste, motivo, data_solicitacao, solicitante');
+  const ajustes = { registros: linhasAjustes };
+
+  avisar('Cruzando os arquivos…');
   const payload = construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, {
     arquivo_pendentes: filePendentes.name,
     arquivo_analitico: fileAnalitico.name,
     arquivo_embarcadas: fileEmbarcadas ? fileEmbarcadas.name : null,
-  });
+  }, ajustes);
 
   if (payload.stats.excluidas_por_embarque.pfas) {
     avisar(
@@ -616,10 +803,46 @@ async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileE
   return payload;
 }
 
+/* ============================================================================
+   UPLOAD — AJUSTES DE PFA
+   ============================================================================
+   Upsert, nunca insert puro: a chave natural (encomenda, pfa_antiga, artigo,
+   cor_tam) é a mesma constraint UNIQUE da tabela — reenviar a planilha com
+   uma linha corrigida SUBSTITUI a linha antiga em vez de duplicar o
+   prejuízo. Não recalcula o snapshot de PFAs sozinho (ver comentário em
+   processarPfas) — só grava a tabela; os cards atualizam no próximo upload
+   de Pendentes/Analítico/Embarcadas.
+   ============================================================================ */
+async function processarAjustesPfa(supabaseClient, fileAjustes, onProgresso) {
+  const avisar = onProgresso || function () {};
+
+  avisar('Lendo planilha de ajustes…');
+  const ajustes = parsearAjustesPfa(await fileAjustes.text());
+  if (ajustes.registros.length === 0) {
+    throw new Error('Nenhuma linha reconhecida. Confira se é o CSV com o cabeçalho tipo;encomenda;pfa_antiga;…, sem reformatação.');
+  }
+  if (ajustes.linhas_invalidas) {
+    avisar(
+      'Atenção: ' + ajustes.linhas_invalidas.toLocaleString('pt-BR') +
+      ' linha(s) ignorada(s) por tipo desconhecido ou campo obrigatório vazio (encomenda/pfa_antiga/artigo).'
+    );
+  }
+
+  avisar('Gravando ' + ajustes.registros.length.toLocaleString('pt-BR') + ' linha(s) em ajustes_pfa…');
+  const { error } = await supabaseClient.from('ajustes_pfa')
+    .upsert(ajustes.registros, { onConflict: 'encomenda,pfa_antiga,artigo,cor_tam' });
+  if (error) throw error;
+
+  avisar('Concluído — os cards da tela "PFAs em tela" atualizam no próximo upload de Pendentes/Analítico/Embarcadas.');
+  return ajustes;
+}
+
 window.processarPfas = processarPfas;
+window.processarAjustesPfa = processarAjustesPfa;
 window.parsearPfasPendentes = parsearPfasPendentes;
 window.parsearPfasAnalitico = parsearPfasAnalitico;
 window.parsearPfasEmbarcadas = parsearPfasEmbarcadas;
+window.parsearAjustesPfa = parsearAjustesPfa;
 window.construirSnapshotPfas = construirSnapshotPfas;
 window.ORDEM_ETAPA_PFA = ORDEM_ETAPA_PFA;
 window.FAIXAS_FIFO_PFA = FAIXAS_FIFO_PFA;

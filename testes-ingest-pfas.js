@@ -249,5 +249,100 @@ eq(snapOp.stats.embarcadas_por_operacao[0].notas, 2, 'com a contagem de notas');
 eq(snapOp.stats.embarcadas_por_operacao.length, 2, 'duas operações distintas no arquivo');
 
 /* -------------------------------------------------------------------------- */
+secao('parsearAjustesPfa — lê a planilha manual da assistente');
+const CAB_AJU = 'tipo;encomenda;pfa_antiga;pfa_nova;cliente_codigo;cliente_nome;artigo;cor_tam;qtde_total_nf;qtde_inicial;qtde_pos_ajuste;motivo;data_solicitacao;solicitante';
+function linhaAju(tipo, encomenda, pfaAntiga, pfaNova, artigo, qtdeNf, qtdeIni, qtdePos, motivo, data) {
+  return [tipo, encomenda, pfaAntiga, pfaNova || '', '46212', 'CHARLESTON WILLIA', artigo, 'PT/PRT M',
+    qtdeNf, qtdeIni, qtdePos, motivo, data || '09/09/2026', 'ERIKA DOMINGUES LEME'].join(';');
+}
+const aju = parsearAjustesPfa([CAB_AJU,
+  linhaAju('AJUSTE', '960841', '242018', '242305', 'OIMCR24302', '60', '5', '3', 'Ajuste de encomenda'),
+  linhaAju('TIPO_QUE_NAO_EXISTE', '960900', '242020', '', 'OIMCR24303', '10', '2', '0', 'Motivo qualquer'),
+  'LIXO;SEM;CAMPOS;SUFICIENTES', // rodapé/lixo real — descartado em silêncio, mesmo critério dos outros ingests
+].join('\n'));
+eq(aju.registros.length, 1, 'linha válida lida; tipo desconhecido e rodapé ficam de fora');
+eq(aju.linhas_invalidas, 1, 'tipo desconhecido conta como inválido (linha tem todos os campos, só o valor é ruim)');
+eq(aju.registros[0].encomenda, '960841', 'encomenda preservada — é a chave que sobrevive a renumeração de PFA');
+eq(aju.registros[0].pfa_nova, '242305', 'PFA nova lida');
+
+/* -------------------------------------------------------------------------- */
+secao('construirSnapshotPfas + ajustes_pfa — exclusão, DE-PARA, AD e PFA retrabalhada');
+const pendAju = parsearPfasPendentes([CAB_PEND,
+  linhaPend('242018', '01/09', '102', '2', 'Nao disp. picking', '50'),   // baixada por AJUSTE — deve sumir
+  linhaPend('242305', '08/09', '102', '1', 'Nao disp. picking', '3'),    // PFA nova, importada HOJE — dentro do SLA
+  linhaPend('242410', '03/09', '102', '1', 'Nao disp. picking', '3'),    // PFA nova, importada há 3 dias úteis — atrasada
+  linhaPend('239900', '01/09', '102', '1', 'Leitura expedicao', '20'),   // PFA normal, sem relação com ajuste nenhum
+].join('\n'), HOJE);
+const anaAju = parsearPfasAnalitico([CAB_ANA,
+  linhaAna('240711', '548820', '01/09/2026', 'V-AD', '102', 'A9', '120,0'), // AD: some de aguardando_coleta
+].join('\n'));
+const ajustesTeste = { registros: [
+  // Corte real: perda líquida = 5 - 3 = 2.
+  { tipo: 'AJUSTE', encomenda: '960841', pfa_antiga: '242018', pfa_nova: '242305',
+    cliente_nome: 'CHARLESTON WILLIA', artigo: 'OIMCR24302', cor_tam: 'PT/PRT M',
+    qtde_total_nf: 60, qtde_inicial: 5, qtde_pos_ajuste: 3, motivo: 'Ajuste de encomenda',
+    data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
+  // DE-PARA: mesma quantidade nos dois campos → perda líquida zero.
+  { tipo: 'AJUSTE', encomenda: '961205', pfa_antiga: '242190', pfa_nova: '242410',
+    cliente_nome: 'GRUPO SPORTSTYLE', artigo: 'OIVCR23110', cor_tam: 'PT M',
+    qtde_total_nf: 30, qtde_inicial: 10, qtde_pos_ajuste: 10, motivo: 'DE-PARA (artigo substituto)',
+    data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
+  // Ajuste em aberto: PFA nova declarada mas NUNCA vista em nenhum arquivo de Pendentes.
+  { tipo: 'AJUSTE', encomenda: '958220', pfa_antiga: '241987', pfa_nova: '242999',
+    cliente_nome: 'GRUPO SPORTSTYLE', artigo: 'OIVCR23110', cor_tam: 'PT M',
+    qtde_total_nf: 40, qtde_inicial: 12, qtde_pos_ajuste: 6, motivo: 'Stockout',
+    data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
+  // Cancelamento sem reposição: 100% vira perda, PFA antiga some do pendente.
+  { tipo: 'CANCELAMENTO', encomenda: '957004', pfa_antiga: '241902', pfa_nova: null,
+    cliente_nome: 'REDE CALCADOS MG', artigo: 'OIACS20044', cor_tam: 'PT M',
+    qtde_total_nf: 14, qtde_inicial: 14, qtde_pos_ajuste: 0, motivo: 'Financeiro',
+    data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
+  // AD: PFA inteira sai de "aguardando coleta" (não só a diferença).
+  { tipo: 'AD_DEVOLUCAO', encomenda: '955390', pfa_antiga: '240711', pfa_nova: null,
+    cliente_nome: 'CHARLESTON WILLIA', artigo: 'OIMCR24302', cor_tam: 'PT/PRT M',
+    qtde_total_nf: 120, qtde_inicial: 120, qtde_pos_ajuste: 0, motivo: 'Recusa de envio parcial (AD)',
+    data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
+] };
+const snapAju = construirSnapshotPfas(pendAju, anaAju, { registros: [] }, mapaFamilias, { referencia: HOJE }, ajustesTeste);
+
+// Exclusão do pendente
+ok(!snapAju.pendentes.some(function (r) { return r.pfa === '242018'; }), 'PFA antiga (242018) some do pendente na hora do ajuste');
+ok(!snapAju.pendentes.some(function (r) { return r.pfa === '241902'; }), 'PFA cancelada (241902) some do pendente — nem chegou a este teste, mas a exclusão roda igual');
+ok(snapAju.pendentes.some(function (r) { return r.pfa === '239900'; }), 'PFA sem nenhuma relação com ajuste continua normal');
+eq(snapAju.stats.excluidas_por_ajuste.pfas, 1, 'contador de exclusão por ajuste bate (só 242018 estava no arquivo de teste)');
+
+// AD tira a PFA inteira de aguardando_coleta
+ok(!snapAju.aguardando_coleta.some(function (g) { return g.pfa === '240711'; }), 'AD tira a PFA inteira de aguardando_coleta, não só a diferença');
+eq(snapAju.stats.excluidas_por_ad.qtde, 120, 'quantidade excluída por AD é o total (120), não a diferença');
+
+// Perda líquida por linha, incluindo DE-PARA e cancelamento
+const perdaAjusteReal = snapAju.ajustes.find(function (a) { return a.pfa_antiga === '242018'; });
+eq(perdaAjusteReal.perda_liquida, 2, 'corte real: 5 - 3 = 2 pares de perda');
+const perdaDePara = snapAju.ajustes.find(function (a) { return a.pfa_antiga === '242190'; });
+eq(perdaDePara.perda_liquida, 0, 'DE-PARA: qtde_inicial = qtde_pos_ajuste → perda líquida zero, sem coluna extra');
+const perdaCancelamento = snapAju.ajustes.find(function (a) { return a.pfa_antiga === '241902'; });
+eq(perdaCancelamento.perda_liquida, 14, 'cancelamento sem reposição: 100% do valor é perda');
+
+// Ajustes em aberto
+eq(snapAju.ajustes_em_aberto, 1, 'só o ajuste com PFA nova (242999) nunca vista em Pendentes conta como em aberto');
+const emAberto = snapAju.ajustes.find(function (a) { return a.pfa_nova === '242999'; });
+ok(emAberto.aguardando_import_pfa_nova, 'a própria linha também carrega o selo de aguardando importação');
+const jaConfirmado = snapAju.ajustes.find(function (a) { return a.pfa_nova === '242305'; });
+ok(!jaConfirmado.aguardando_import_pfa_nova, 'PFA nova que já apareceu em Pendentes não fica presa em "aguardando"');
+
+// PFA retrabalhada — dentro do SLA vs atrasada
+const pfaNovaNoPrazo = snapAju.pendentes.find(function (r) { return r.pfa === '242305'; });
+eq(pfaNovaNoPrazo.situacao_pfa, 'retrabalhada', 'importada hoje (0 dias úteis) — dentro do SLA de 1 dia útil');
+const pfaNovaAtrasada = snapAju.pendentes.find(function (r) { return r.pfa === '242410'; });
+eq(pfaNovaAtrasada.situacao_pfa, 'retrabalhada_atrasada', 'importada há 3 dias úteis — estourou o SLA de 1 dia útil');
+const pfaNormal = snapAju.pendentes.find(function (r) { return r.pfa === '239900'; });
+eq(pfaNormal.situacao_pfa, 'normal', 'PFA que nunca foi "pfa_nova" de nenhum ajuste é sempre normal');
+
+/* -------------------------------------------------------------------------- */
+secao('diasUteisEntre — pula sábado e domingo');
+eq(diasUteisEntre('2026-09-08', '2026-09-08'), 0, 'mesma data, zero dias úteis');
+eq(diasUteisEntre('2026-09-03', '2026-09-08'), 3, 'qui 03/09 → ter 08/09 = 3 dias úteis (sex, seg, ter — fim de semana fora)');
+
+/* -------------------------------------------------------------------------- */
 console.log(falhas === 0 ? '\nTODOS OS TESTES PASSARAM' : '\n' + falhas + ' TESTE(S) FALHARAM');
 process.exit(falhas === 0 ? 0 : 1);
