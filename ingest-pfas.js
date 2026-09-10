@@ -394,29 +394,20 @@ function dividirLinhaCsv(linha, delim) {
   return campos;
 }
 
-function parsearAjustesPfa(textoArquivo) {
-  const linhas = String(textoArquivo || '').replace(/^﻿/, '').split(/\r?\n/);
+/* Núcleo do parser — recebe linhas JÁ separadas em campos (array de arrays),
+   não texto cru. Isso é o que permite reaproveitar a MESMA validação/
+   mapeamento pros dois formatos de planilha que a assistente pode mandar:
+   texto delimitado (parsearAjustesPfa, abaixo) e .xlsx de verdade
+   (parsearAjustesPfaXlsx, mais abaixo — 10/09/2026, formato virou Excel
+   pra poder vir com cabeçalho em negrito/itálico e células centralizadas,
+   coisa que texto puro não guarda). */
+function parsearLinhasAjustesPfa(linhas) {
   const registros = [];
   let linhasInvalidas = 0;
 
-  // Delimitador flexível: a operação usa ";" (padrão pt-BR), mas o Excel
-  // salva/cola com "," quando o separador de lista do Windows está em inglês,
-  // ou com TAB quando o conteúdo vem de um copiar-e-colar de célula do Excel
-  // pra um editor de texto (caso real reportado 10/09/2026, arquivo do
-  // usuário veio 100% tabulado) — sem detectar isso a planilha inteira dá
-  // "nenhuma linha reconhecida" mesmo estando correta. Decide pelo
-  // delimitador mais frequente na primeira linha não vazia (cabeçalho).
-  const primeiraLinha = linhas.find(function (l) { return l.trim(); }) || '';
-  const candidatos = [';', ',', '\t'];
-  const delimitador = candidatos.reduce(function (melhor, d) {
-    return primeiraLinha.split(d).length > primeiraLinha.split(melhor).length ? d : melhor;
-  }, ';');
-
   for (let i = 0; i < linhas.length; i++) {
-    const linha = linhas[i];
-    if (!linha.trim()) continue;
-
-    const p = dividirLinhaCsv(linha, delimitador).map(function (c) { return c.trim(); });
+    const p = linhas[i].map(function (c) { return String(c == null ? '' : c).trim(); });
+    if (!p.some(function (v) { return v; })) continue; // linha em branco
     if (/^tipo$/i.test(p[0])) continue; // cabeçalho, com ou sem aspas
     if (p.length < 14) continue;
 
@@ -449,6 +440,51 @@ function parsearAjustesPfa(textoArquivo) {
   }
 
   return { registros: registros, linhas_invalidas: linhasInvalidas };
+}
+
+function parsearAjustesPfa(textoArquivo) {
+  const linhasTexto = String(textoArquivo || '').replace(/^﻿/, '').split(/\r?\n/).filter(function (l) { return l.trim(); });
+
+  // Delimitador flexível: a operação usa ";" (padrão pt-BR), mas o Excel
+  // salva/cola com "," quando o separador de lista do Windows está em inglês,
+  // ou com TAB quando o conteúdo vem de um copiar-e-colar de célula do Excel
+  // pra um editor de texto (caso real reportado 10/09/2026) — sem detectar
+  // isso a planilha inteira dá "nenhuma linha reconhecida" mesmo estando
+  // correta. Decide pelo delimitador mais frequente na primeira linha.
+  const primeiraLinha = linhasTexto[0] || '';
+  const candidatos = [';', ',', '\t'];
+  const delimitador = candidatos.reduce(function (melhor, d) {
+    return primeiraLinha.split(d).length > primeiraLinha.split(melhor).length ? d : melhor;
+  }, ';');
+
+  const linhas = linhasTexto.map(function (linha) { return dividirLinhaCsv(linha, delimitador); });
+  return parsearLinhasAjustesPfa(linhas);
+}
+
+/* .xlsx de verdade (10/09/2026, pedido da operação — formatação de célula
+   não sobrevive em texto puro): lê via ExcelJS (window.ExcelJS, carregado
+   só na página, por isso este helper é assíncrono e não roda nos testes
+   Node — a validação de campo mesma é toda em parsearLinhasAjustesPfa,
+   testada direto com array de linhas). Data em célula de verdade (tipo
+   Date do Excel, não texto) vira "DD/MM/AAAA" antes de entrar no parser —
+   o resto do pipeline nunca soube a diferença. */
+async function parsearAjustesPfaXlsx(file) {
+  const buffer = await file.arrayBuffer();
+  const wb = new window.ExcelJS.Workbook();
+  await wb.xlsx.load(buffer);
+  const planilha = wb.worksheets[0];
+  const linhas = [];
+  planilha.eachRow({ includeEmpty: false }, function (linha) {
+    const valores = [];
+    linha.eachCell({ includeEmpty: true }, function (celula) {
+      const v = celula.value;
+      valores.push(v instanceof Date
+        ? String(v.getUTCDate()).padStart(2, '0') + '/' + String(v.getUTCMonth() + 1).padStart(2, '0') + '/' + v.getUTCFullYear()
+        : (v == null ? '' : v));
+    });
+    linhas.push(valores);
+  });
+  return parsearLinhasAjustesPfa(linhas);
 }
 
 /* ============================================================================
@@ -1057,9 +1093,10 @@ async function processarAjustesPfa(supabaseClient, fileAjustes, onProgresso) {
   const avisar = onProgresso || function () {};
 
   avisar('Lendo planilha de ajustes…');
-  const ajustes = parsearAjustesPfa(await fileAjustes.text());
+  const ehXlsx = /\.xlsx$/i.test(fileAjustes.name || '');
+  const ajustes = ehXlsx ? await parsearAjustesPfaXlsx(fileAjustes) : parsearAjustesPfa(await fileAjustes.text());
   if (ajustes.registros.length === 0) {
-    throw new Error('Nenhuma linha reconhecida. Confira se é o CSV com o cabeçalho tipo;encomenda;pfa_antiga;…, sem reformatação.');
+    throw new Error('Nenhuma linha reconhecida. Confira se é o modelo baixado (.xlsx) ou o CSV com o cabeçalho tipo;encomenda;pfa_antiga;…, sem reformatação.');
   }
   if (ajustes.linhas_invalidas) {
     avisar(

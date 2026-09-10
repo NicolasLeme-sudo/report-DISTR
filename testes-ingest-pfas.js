@@ -304,6 +304,25 @@ const ajuTab = parsearAjustesPfa([linhaTab(), linhaTabDados()].join('\r\n'));
 eq(ajuTab.registros.length, 1, 'planilha colada do Excel com TAB entre campos — mesmo bug real relatado 10/09/2026');
 eq(ajuTab.registros[0].pfa_nova, '244900', 'delimitador TAB detectado e respeitado');
 
+secao('parsearLinhasAjustesPfa — núcleo reaproveitado pelo .xlsx (10/09/2026), recebe array de linhas já separadas');
+// É exatamente isso que parsearAjustesPfaXlsx monta a partir das células do
+// Excel (via ExcelJS) — célula vazia vira '', sem aspas, sem delimitador
+// nenhum pra detectar. Testado aqui direto (sem ExcelJS, que só existe no
+// navegador) pra garantir que o núcleo aceita o formato "linha já separada".
+const linhasXlsxSimuladas = [
+  ['tipo', 'encomenda', 'pfa_antiga', 'pfa_nova', 'cliente', 'familia_codigo', 'artigo', 'cor', 'tam',
+    'qtde_total_pedido', 'qtde_faltante', 'motivo', 'data_solicitacao', 'solicitante'],
+  ['AJUSTE', '960841', '242018', '242305', '46212 CHARLESTON WILLIA', '102', 'OIMCR24302', 'PT/PRT', 'M',
+    60, 2, 'Ajuste de encomenda', '09/09/2026', 'ERIKA DOMINGUES LEME'],
+  [], // linha em branco no meio da planilha (comum ao editar no Excel) — ignorada
+  ['CANCELAMENTO', '957004', '241902', '', '51330 REDE CALCADOS MG', '', 'OIACS20044', 'PT', 'M',
+    14, 14, 'Financeiro', '09/09/2026', 'ERIKA DOMINGUES LEME'],
+];
+const ajuXlsxSimulado = parsearLinhasAjustesPfa(linhasXlsxSimuladas);
+eq(ajuXlsxSimulado.registros.length, 2, 'cabeçalho e linha em branco ficam de fora; as 2 linhas de dado são lidas');
+eq(ajuXlsxSimulado.registros[0].qtde_total_pedido, 60, 'número que chega como Number (célula do Excel), não string, também converte certo');
+eq(ajuXlsxSimulado.registros[1].familia_codigo, null, 'familia_codigo vazio vira null, não string vazia');
+
 secao('parsearAjustesPfa — tipo reconhece palavra-chave, não exige grafia exata (10/09/2026)');
 const ajuSinonimo = parsearAjustesPfa([CAB_AJU,
   linhaAju('cancelado', '960900', '242020', '', 'OIMCR24303', '10', '2', '0', 'Financeiro'),
@@ -546,7 +565,7 @@ eq(snapMultiArtigo.ajustes.length, 3, 'uma linha de ajuste por artigo — nenhum
 eq(snapMultiArtigo.stats.excluidas_por_ajuste.pfas, 1, 'a PFA origem só é contada 1x na exclusão, mesmo com 3 artigos');
 ok(!snapMultiArtigo.pendentes.some(function (r) { return r.pfa === '500001'; }), 'PFA origem some do pendente (uma vez só, não 3)');
 const perdaTotalMultiArtigo = snapMultiArtigo.ajustes.reduce(function (s, a) { return s + a.perda_liquida; }, 0);
-eq(perdaTotalMultiArtigo, 7, 'perda soma os 3 artigos: (10-6) + (5-2) + (8-8) = 4+3+0 = 7');
+eq(perdaTotalMultiArtigo, 7, 'perda soma os 3 artigos (qtde_faltante de cada um): 4+3+0 = 7');
 const pfasDistintasMultiArtigo = new Set(snapMultiArtigo.ajustes.map(function (a) { return a.pfa_antiga; })).size;
 eq(pfasDistintasMultiArtigo, 1, 'PFAs distintas nos ajustes continua 1, mesmo com 3 linhas (uma por artigo)');
 const pfaNovaMultiArtigo = snapMultiArtigo.pendentes.find(function (r) { return r.pfa === '500099'; });

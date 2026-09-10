@@ -587,13 +587,13 @@ tr.total > th, tr.total > td {
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
 }
 .modelo-planilha thead th {
-  background: var(--bg-sidebar); color: #DCE3F5; padding: 6px 9px; text-align: left;
-  font-weight: 600; border-right: 1px solid rgba(255,255,255,.1); position: sticky; top: 0;
+  background: var(--bg-sidebar); color: #DCE3F5; padding: 6px 9px; text-align: center;
+  font-weight: 700; font-style: italic; border-right: 1px solid rgba(255,255,255,.1); position: sticky; top: 0;
 }
 .modelo-planilha thead th:last-child { border-right: none; }
 .modelo-planilha tbody td {
   padding: 5px 9px; border-top: 1px solid var(--border); border-right: 1px solid var(--border);
-  color: var(--text);
+  color: var(--text); text-align: center;
 }
 .modelo-planilha tbody td:last-child { border-right: none; }
 .modelo-planilha tbody tr:nth-child(even) { background: var(--bg-input); }
@@ -1252,16 +1252,16 @@ tr.total > th, tr.total > td {
           <span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-label);font-weight:600">
             Modelo da planilha — preencha exatamente nesta ordem
           </span>
-          <button class="btn-mini" onclick="baixarModeloAjustesPfa()">⬇ Baixar modelo (.csv)</button>
+          <button class="btn-mini" onclick="baixarModeloAjustesPfa()">⬇ Baixar modelo (.xlsx)</button>
         </div>
         <div class="modelo-planilha">
           <table>
             <thead>
               <tr>
-                <th>tipo</th><th>encomenda</th><th>pfa_antiga</th><th>pfa_nova</th><th>cliente</th>
-                <th>familia_codigo</th><th>artigo</th><th>cor</th><th>tam</th>
-                <th>qtde_total_pedido</th><th>qtde_faltante</th><th>motivo</th>
-                <th>data_solicitacao</th><th>solicitante</th>
+                <th>Tipo</th><th>Encomenda</th><th>Pfa_antiga</th><th>Pfa_nova</th><th>Cliente</th>
+                <th>Familia_codigo</th><th>Artigo</th><th>Cor</th><th>Tam</th>
+                <th>Qtde_total_pedido</th><th>Qtde_faltante</th><th>Motivo</th>
+                <th>Data_solicitacao</th><th>Solicitante</th>
               </tr>
             </thead>
             <tbody>
@@ -1310,8 +1310,8 @@ tr.total > th, tr.total > td {
             cor + tam — subir de novo com esse quinteto igual substitui a linha, corrigindo um valor errado.</li>
         </ul>
         <div class="dropzone" id="dropzoneAjustesPfa">
-          <span id="dropzoneAjustesPfaTexto">Clique para selecionar o .csv de <strong>Ajustes de PFA</strong></span>
-          <input type="file" id="inputAjustesPfa" accept=".csv,text/csv" style="display:none">
+          <span id="dropzoneAjustesPfaTexto">Clique para selecionar o .xlsx (ou .csv/.txt) de <strong>Ajustes de PFA</strong></span>
+          <input type="file" id="inputAjustesPfa" accept=".xlsx,.csv,.txt,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
         </div>
         <button class="btn-mini" id="btnProcessarAjustesPfa" style="margin-top:12px" disabled>
           Processar Ajustes de PFA
@@ -1395,6 +1395,10 @@ tr.total > th, tr.total > td {
 <script src="ingest-pfas.js"></script>
 <!-- SheetJS — só usado na tela de Admin, pra ler a base de Ativos (.xlsx) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<!-- ExcelJS — modelo de Ajustes de PFA (10/09/2026): SheetJS community não
+     escreve estilo de célula (negrito/itálico/centralizado), ExcelJS escreve
+     dos dois lados (gera o .xlsx formatado e lê de volta no upload). -->
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="distr-fluxo.js"></script>
 <script>
 /* ============================================================
@@ -4779,22 +4783,40 @@ const EXEMPLOS_MODELO_AJUSTES_PFA = [
     '102', 'OIMCR24302', 'PT/PRT', 'M', '120', '120', 'Recusa de envio parcial (AD)', '09/09/2026', 'ERIKA DOMINGUES LEME'],
 ];
 
-function baixarModeloAjustesPfa() {
-  const linhas = [CABECALHO_MODELO_AJUSTES_PFA].concat(EXEMPLOS_MODELO_AJUSTES_PFA);
-  // Mesmo formato do resto do app: ";" e BOM, pro Excel pt-BR abrir em
-  // colunas sem pedir importação manual.
-  const csv = linhas.map(function (l) {
-    return l.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(';');
-  }).join('\n');
-  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+// Só a primeira letra maiúscula — pedido explícito da operação (10/09/2026),
+// não é pra virar "Pfa Antiga" nem nada assim, só capitalizar o que já tem.
+function capitalizarPrimeiraLetra(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+/* Modelo agora é um .xlsx de verdade (10/09/2026, pedido da operação):
+   cabeçalho em negrito+itálico, tudo centralizado — formatação de célula
+   que um texto separado por delimitador (",", ";" ou TAB) não tem como
+   guardar. De quebra, acaba com qualquer confusão de separador de lista
+   do Windows/Excel: não tem delimitador nenhum pra detectar errado. */
+async function baixarModeloAjustesPfa() {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Ajustes de PFA');
+  ws.columns = CABECALHO_MODELO_AJUSTES_PFA.map(function (chave) {
+    return {
+      header: capitalizarPrimeiraLetra(chave), key: chave, width: Math.max(chave.length + 2, 13),
+      style: { alignment: { horizontal: 'center', vertical: 'middle' } },
+    };
+  });
+  EXEMPLOS_MODELO_AJUSTES_PFA.forEach(function (linha) { ws.addRow(linha); });
+  ws.getRow(1).eachCell(function (celula) {
+    celula.font = { bold: true, italic: true };
+    celula.alignment = { horizontal: 'center', vertical: 'middle' };
+  });
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'modelo-ajustes-pfa.csv';
+  a.download = 'modelo-ajustes-pfa.xlsx';
   a.click();
   URL.revokeObjectURL(a.href);
 }
 
-/* ---------- Ajustes de PFA (.csv) — planilha manual, upsert ----------
+/* ---------- Ajustes de PFA (.xlsx ou .csv/.txt) — planilha manual, upsert ----------
    Não recarrega o Start Inicial: os cards de "Perdas e ajustes" só refletem
    no PRÓXIMO upload de Pendentes/Analítico/Embarcadas (ver comentário em
    processarPfas, ingest-pfas.js) — não tem como recalcular sem os arquivos
@@ -4803,7 +4825,7 @@ let arquivoAjustesPfaSelecionado = null;
 function atualizarEstadoDropzoneAjustesPfa() {
   document.getElementById('btnProcessarAjustesPfa').disabled = !arquivoAjustesPfaSelecionado;
   document.getElementById('dropzoneAjustesPfaTexto').textContent = arquivoAjustesPfaSelecionado
-    ? '✓ ' + arquivoAjustesPfaSelecionado.name : 'Clique para selecionar o .csv de Ajustes de PFA';
+    ? '✓ ' + arquivoAjustesPfaSelecionado.name : 'Clique para selecionar o .xlsx (ou .csv/.txt) de Ajustes de PFA';
 }
 document.getElementById('dropzoneAjustesPfa').addEventListener('click', function () {
   document.getElementById('inputAjustesPfa').click();
