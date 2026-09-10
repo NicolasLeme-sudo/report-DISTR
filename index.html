@@ -2914,12 +2914,7 @@ function renderizarPfas() {
           'a PFA antiga de um ajuste já saiu de Pendentes, então não tem dias em aberto nem etapa atual pra filtrar.' : '') +
         '</p>' +
     '</div>';
-  })() +
-  (coletaSep.qtdeNaoConf ? '<div class="aviso" style="border-color:var(--amber)">' +
-    '<strong>' + fmtInt(coletaSep.qtdeNaoConf) + ' peças</strong> (aguardando coleta) aparecem no Analítico mas ' +
-    '<strong>não estão na lista atual de Pendentes</strong> — ficam fora dos KPIs acima. A operação confirmou ' +
-    'que esse volume não está mais em tela: provável material fora do range do arquivo de embarque ou B.O. ' +
-    'em análise.</div>' : '');
+  })();
 
   /* ---------- funil por etapa ---------- */
   const porEtapa = new Map();
