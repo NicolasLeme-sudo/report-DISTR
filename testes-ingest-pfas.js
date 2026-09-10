@@ -250,36 +250,39 @@ eq(snapOp.stats.embarcadas_por_operacao.length, 2, 'duas operações distintas n
 
 /* -------------------------------------------------------------------------- */
 secao('parsearAjustesPfa — lê a planilha manual da assistente');
-const CAB_AJU = 'tipo;encomenda;pfa_antiga;pfa_nova;cliente_codigo;cliente_nome;artigo;cor_tam;qtde_total_nf;qtde_inicial;qtde_pos_ajuste;motivo;data_solicitacao;solicitante';
-function linhaAju(tipo, encomenda, pfaAntiga, pfaNova, artigo, qtdeNf, qtdeIni, qtdePos, motivo, data) {
-  return [tipo, encomenda, pfaAntiga, pfaNova || '', '46212', 'CHARLESTON WILLIA', artigo, 'PT/PRT M',
-    qtdeNf, qtdeIni, qtdePos, motivo, data || '09/09/2026', 'ERIKA DOMINGUES LEME'].join(';');
+const CAB_AJU = 'tipo;encomenda;pfa_antiga;pfa_nova;cliente;familia_codigo;artigo;cor;tam;qtde_total_pedido;qtde_faltante;motivo;data_solicitacao;solicitante';
+function linhaAju(tipo, encomenda, pfaAntiga, pfaNova, artigo, qtdeTotal, qtdeFaltante, qtdePosIgnorado, motivo, data) {
+  // qtdePosIgnorado existe só pra não ter que mexer em todo call site — o
+  // modelo antigo (antes/depois) virou uma única coluna (qtde_faltante).
+  return [tipo, encomenda, pfaAntiga, pfaNova || '', '46212 CHARLESTON WILLIA', '102', artigo, 'PT/PRT', 'M',
+    qtdeTotal, qtdeFaltante, motivo, data || '09/09/2026', 'ERIKA DOMINGUES LEME'].join(';');
 }
 const aju = parsearAjustesPfa([CAB_AJU,
-  linhaAju('AJUSTE', '960841', '242018', '242305', 'OIMCR24302', '60', '5', '3', 'Ajuste de encomenda'),
-  linhaAju('TIPO_QUE_NAO_EXISTE', '960900', '242020', '', 'OIMCR24303', '10', '2', '0', 'Motivo qualquer'),
+  linhaAju('AJUSTE', '960841', '242018', '242305', 'OIMCR24302', '60', '2', null, 'Ajuste de encomenda'),
+  linhaAju('TIPO_QUE_NAO_EXISTE', '960900', '242020', '', 'OIMCR24303', '10', '2', null, 'Motivo qualquer'),
   'LIXO;SEM;CAMPOS;SUFICIENTES', // rodapé/lixo real — descartado em silêncio, mesmo critério dos outros ingests
 ].join('\n'));
 eq(aju.registros.length, 1, 'linha válida lida; tipo desconhecido e rodapé ficam de fora');
 eq(aju.linhas_invalidas, 1, 'tipo desconhecido conta como inválido (linha tem todos os campos, só o valor é ruim)');
 eq(aju.registros[0].encomenda, '960841', 'encomenda preservada — é a chave que sobrevive a renumeração de PFA');
 eq(aju.registros[0].pfa_nova, '242305', 'PFA nova lida');
+eq(aju.registros[0].cliente, '46212 CHARLESTON WILLIA', 'cliente vem num campo só (código+nome), como o e-mail do comercial já traz');
 
 secao('parsearAjustesPfa — sobrevive ao próprio modelo baixado (aspas em todo campo + "," de separador de lista do Windows, 10/09/2026)');
 const linhaAspas = function (delim) {
-  return ['tipo', 'encomenda', 'pfa_antiga', 'pfa_nova', 'cliente_codigo', 'cliente_nome', 'artigo', 'cor_tam',
-    'qtde_total_nf', 'qtde_inicial', 'qtde_pos_ajuste', 'motivo', 'data_solicitacao', 'solicitante']
-    .map(function (c) { return '"' + c + '"'; }).join(delim);
+  return ['tipo', 'encomenda', 'pfa_antiga', 'pfa_nova', 'cliente', 'familia_codigo',
+    'artigo', 'cor', 'tam', 'qtde_total_pedido', 'qtde_faltante', 'motivo', 'data_solicitacao',
+    'solicitante'].map(function (c) { return '"' + c + '"'; }).join(delim);
 };
 const linhaAspasDados = function (delim) {
-  return ['AJUSTE', '960841', '242018', '242305', '46212', 'CHARLESTON WILLIA', 'OIMCR24302', 'PT/PRT M',
-    '60', '5', '3', 'Ajuste de encomenda', '09/09/2026', 'ERIKA DOMINGUES LEME']
+  return ['AJUSTE', '960841', '242018', '242305', '46212 CHARLESTON WILLIA', '102', 'OIMCR24302', 'PT/PRT', 'M',
+    '60', '2', 'Ajuste de encomenda', '09/09/2026', 'ERIKA DOMINGUES LEME']
     .map(function (c) { return '"' + c + '"'; }).join(delim);
 };
 const ajuAspasPontoVirgula = parsearAjustesPfa('﻿' + [linhaAspas(';'), linhaAspasDados(';')].join('\n'));
 eq(ajuAspasPontoVirgula.registros.length, 1, 'modelo baixado (";", tudo entre aspas) — sem o fix dava 0');
 eq(ajuAspasPontoVirgula.registros[0].encomenda, '960841', 'aspas removidas do campo, não fica "960841" com aspas coladas');
-eq(ajuAspasPontoVirgula.registros[0].qtde_inicial, 5, 'campo numérico entre aspas também converte certo');
+eq(ajuAspasPontoVirgula.registros[0].qtde_faltante, 2, 'campo numérico entre aspas também converte certo');
 
 const ajuVirgula = parsearAjustesPfa([linhaAspas(','), linhaAspasDados(',')].join('\n'));
 eq(ajuVirgula.registros.length, 1, 'Excel com separador de lista em inglês salva com "," — mesmo bug real: dava 0 antes do fix');
@@ -289,12 +292,13 @@ eq(ajuVirgula.registros[0].artigo, 'OIMCR24302', 'delimitador "," detectado e re
 // arquivo saiu com TAB entre os campos, sem aspas nenhuma — nem "," nem ";"
 // batiam, e o parser antigo (só ; ou ,) continuava dando 0 linhas.
 const linhaTab = function () {
-  return ['tipo', 'encomenda', 'pfa_antiga', 'pfa_nova', 'cliente_codigo', 'cliente_nome', 'artigo', 'cor_tam',
-    'qtde_total_nf', 'qtde_inicial', 'qtde_pos_ajuste', 'motivo', 'data_solicitacao', 'solicitante'].join('\t');
+  return ['tipo', 'encomenda', 'pfa_antiga', 'pfa_nova', 'cliente', 'familia_codigo',
+    'artigo', 'cor', 'tam', 'qtde_total_pedido', 'qtde_faltante', 'motivo', 'data_solicitacao',
+    'solicitante'].join('\t');
 };
 const linhaTabDados = function () {
-  return ['AJUSTE', '960841', '242018', '244900', '46212', 'CHARLESTON WILLIA', 'OIMCR24302', 'PT/PRT M',
-    '5', '5', '3', 'Ajuste de encomenda', '09/09/2026', 'ERIKA DOMINGUES LEME'].join('\t');
+  return ['AJUSTE', '960841', '242018', '244900', '46212 CHARLESTON WILLIA', '102', 'OIMCR24302', 'PT/PRT', 'M',
+    '5', '2', 'Ajuste de encomenda', '09/09/2026', 'ERIKA DOMINGUES LEME'].join('\t');
 };
 const ajuTab = parsearAjustesPfa([linhaTab(), linhaTabDados()].join('\r\n'));
 eq(ajuTab.registros.length, 1, 'planilha colada do Excel com TAB entre campos — mesmo bug real relatado 10/09/2026');
@@ -325,30 +329,30 @@ const anaAju = parsearPfasAnalitico([CAB_ANA,
   linhaAna('240711', '548820', '01/09/2026', 'V-AD', '102', 'A9', '120,0'), // AD: some de aguardando_coleta
 ].join('\n'));
 const ajustesTeste = { registros: [
-  // Corte real: perda líquida = 5 - 3 = 2.
+  // Corte real: perda líquida = 2 (a falta já vem pronta, sem antes/depois).
   { tipo: 'AJUSTE', encomenda: '960841', pfa_antiga: '242018', pfa_nova: '242305',
-    cliente_nome: 'CHARLESTON WILLIA', artigo: 'OIMCR24302', cor_tam: 'PT/PRT M',
-    qtde_total_nf: 60, qtde_inicial: 5, qtde_pos_ajuste: 3, motivo: 'Ajuste de encomenda',
+    cliente: '46212 CHARLESTON WILLIA', artigo: 'OIMCR24302', cor_tam: 'PT/PRT M',
+    qtde_total_pedido: 60, qtde_faltante: 2, motivo: 'Ajuste de encomenda',
     data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
-  // DE-PARA: mesma quantidade nos dois campos → perda líquida zero.
+  // DE-PARA: qtde_faltante = 0 (artigo substituto cobriu o corte inteiro).
   { tipo: 'AJUSTE', encomenda: '961205', pfa_antiga: '242190', pfa_nova: '242410',
-    cliente_nome: 'GRUPO SPORTSTYLE', artigo: 'OIVCR23110', cor_tam: 'PT M',
-    qtde_total_nf: 30, qtde_inicial: 10, qtde_pos_ajuste: 10, motivo: 'DE-PARA (artigo substituto)',
+    cliente: '62410 GRUPO SPORTSTYLE', artigo: 'OIVCR23110', cor_tam: 'PT M',
+    qtde_total_pedido: 30, qtde_faltante: 0, motivo: 'DE-PARA (artigo substituto)',
     data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
   // Ajuste em aberto: PFA nova declarada mas NUNCA vista em nenhum arquivo de Pendentes.
   { tipo: 'AJUSTE', encomenda: '958220', pfa_antiga: '241987', pfa_nova: '242999',
-    cliente_nome: 'GRUPO SPORTSTYLE', artigo: 'OIVCR23110', cor_tam: 'PT M',
-    qtde_total_nf: 40, qtde_inicial: 12, qtde_pos_ajuste: 6, motivo: 'Stockout',
+    cliente: '62410 GRUPO SPORTSTYLE', artigo: 'OIVCR23110', cor_tam: 'PT M',
+    qtde_total_pedido: 40, qtde_faltante: 6, motivo: 'Stockout',
     data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
   // Cancelamento sem reposição: 100% vira perda, PFA antiga some do pendente.
   { tipo: 'CANCELAMENTO', encomenda: '957004', pfa_antiga: '241902', pfa_nova: null,
-    cliente_nome: 'REDE CALCADOS MG', artigo: 'OIACS20044', cor_tam: 'PT M',
-    qtde_total_nf: 14, qtde_inicial: 14, qtde_pos_ajuste: 0, motivo: 'Financeiro',
+    cliente: '51330 REDE CALCADOS MG', artigo: 'OIACS20044', cor_tam: 'PT M',
+    qtde_total_pedido: 14, qtde_faltante: 14, motivo: 'Financeiro',
     data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
   // AD: PFA inteira sai de "aguardando coleta" (não só a diferença).
   { tipo: 'AD_DEVOLUCAO', encomenda: '955390', pfa_antiga: '240711', pfa_nova: null,
-    cliente_nome: 'CHARLESTON WILLIA', artigo: 'OIMCR24302', cor_tam: 'PT/PRT M',
-    qtde_total_nf: 120, qtde_inicial: 120, qtde_pos_ajuste: 0, motivo: 'Recusa de envio parcial (AD)',
+    cliente: '46212 CHARLESTON WILLIA', artigo: 'OIMCR24302', cor_tam: 'PT/PRT M',
+    qtde_total_pedido: 120, qtde_faltante: 120, motivo: 'Recusa de envio parcial (AD)',
     data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
 ] };
 // Dicionário artigo->família: só OIMCR24302 está mapeado (família 102,
@@ -372,7 +376,7 @@ eq(snapAju.stats.excluidas_por_ad.qtde, 120, 'quantidade excluída por AD é o t
 const perdaAjusteReal = snapAju.ajustes.find(function (a) { return a.pfa_antiga === '242018'; });
 eq(perdaAjusteReal.perda_liquida, 2, 'corte real: 5 - 3 = 2 pares de perda');
 const perdaDePara = snapAju.ajustes.find(function (a) { return a.pfa_antiga === '242190'; });
-eq(perdaDePara.perda_liquida, 0, 'DE-PARA: qtde_inicial = qtde_pos_ajuste → perda líquida zero, sem coluna extra');
+eq(perdaDePara.perda_liquida, 0, 'DE-PARA: qtde_faltante = 0 → perda líquida zero, sem coluna extra');
 const perdaCancelamento = snapAju.ajustes.find(function (a) { return a.pfa_antiga === '241902'; });
 eq(perdaCancelamento.perda_liquida, 14, 'cancelamento sem reposição: 100% do valor é perda');
 
@@ -396,6 +400,66 @@ secao('ajustes carregam marca/segmento pelo artigo — pros filtros do topo tamb
 eq(perdaAjusteReal.marca, 'MIZUNO', 'artigo OIMCR24302 resolvido pelo dicionário artigo->família');
 eq(perdaAjusteReal.segmento_macro, 'CALÇADO', 'segmento também vem do mesmo cruzamento');
 eq(perdaCancelamento.marca, null, 'OIACS20044 nunca apareceu num upload de Picking/Pulmão — fica sem marca, não quebra');
+
+/* -------------------------------------------------------------------------- */
+secao('familia_codigo da própria linha tem prioridade sobre o dicionário artigo->família (10/09/2026, e-mail real do comercial)');
+// OIACS20044 continua sem entrada no dicionário artigo->família, mas essa
+// linha específica veio com familia_codigo preenchido (105, MIZUNO
+// TÊXTIL/ACESSÓRIOS) — deve resolver por aí, não ficar sem marca.
+const ajustesComFamilia = { registros: [
+  { tipo: 'CANCELAMENTO', encomenda: '957004', pfa_antiga: '241902', pfa_nova: null,
+    cliente: '51330 REDE CALCADOS MG', familia_codigo: '105', artigo: 'OIACS20044', cor_tam: 'PT M',
+    qtde_total_pedido: 14, qtde_faltante: 14, motivo: 'Financeiro',
+    data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
+  // Sem familia_codigo (linha antiga, upload de antes dessa coluna existir)
+  // — cai no fallback por artigo, igual sempre foi.
+  { tipo: 'CANCELAMENTO', encomenda: '957005', pfa_antiga: '241903', pfa_nova: null,
+    cliente: '51330 REDE CALCADOS MG', artigo: 'OIMCR24302', cor_tam: 'PT M',
+    qtde_total_pedido: 10, qtde_faltante: 10, motivo: 'Financeiro',
+    data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
+] };
+const snapComFamilia = construirSnapshotPfas(
+  parsearPfasPendentes([CAB_PEND].join('\n'), HOJE),
+  parsearPfasAnalitico([CAB_ANA].join('\n')),
+  { registros: [] }, mapaFamilias, { referencia: HOJE }, ajustesComFamilia, mapaArtFamTeste);
+const ajusteComFamiliaPropria = snapComFamilia.ajustes.find(function (a) { return a.pfa_antiga === '241902'; });
+eq(ajusteComFamiliaPropria.marca, 'MIZUNO', 'familia_codigo da linha (105) resolve marca mesmo sem o artigo estar no dicionário');
+eq(ajusteComFamiliaPropria.segmento_macro, 'MEIA', 'segmento também vem da família da própria linha');
+const ajusteSemFamiliaPropria = snapComFamilia.ajustes.find(function (a) { return a.pfa_antiga === '241903'; });
+eq(ajusteSemFamiliaPropria.marca, 'MIZUNO', 'sem familia_codigo na linha, cai no fallback por artigo (comportamento antigo preservado)');
+
+/* -------------------------------------------------------------------------- */
+secao('AJUSTE sem pfa_nova é "falta parcial" — PFA continua em Pendentes (10/09/2026, validado contra e-mail real do comercial)');
+const pendFaltaParcial = parsearPfasPendentes([CAB_PEND,
+  linhaPend('232722', '01/09', '102', '8', 'Em picking', '48'), // PFA com falta parcial de alguns artigos — continua ativa
+].join('\n'), HOJE);
+const ajustesFaltaParcial = { registros: [
+  // Duas linhas de artigo em falta na MESMA PFA, nenhuma com pfa_nova — o
+  // comercial ainda não gerou PFA nova nenhuma pra cobrir o corte.
+  { tipo: 'AJUSTE', encomenda: '963585', pfa_antiga: '232722', pfa_nova: null,
+    cliente: '963585 JC ABDON CONFECCOES', familia_codigo: '102', artigo: '102055001', cor_tam: 'VRBNMA 44',
+    qtde_total_pedido: 48, qtde_faltante: 3, motivo: 'Falta parcial',
+    data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
+  { tipo: 'AJUSTE', encomenda: '963585', pfa_antiga: '232722', pfa_nova: null,
+    cliente: '963585 JC ABDON CONFECCOES', familia_codigo: '102', artigo: '102056002', cor_tam: 'BCNCPE 38',
+    qtde_total_pedido: 48, qtde_faltante: 2, motivo: 'Falta parcial',
+    data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
+] };
+const snapFaltaParcial = construirSnapshotPfas(pendFaltaParcial, { registros: [] }, { registros: [] }, mapaFamilias,
+  { referencia: HOJE }, ajustesFaltaParcial, new Map());
+ok(snapFaltaParcial.pendentes.some(function (r) { return r.pfa === '232722'; }), 'PFA com falta parcial (sem PFA nova) CONTINUA em Pendentes — ainda está ativa na operação');
+eq(snapFaltaParcial.stats.excluidas_por_ajuste.pfas, 0, 'nenhuma exclusão por ajuste — falta parcial não tira a PFA da tela');
+const perdaFaltaParcial = snapFaltaParcial.ajustes.reduce(function (s, a) { return s + a.perda_liquida; }, 0);
+eq(perdaFaltaParcial, 5, 'a perda dos dois artigos em falta (3+2=5) continua somando certo no card de Ajustes, mesmo sem excluir a PFA');
+// Assim que o comercial gerar e informar a PFA nova, volta a excluir — sem
+// mudar mais nada na planilha além de preencher pfa_nova.
+const ajustesComPfaNovaGerada = { registros: [
+  Object.assign({}, ajustesFaltaParcial.registros[0], { pfa_nova: '233001' }),
+  Object.assign({}, ajustesFaltaParcial.registros[1], { pfa_nova: '233001' }),
+] };
+const snapComPfaNovaGerada = construirSnapshotPfas(pendFaltaParcial, { registros: [] }, { registros: [] }, mapaFamilias,
+  { referencia: HOJE }, ajustesComPfaNovaGerada, new Map());
+ok(!snapComPfaNovaGerada.pendentes.some(function (r) { return r.pfa === '232722'; }), 'com a PFA nova preenchida, agora sim exclui — o corte virou renumeração de verdade');
 
 /* -------------------------------------------------------------------------- */
 secao('construirSnapshotPfas — abastecimento parcial (só Pendentes, ou só Embarcadas), sem apagar o resto (10/09/2026)');
@@ -463,16 +527,16 @@ const ajustesMultiArtigo = { registros: [
   // 3 artigos em falta na MESMA pfa_antiga/pfa_nova — a assistente lança uma
   // linha por artigo, cada um com sua própria quantidade.
   { tipo: 'AJUSTE', encomenda: '900001', pfa_antiga: '500001', pfa_nova: '500099',
-    cliente_nome: 'CLIENTE X', artigo: 'ART-A', cor_tam: 'P M',
-    qtde_total_nf: 20, qtde_inicial: 10, qtde_pos_ajuste: 6, motivo: 'Falta de artigo A',
+    cliente: '900001 CLIENTE X', artigo: 'ART-A', cor_tam: 'P M',
+    qtde_total_pedido: 20, qtde_faltante: 4, motivo: 'Falta de artigo A',
     data_solicitacao: '2026-09-09', solicitante: 'ERIKA' },
   { tipo: 'AJUSTE', encomenda: '900001', pfa_antiga: '500001', pfa_nova: '500099',
-    cliente_nome: 'CLIENTE X', artigo: 'ART-B', cor_tam: 'P G',
-    qtde_total_nf: 20, qtde_inicial: 5, qtde_pos_ajuste: 2, motivo: 'Falta de artigo B',
+    cliente: '900001 CLIENTE X', artigo: 'ART-B', cor_tam: 'P G',
+    qtde_total_pedido: 20, qtde_faltante: 3, motivo: 'Falta de artigo B',
     data_solicitacao: '2026-09-09', solicitante: 'ERIKA' },
   { tipo: 'AJUSTE', encomenda: '900001', pfa_antiga: '500001', pfa_nova: '500099',
-    cliente_nome: 'CLIENTE X', artigo: 'ART-C', cor_tam: 'P GG',
-    qtde_total_nf: 20, qtde_inicial: 8, qtde_pos_ajuste: 8, motivo: 'DE-PARA artigo C',
+    cliente: '900001 CLIENTE X', artigo: 'ART-C', cor_tam: 'P GG',
+    qtde_total_pedido: 20, qtde_faltante: 0, motivo: 'DE-PARA artigo C',
     data_solicitacao: '2026-09-09', solicitante: 'ERIKA' },
 ] };
 const snapMultiArtigo = construirSnapshotPfas(pendMultiArtigo, { registros: [] }, { registros: [] }, mapaFamilias,

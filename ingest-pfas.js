@@ -328,9 +328,8 @@ const PFA_RETRABALHADA_SLA_DIAS_UTEIS = 1;
 /* ============================================================================
    PARSE — AJUSTES DE PFA (.csv, ";") — planilha manual da assistente
    ============================================================================
-   tipo;encomenda;pfa_antiga;pfa_nova;cliente_codigo;cliente_nome;artigo;
-   cor_tam;qtde_total_nf;qtde_inicial;qtde_pos_ajuste;motivo;
-   data_solicitacao;solicitante
+   tipo;encomenda;pfa_antiga;pfa_nova;cliente;familia_codigo;artigo;cor;tam;
+   qtde_total_pedido;qtde_faltante;motivo;data_solicitacao;solicitante
 
    Uma linha por evento (ajuste, cancelamento, B.O. pós-NF ou devolução por
    AD), lançada manualmente a partir do e-mail do comercial — não tem fonte
@@ -338,9 +337,32 @@ const PFA_RETRABALHADA_SLA_DIAS_UTEIS = 1;
    sendo renumerada mais de uma vez (242018→242305→242410): cruzar direto
    PFA-antiga↔PFA-nova obrigaria "andar a corrente" a cada novo ajuste.
 
-   DE-PARA (artigo substituto cobrindo o corte inteiro) não tem coluna
-   própria: a assistente preenche qtde_inicial = qtde_pos_ajuste, e a perda
-   líquida (calculada abaixo, nunca lida do arquivo) sai zero sozinha.
+   `cliente` (10/09/2026): código e nome vêm num campo só, exatamente como
+   o e-mail/export do sistema já traz ("CL 92884 92884   JC ABDON
+   CONFECCOES LTDA") — nunca foi usado pra cruzar nada (só exibição), então
+   não tinha por que pedir pra assistente separar o que o sistema já junta.
+
+   `familia_codigo` (10/09/2026, pedido da operação — validado contra um
+   e-mail real de "NFs com divergência"): o e-mail do comercial já traz a
+   coluna FAM por linha, então a assistente cola direto em vez do sistema
+   ter que adivinhar a família pelo artigo (dim_artigo_familia só conhece
+   artigo que já passou por um upload de Picking/Pulmão — com a família
+   explícita, marca/segmento saem certos mesmo pra artigo nunca visto).
+   Fica em branco em linhas antigas (upload anterior a essa mudança) sem
+   quebrar nada — cai no fallback por artigo (ver marcaSegmentoDoAjuste).
+
+   `cor` e `tam` (10/09/2026): o e-mail real também traz essas duas colunas
+   separadas (COR, TAM), não juntas — a planilha replica o mesmo formato de
+   exportação do sistema em vez de pedir pra assistente juntar à mão.
+   Guardadas concatenadas em `cor_tam` (mesmo formato "PT/PRT M" de sempre)
+   porque é o que o resto do sistema (chave de upsert, exibição) espera.
+
+   `qtde_faltante` (10/09/2026): o e-mail do comercial já traz a falta
+   pronta por artigo (coluna QUANT. FALTANTE) — nunca um "antes/depois" pra
+   subtrair. A perda líquida agora é essa quantidade direto, sem conta
+   nenhuma. DE-PARA (artigo substituto cobrindo o corte inteiro) também não
+   precisa de coluna própria: a assistente preenche qtde_faltante = 0 —
+   chegou tudo, não faltou nada, perda sai zero sozinha.
    ============================================================================ */
 /* Split de uma linha CSV respeitando aspas — precisa disso porque o próprio
    modelo baixado (baixarModeloAjustesPfa) exporta com todo campo entre
@@ -407,18 +429,19 @@ function parsearAjustesPfa(textoArquivo) {
       continue;
     }
 
+    const cor = (p[7] || '').trim();
+    const tam = (p[8] || '').trim();
     registros.push({
       tipo: tipo,
       encomenda: encomenda,
       pfa_antiga: pfaAntiga,
       pfa_nova: (p[3] || '').trim() || null,
-      cliente_codigo: (p[4] || '').trim(),
-      cliente_nome: (p[5] || '').trim(),
+      cliente: (p[4] || '').trim(),
+      familia_codigo: (p[5] || '').trim() || null,
       artigo: artigo,
-      cor_tam: (p[7] || '').trim(),
-      qtde_total_nf: window.numeroBR(p[8]),
-      qtde_inicial: window.numeroBR(p[9]),
-      qtde_pos_ajuste: window.numeroBR(p[10]),
+      cor_tam: [cor, tam].filter(Boolean).join(' '),
+      qtde_total_pedido: window.numeroBR(p[9]),
+      qtde_faltante: window.numeroBR(p[10]),
       motivo: (p[11] || '').trim(),
       data_solicitacao: dataDDMMAAAA(p[12]),
       solicitante: (p[13] || '').trim(),
@@ -506,18 +529,24 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
     : (statsAnteriores.embarcadas_por_operacao || []);
 
   /* ---------- 1.5 PFA baixada por ajuste/cancelamento some do pendente ----------
-     Mesmo mecanismo acima, mesma exclusão ANTES de somar. `pfa_antiga` de um
-     AJUSTE ou CANCELAMENTO é excluída na hora — mesmo que o arquivo do dia
-     ainda a liste (atraso da fonte) — porque o material já está associado a
-     outra PFA (ou saiu de vez). AD_DEVOLUCAO é tratada à parte (item 1.6):
-     ela nunca aparece em Pendentes (a PFA já tem nota emitida), só em
-     "aguardando coleta". Um `Set` simples de pfa_antiga já resolve o caso de
-     ajuste em cadeia (242018→242305→242410) sem precisar andar pela
-     encomenda: 242305 é `pfa_antiga` de uma 2ª linha o dia que for cortada de
-     novo, e sai da conta sozinha quando isso acontecer. */
+     CANCELAMENTO exclui sempre: o material está mesmo fora, não vai
+     reaparecer em outra PFA nenhuma. AJUSTE só exclui quando tem `pfa_nova`
+     de verdade — sem ela, é uma "falta parcial" (validado contra um e-mail
+     real do comercial, 10/09/2026): a PFA continua ativa na operação, só
+     com a quantidade reduzida — ela NÃO é renumerada, então sumir da tela
+     junto escondia uma PFA que ainda está em picking/coleta de verdade. A
+     perda ainda soma certo no card de Ajustes independente disso; só a
+     exclusão do Pendentes que fica condicionada a existir PFA nova.
+     AD_DEVOLUCAO é tratada à parte (item 1.6): ela nunca aparece em
+     Pendentes (a PFA já tem nota emitida), só em "aguardando coleta". Um
+     `Set` simples de pfa_antiga já resolve o caso de ajuste em cadeia
+     (242018→242305→242410) sem precisar andar pela encomenda: 242305 é
+     `pfa_antiga` de uma 2ª linha o dia que for cortada de novo, e sai da
+     conta sozinha quando isso acontecer. */
   const pfasAjustadas = new Set();
   ajustesLista.forEach(function (a) {
-    if (a.tipo === 'AJUSTE' || a.tipo === 'CANCELAMENTO') pfasAjustadas.add(a.pfa_antiga);
+    if (a.tipo === 'CANCELAMENTO') { pfasAjustadas.add(a.pfa_antiga); return; }
+    if (a.tipo === 'AJUSTE' && a.pfa_nova) pfasAjustadas.add(a.pfa_antiga);
   });
   const pfasComAD = new Set();
   ajustesLista.forEach(function (a) { if (a.tipo === 'AD_DEVOLUCAO') pfasComAD.add(a.pfa_antiga); });
@@ -554,7 +583,7 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
      AD_DEVOLUCAO nunca aparece em Pendentes (a PFA já tem nota emitida — o
      corte é depois da NF), então não entra na exclusão acima. Ela vive só no
      Analítico, como "com nota, aguardando coleta" — e sai de lá inteira
-     (qtde_total_nf, não só a diferença), porque o comercial recusou mandar
+     (qtde_total_pedido, não só a diferença), porque o comercial recusou mandar
      o resto: o prejuízo é a PFA toda, não o que faltava originalmente. */
   let excluidasPorAdPfas = 0, excluidasPorAdQtde = 0;
   const analiticoAtivo = (analiticoFornecido ? analitico.registros : []).filter(function (r) {
@@ -795,33 +824,36 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
   });
 
   /* ---------- 7. Ajustes de PFA — perda líquida por linha ----------
-     perda_liquida = max(0, qtde_inicial − qtde_pos_ajuste). Mesma fórmula
-     pros 4 tipos — cobre DE-PARA de graça (as duas quantidades vêm iguais,
-     perda sai zero) sem precisar de coluna extra na planilha. A tela agrega
-     por tipo E por período (data_solicitacao), filtrando este array —
-     nenhuma soma pronta aqui além da que precisa cruzar com Pendentes. */
-  // Marca/Segmento do ajuste vêm do ARTIGO (não da família direto — a
-  // planilha manual não traz família nenhuma), pelo mesmo dicionário
-  // artigo->família que Ressuprimento já mantém. Artigo que nunca passou
-  // por um upload de Picking/Pulmão fica sem marca/segmento — os filtros
-  // do topo simplesmente não pegam essa linha, nunca escondida por outro
-  // motivo qualquer.
+     perda_liquida = qtde_faltante direto (a planilha já traz a falta
+     pronta por artigo — sem "antes/depois" pra subtrair). Mesma fórmula
+     pros 4 tipos — cobre DE-PARA de graça (a assistente preenche
+     qtde_faltante = 0, perda sai zero) sem precisar de coluna extra. A tela
+     agrega por tipo E por período (data_solicitacao), filtrando este
+     array — nenhuma soma pronta aqui além da que precisa cruzar com
+     Pendentes. */
+  // Marca/Segmento do ajuste: preferem a `familia_codigo` da própria linha
+  // (o e-mail do comercial já traz a coluna FAM — 10/09/2026) quando
+  // preenchida; sem ela, cai no dicionário artigo->família que Ressuprimento
+  // já mantém (linha antiga, de antes dessa coluna existir). Artigo sem
+  // família dos dois jeitos fica sem marca/segmento — os filtros do topo
+  // simplesmente não pegam essa linha, nunca escondida por outro motivo
+  // qualquer.
   const mapaArtFam = mapaArtigoFamilia || new Map();
-  function marcaSegmentoDoArtigo(artigo) {
-    const familiaCod = mapaArtFam.get(artigo);
+  function marcaSegmentoDoAjuste(a) {
+    const familiaCod = a.familia_codigo || mapaArtFam.get(a.artigo);
     const fam = familiaCod ? mapaFamilias.get(familiaCod) : null;
     if (!fam) return { marca: null, segmento_macro: null };
     return { marca: fam.marca, segmento_macro: window.segmentoMacro(fam.segmento, fam.categoria) };
   }
 
   const ajustesPayload = ajustesLista.map(function (a) {
-    const perdaLiquida = Math.max(0, (a.qtde_inicial || 0) - (a.qtde_pos_ajuste || 0));
-    const ms = marcaSegmentoDoArtigo(a.artigo);
+    const perdaLiquida = Math.max(0, a.qtde_faltante || 0);
+    const ms = marcaSegmentoDoAjuste(a);
     return {
       tipo: a.tipo, encomenda: a.encomenda, pfa_antiga: a.pfa_antiga, pfa_nova: a.pfa_nova,
-      cliente_nome: a.cliente_nome, artigo: a.artigo, cor_tam: a.cor_tam,
+      cliente: a.cliente, familia_codigo: a.familia_codigo || null, artigo: a.artigo, cor_tam: a.cor_tam,
       marca: ms.marca, segmento_macro: ms.segmento_macro,
-      qtde_total_nf: a.qtde_total_nf, qtde_inicial: a.qtde_inicial, qtde_pos_ajuste: a.qtde_pos_ajuste,
+      qtde_total_pedido: a.qtde_total_pedido, qtde_faltante: a.qtde_faltante,
       perda_liquida: perdaLiquida, motivo: a.motivo, data_solicitacao: a.data_solicitacao,
       solicitante: a.solicitante,
       // Só existe pra AJUSTE com pfa_nova: a PFA nova ainda não apareceu em
@@ -968,7 +1000,7 @@ async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileE
   // pras dimensões dim_armazens/dim_familias). Sem passar isso explícito
   // a paginação tentava ORDER BY numa coluna que não existe na tabela.
   const linhasAjustes = await window.lerTudoPaginado(supabaseClient, 'ajustes_pfa',
-    'tipo, encomenda, pfa_antiga, pfa_nova, cliente_nome, artigo, cor_tam, qtde_total_nf, qtde_inicial, qtde_pos_ajuste, motivo, data_solicitacao, solicitante',
+    'tipo, encomenda, pfa_antiga, pfa_nova, cliente, familia_codigo, artigo, cor_tam, qtde_total_pedido, qtde_faltante, motivo, data_solicitacao, solicitante',
     null, 'id');
   const ajustes = { registros: linhasAjustes };
 

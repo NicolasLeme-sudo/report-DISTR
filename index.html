@@ -1258,48 +1258,56 @@ tr.total > th, tr.total > td {
           <table>
             <thead>
               <tr>
-                <th>tipo</th><th>encomenda</th><th>pfa_antiga</th><th>pfa_nova</th><th>cliente_codigo</th>
-                <th>cliente_nome</th><th>artigo</th><th>cor_tam</th><th>qtde_total_nf</th><th>qtde_inicial</th>
-                <th>qtde_pos_ajuste</th><th>motivo</th><th>data_solicitacao</th><th>solicitante</th>
+                <th>tipo</th><th>encomenda</th><th>pfa_antiga</th><th>pfa_nova</th><th>cliente</th>
+                <th>familia_codigo</th><th>artigo</th><th>cor</th><th>tam</th>
+                <th>qtde_total_pedido</th><th>qtde_faltante</th><th>motivo</th>
+                <th>data_solicitacao</th><th>solicitante</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td>AJUSTE</td><td>960841</td><td>242018</td><td>242305</td><td>46212</td>
-                <td>CHARLESTON WILLIA</td><td>OIMCR24302</td><td>PT/PRT M</td><td>60</td><td>5</td>
-                <td>3</td><td>Ajuste de encomenda</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
+                <td>AJUSTE</td><td>960841</td><td>242018</td><td>242305</td><td>46212 CHARLESTON WILLIA</td>
+                <td>102</td><td>OIMCR24302</td><td>PT/PRT</td><td>M</td><td>60</td><td>2</td>
+                <td>Ajuste de encomenda</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
               </tr>
               <tr>
-                <td>BO_POS_NF</td><td>959112</td><td>241650</td><td class="vazio"></td><td>46212</td>
-                <td>CHARLESTON WILLIA</td><td>OIMCR24302</td><td>PT/PRT M</td><td>60</td><td>2</td>
-                <td>0</td><td>Stockout</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
+                <td>BO_POS_NF</td><td>959112</td><td>241650</td><td class="vazio"></td><td>46212 CHARLESTON WILLIA</td>
+                <td>102</td><td>OIMCR24302</td><td>PT/PRT</td><td>M</td><td>60</td><td>2</td>
+                <td>Stockout</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
               </tr>
               <tr class="destaque">
-                <td>AJUSTE</td><td>961205</td><td>242190</td><td>242311</td><td>62410</td>
-                <td>GRUPO SPORTSTYLE</td><td>OIVCR23110</td><td>PT M</td><td>30</td><td>10</td>
-                <td>10</td><td>DE-PARA (artigo substituto)</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
+                <td>AJUSTE</td><td>961205</td><td>242190</td><td>242311</td><td>62410 GRUPO SPORTSTYLE</td>
+                <td>082</td><td>OIVCR23110</td><td>PT</td><td>M</td><td>30</td><td>0</td>
+                <td>DE-PARA (artigo substituto)</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
               </tr>
               <tr>
-                <td>CANCELAMENTO</td><td>957004</td><td>241902</td><td class="vazio"></td><td>51330</td>
-                <td>REDE CALCADOS MG</td><td>OIACS20044</td><td>PT M</td><td>14</td><td>14</td>
-                <td>0</td><td>Financeiro</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
+                <td>CANCELAMENTO</td><td>957004</td><td>241902</td><td class="vazio"></td><td>51330 REDE CALCADOS MG</td>
+                <td>060</td><td>OIACS20044</td><td>PT</td><td>M</td><td>14</td><td>14</td>
+                <td>Financeiro</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
               </tr>
               <tr>
-                <td>AD_DEVOLUCAO</td><td>955390</td><td>240711</td><td class="vazio"></td><td>46212</td>
-                <td>CHARLESTON WILLIA</td><td>OIMCR24302</td><td>PT/PRT M</td><td>120</td><td>120</td>
-                <td>0</td><td>Recusa de envio parcial (AD)</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
+                <td>AD_DEVOLUCAO</td><td>955390</td><td>240711</td><td class="vazio"></td><td>46212 CHARLESTON WILLIA</td>
+                <td>102</td><td>OIMCR24302</td><td>PT/PRT</td><td>M</td><td>120</td><td>120</td>
+                <td>Recusa de envio parcial (AD)</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
               </tr>
             </tbody>
           </table>
         </div>
         <ul style="font-size:12px;color:var(--text-muted);margin:10px 0 14px 18px;padding:0">
-          <li><strong>tipo</strong> só aceita: AJUSTE · CANCELAMENTO · BO_POS_NF · AD_DEVOLUCAO.</li>
-          <li><strong>pfa_nova</strong> fica em branco em cancelamento, B.O. pós-NF e AD — nenhum dos três gera PFA nova.</li>
-          <li><strong>DE-PARA</strong> (linha destacada): quando um artigo substituto cobre o corte inteiro,
-            preencha <strong>qtde_inicial e qtde_pos_ajuste com o mesmo número</strong> — a perda sai zero
-            sozinha, sem coluna extra.</li>
+          <li><strong>tipo</strong> só aceita: AJUSTE · CANCELAMENTO · BO_POS_NF · AD_DEVOLUCAO (reconhece por
+            palavra-chave — não precisa ser exatamente esse texto).</li>
+          <li><strong>cliente</strong>, <strong>familia_codigo</strong>, <strong>cor</strong> e <strong>tam</strong>
+            vêm exatamente como o e-mail do comercial e a extração do sistema já trazem — sem juntar código+nome
+            do cliente, sem juntar cor+tam, sem adivinhar família à mão.</li>
+          <li><strong>pfa_nova</strong> fica em branco em cancelamento, B.O. pós-NF e AD — nenhum dos três gera PFA
+            nova. Num <strong>AJUSTE</strong>, também pode ficar em branco quando é só uma <strong>falta
+            parcial</strong> (a PFA continua ativa na operação, só com quantidade menor) — nesse caso ela
+            <strong>não some do Pendentes</strong>; só some quando o comercial de fato gerar e informar a PFA nova.</li>
+          <li><strong>qtde_faltante</strong> é a falta pronta por artigo (não um "antes/depois" pra subtrair).
+            <strong>DE-PARA</strong> (linha destacada): quando um artigo substituto cobre o corte inteiro,
+            preencha <strong>qtde_faltante com 0</strong> — a perda sai zero sozinha, sem coluna extra.</li>
           <li>Reenviar a planilha nunca duplica: a linha é identificada por encomenda + pfa_antiga + artigo +
-            cor_tam — subir de novo com esse quarteto igual substitui a linha, corrigindo um valor errado.</li>
+            cor + tam — subir de novo com esse quinteto igual substitui a linha, corrigindo um valor errado.</li>
         </ul>
         <div class="dropzone" id="dropzoneAjustesPfa">
           <span id="dropzoneAjustesPfaTexto">Clique para selecionar o .csv de <strong>Ajustes de PFA</strong></span>
@@ -2897,8 +2905,8 @@ function renderizarPfas() {
           '<div class="val forte" style="color:var(--red)">' + fmtInt(perdasTotal) + ' pares</div>' +
           '<div class="sub">' + fmtInt(eventosTotal) + ' evento(s) · ' + rotuloPeriodo + '</div></div>' +
       '</div>' +
-      '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Ajuste conta como perda só pelo ' +
-        '<strong>líquido</strong> (qtde_inicial − qtde_pos_ajuste) — se o corte foi coberto por um artigo ' +
+      '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Ajuste conta como perda a ' +
+        '<strong>quantidade faltante</strong> — se o corte foi coberto por um artigo ' +
         'substituto (DE-PARA), a perda sai zero sozinha. Cancelamento sem reposição entra 100% na soma acima, ' +
         'sem card próprio: já é perda inteira por definição. Marca/Segmento do topo recortam este card também.' +
         (fifoOuEtapaAtivos ? ' <strong style="color:var(--amber)">FIFO e Etapa não se aplicam aqui</strong> — ' +
@@ -4746,25 +4754,29 @@ document.getElementById('btnProcessarPfas').addEventListener('click', async func
    alimenta o .csv que a assistente baixa e a tabela-modelo exibida no
    Admin. Mudar a ordem aqui exige mudar parsearAjustesPfa junto (o parser
    lê por POSIÇÃO, não por nome de coluna). */
-const CABECALHO_MODELO_AJUSTES_PFA = ['tipo', 'encomenda', 'pfa_antiga', 'pfa_nova', 'cliente_codigo',
-  'cliente_nome', 'artigo', 'cor_tam', 'qtde_total_nf', 'qtde_inicial', 'qtde_pos_ajuste', 'motivo',
-  'data_solicitacao', 'solicitante'];
+const CABECALHO_MODELO_AJUSTES_PFA = ['tipo', 'encomenda', 'pfa_antiga', 'pfa_nova', 'cliente',
+  'familia_codigo', 'artigo', 'cor', 'tam', 'qtde_total_pedido', 'qtde_faltante',
+  'motivo', 'data_solicitacao', 'solicitante'];
 
 /* Linhas de exemplo já preenchidas vêm juntas de propósito — as MESMAS 5 do
    quadro visual acima (um exemplo por tipo, mais o caso DE-PARA), pra quem
    for abastecer ver de cara todo tipo/motivo possível em vez de só um caso
-   isolado. A assistente apaga as linhas e digita as dela por cima. */
+   isolado. A assistente apaga as linhas e digita as dela por cima.
+   cliente, familia_codigo, cor e tam (10/09/2026): exatamente como o
+   e-mail do comercial e a extração do sistema já trazem essa informação —
+   nada de separar/juntar campo nenhum na mão. qtde_faltante idem: a falta
+   já vem pronta por artigo, sem inventar um "antes/depois" pra subtrair. */
 const EXEMPLOS_MODELO_AJUSTES_PFA = [
-  ['AJUSTE', '960841', '242018', '242305', '46212', 'CHARLESTON WILLIA',
-    'OIMCR24302', 'PT/PRT M', '60', '5', '3', 'Ajuste de encomenda', '09/09/2026', 'ERIKA DOMINGUES LEME'],
-  ['BO_POS_NF', '959112', '241650', '', '46212', 'CHARLESTON WILLIA',
-    'OIMCR24302', 'PT/PRT M', '60', '2', '0', 'Stockout', '09/09/2026', 'ERIKA DOMINGUES LEME'],
-  ['AJUSTE', '961205', '242190', '242311', '62410', 'GRUPO SPORTSTYLE',
-    'OIVCR23110', 'PT M', '30', '10', '10', 'DE-PARA (artigo substituto)', '09/09/2026', 'ERIKA DOMINGUES LEME'],
-  ['CANCELAMENTO', '957004', '241902', '', '51330', 'REDE CALCADOS MG',
-    'OIACS20044', 'PT M', '14', '14', '0', 'Financeiro', '09/09/2026', 'ERIKA DOMINGUES LEME'],
-  ['AD_DEVOLUCAO', '955390', '240711', '', '46212', 'CHARLESTON WILLIA',
-    'OIMCR24302', 'PT/PRT M', '120', '120', '0', 'Recusa de envio parcial (AD)', '09/09/2026', 'ERIKA DOMINGUES LEME'],
+  ['AJUSTE', '960841', '242018', '242305', '46212 CHARLESTON WILLIA',
+    '102', 'OIMCR24302', 'PT/PRT', 'M', '60', '2', 'Ajuste de encomenda', '09/09/2026', 'ERIKA DOMINGUES LEME'],
+  ['BO_POS_NF', '959112', '241650', '', '46212 CHARLESTON WILLIA',
+    '102', 'OIMCR24302', 'PT/PRT', 'M', '60', '2', 'Stockout', '09/09/2026', 'ERIKA DOMINGUES LEME'],
+  ['AJUSTE', '961205', '242190', '242311', '62410 GRUPO SPORTSTYLE',
+    '082', 'OIVCR23110', 'PT', 'M', '30', '0', 'DE-PARA (artigo substituto)', '09/09/2026', 'ERIKA DOMINGUES LEME'],
+  ['CANCELAMENTO', '957004', '241902', '', '51330 REDE CALCADOS MG',
+    '060', 'OIACS20044', 'PT', 'M', '14', '14', 'Financeiro', '09/09/2026', 'ERIKA DOMINGUES LEME'],
+  ['AD_DEVOLUCAO', '955390', '240711', '', '46212 CHARLESTON WILLIA',
+    '102', 'OIMCR24302', 'PT/PRT', 'M', '120', '120', 'Recusa de envio parcial (AD)', '09/09/2026', 'ERIKA DOMINGUES LEME'],
 ];
 
 function baixarModeloAjustesPfa() {
