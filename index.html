@@ -298,6 +298,13 @@ html { overflow-x: hidden; }
    quebra quando não couber mais — 3 grupos curtos ocupam 1 linha em vez de 3. */
 .filtros-linha { display: flex; align-items: center; gap: 6px 22px; flex-wrap: wrap; margin-bottom: 14px; }
 .filtros-linha > .filtros { margin-bottom: 0; }
+/* Faixa que NUNCA quebra linha — usada quando vários grupos de chip
+   dividem uma faixa (Marca/Segmento/FIFO em PFAs): selecionar um filtro
+   ganha o chip extra "✕ Limpar filtro" sem empurrar o grupo vizinho pra
+   baixo, porque não existe "baixo" aqui — se não couber, rola na
+   horizontal (mesmo padrão das tabelas largas do app), nunca empilha. */
+.filtros-linha-fixa { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+.filtros-linha-fixa > .filtros { flex: none; flex-wrap: nowrap; }
 
 /* ============================================================
    6) BARRA DE COMPOSIÇÃO (gráfico)
@@ -2681,23 +2688,27 @@ function renderizarPfas() {
     return Array.from(vistos.entries()).sort(function (a, b) { return b[1] - a[1]; })
       .map(function (e) { return { valor: e[0], rotulo: e[0] }; });
   }
-  // Cada grupo na SUA própria linha. Antes os 3 primeiros dividiam uma
-  // `.filtros-linha` só, "enquanto coubessem" — mas assim que qualquer um
-  // ganhava o chip extra "✕ Limpar filtro" (ao selecionar algo), a linha
-  // estourava a largura e empurrava o grupo seguinte inteiro pra baixo: a
-  // tela "pulava" a cada clique (bug real apontado pela operação, 09/09/2026).
-  // Uma linha por grupo, sempre — nenhum grupo pode mais afetar a posição
-  // dos outros, e o comportamento fica igual ao que Etapa já tinha.
+  // Marca/Segmento/FIFO voltam a dividir UMA linha (como era antes de
+  // 09/09/2026) — mas agora sem quebrar: `.filtros-linha-fixa` não faz
+  // flex-wrap, então nenhum grupo empurra o de baixo quando ganha o chip
+  // "✕ Limpar filtro". Se os três não couberem de vez (tela estreita ou
+  // muitos segmentos), a FAIXA rola na horizontal, nunca empilha — resolve
+  // o "pulo" (bug real, 09/09/2026) sem voltar a empilhar 4 linhas inteiras
+  // (o que a operação também não queria, 10/09/2026). Etapa continua em
+  // linha própria, com destaque: é o filtro que mais muda a leitura da
+  // tela inteira (funil, FIFO, coleta e tabela todos leem dele).
   const chipsTopo =
-    '<div class="filtros-linha">' + chipsSet('Marca', filtroMarcaPfa, opcoesDe('marca'), 'alternarMarcaPfa') + '</div>' +
-    '<div class="filtros-linha">' + chipsSet('Segmento', filtroSegmentoPfa,
-      // Segmento em ordem alfabética (Marca continua por volume, que ali ajuda
-      // a achar a marca grande primeiro).
-      opcoesDe('segmento_macro').sort(function (a, b) { return ordemAlfabetica(a.rotulo, b.rotulo); }),
-      'alternarSegmentoPfa') + '</div>' +
-    '<div class="filtros-linha">' + chipsSet('FIFO', filtroFifoPfa, (p.faixas_fifo || []).map(function (f) {
-      return { valor: f.chave, rotulo: f.rotulo };
-    }), 'alternarFifoPfa') + '</div>' +
+    '<div class="filtros-linha filtros-linha-fixa">' +
+      chipsSet('Marca', filtroMarcaPfa, opcoesDe('marca'), 'alternarMarcaPfa') +
+      chipsSet('Segmento', filtroSegmentoPfa,
+        // Segmento em ordem alfabética (Marca continua por volume, que ali
+        // ajuda a achar a marca grande primeiro).
+        opcoesDe('segmento_macro').sort(function (a, b) { return ordemAlfabetica(a.rotulo, b.rotulo); }),
+        'alternarSegmentoPfa') +
+      chipsSet('FIFO', filtroFifoPfa, (p.faixas_fifo || []).map(function (f) {
+        return { valor: f.chave, rotulo: f.rotulo };
+      }), 'alternarFifoPfa') +
+    '</div>' +
     '<div class="filtros-linha">' + chipsSet('Etapa', filtroEtapaPfa, (p.etapas || []).map(function (e) {
       return { valor: e, rotulo: rotEtapaPfa(e) };
     }), 'alternarEtapaPfa') + '</div>';
@@ -3001,14 +3012,18 @@ function renderizarPfas() {
         c.rotulo + ' · ' + fmtInt(r.conferencia_lidos) + '/' + fmtInt(r.conferencia_total) + '</span></td>' +
       '<td class="centro">' + situacaoHtml + '</td>' +
       '<td>' + fmtInt(r.pares) + '</td>' +
-      '<td>' + (r.dias_abertos === null ? '—' : fmtInt(r.dias_abertos)) + '</td></tr>';
+      '<td>' + (r.data_importacao ? formatarDataSimples(r.data_importacao) : '—') + '</td></tr>';
   }).join('');
   const totalTabela = linhasTabela.reduce(function (s, r) { return s + r.pares; }, 0);
-  const diasMaxTabela = linhasTabela.reduce(function (mx, r) { return Math.max(mx, r.dias_abertos || 0); }, 0);
+  // Data da PFA mais antiga no recorte — mesma métrica que ordena a coluna
+  // (dias em aberto), só que mostrada como data em vez de contagem.
+  const maisAntigaTabela = linhasTabela.reduce(function (mx, r) {
+    return (r.dias_abertos !== null && r.dias_abertos > mx.dias) ? { dias: r.dias_abertos, data: r.data_importacao } : mx;
+  }, { dias: -1, data: null });
   const linhaTotal = '<tr class="total"><th class="centro">TOTAL</th>' +
     '<td class="centro" colspan="3">' + fmtInt(linhasTabela.length) + ' PFA(s) no recorte</td>' +
     '<td class="centro">—</td><td class="centro">—</td><td>' + fmtInt(totalTabela) + '</td>' +
-    '<td>' + (diasMaxTabela ? fmtInt(diasMaxTabela) : '—') + '</td></tr>';
+    '<td>' + (maisAntigaTabela.data ? formatarDataSimples(maisAntigaTabela.data) : '—') + '</td></tr>';
 
   /* ---------- avisos ---------- */
   let avisos = '';
@@ -3088,7 +3103,7 @@ function renderizarPfas() {
         thPfa('pfa', 'PFA', 'centro') + thPfa('cliente', 'Cliente', 'centro') +
         thPfa('marca', 'Marca / Segmento', 'centro') + thPfa('etapa', 'Etapa atual', 'centro') +
         thPfa('conferencia', 'Conferência', 'centro') + '<th class="centro">Situação</th>' +
-        thPfa('pares', 'Pares') + thPfa('dias', 'Dias') +
+        thPfa('pares', 'Pares') + thPfa('dias', 'Data') +
       '</tr></thead><tbody>' + linhasHtml + linhaTotal + '</tbody></table></div>' +
       '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Conferência compara os volumes já ' +
         'lidos no Analítico com o total de volumes da PFA: <strong>Não iniciada</strong> nenhum lido · ' +
