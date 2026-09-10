@@ -1630,14 +1630,11 @@ async function aplicarSessao(session) {
   document.getElementById('topbarPerfil').textContent =
     perfilAtual === 'admin' ? '👑 Admin' : perfilAtual === 'gestor' ? '📊 Gestor' : '🛠️ Operador';
   aplicarVisibilidadeMenu();
-  // Balanço de Estoque virou exclusivo de gestor/admin (RLS já bloqueia o
-  // dado; isto só evita operador cair numa tela vazia/quebrada por padrão).
-  // Operador entra em Start Inicial — única página do grupo Operação hoje.
-  if (perfilAtual === 'gestor' || perfilAtual === 'admin') {
-    await carregarEstoque();
-  } else {
-    mostrarSecao('start');
-  }
+  // Start Inicial é a tela padrão pra QUALQUER perfil (pedido do usuário,
+  // 10/09/2026) — antes gestor/admin caíam direto no Balanço de Estoque.
+  // Balanço de Estoque continua acessível pelo menu, só não é mais o
+  // destino automático do login.
+  mostrarSecao('start');
 }
 
 document.getElementById('formLogin').addEventListener('submit', async function (ev) {
