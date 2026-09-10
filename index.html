@@ -2463,6 +2463,14 @@ const ROT_ETAPA_PFA = {
 };
 function rotEtapaPfa(e) { return ROT_ETAPA_PFA[e] || e || '—'; }
 
+/* "PFAs em fluxo de coleta" (KPI, pedido da operação 10/09/2026): tudo que
+   ainda está sendo trabalhado na operação, antes de chegar em Leitura
+   expedição/Gerar Nota Fiscal — Leitura expedição já SAIU do fluxo de coleta
+   (já tem NF, já foi encaminhada pro embarque; exceção sabida: personalizado
+   pode aparecer aqui mesmo sem ter ido pro embarque de verdade, por passar
+   pela etapa de persona — a operação vai investigar isso à parte). */
+const ETAPAS_FLUXO_COLETA = ['Nao disp. picking', 'Disp. p/ picking', 'Em picking'];
+
 /* Cor da etapa no funil: não é semáforo de "ruim", é posição no fluxo — o
    material anda da esquerda (ainda nem liberado) pra direita (só falta a
    nota). Vermelho fica reservado pro fim da fila, que é onde parar dói mais. */
@@ -2734,7 +2742,19 @@ function renderizarPfas() {
     return (r.dias_abertos !== null && r.dias_abertos > mx.dias) ? { dias: r.dias_abertos, data: r.data_importacao } : mx;
   }, { dias: 0, data: null });
 
-  // Aguardando NF/coleta vêm do Analítico, que não tem etapa própria — pra
+  // Fluxo de coleta e "aguard. NF" agora vêm direto do Pendentes (situação),
+  // não mais do cruzamento com o Analítico — respeitam os MESMOS filtros do
+  // topo (Marca/Segmento/FIFO/Etapa) que "PFAs pendentes" já respeita, por
+  // saírem do mesmo `filtrados`. Pedido da operação (10/09/2026): "Conferido,
+  // aguard. nota fiscal" precisa mostrar só quem está genuinamente parado
+  // com o fiscal (situação = Gerar Nota Fiscal) — Leitura expedição já tem
+  // NF e já foi pro embarque, não entra em nenhum dos dois.
+  const fluxoColeta = filtrados.filter(function (r) { return ETAPAS_FLUXO_COLETA.indexOf(r.situacao) !== -1; });
+  const paresFluxoColeta = fluxoColeta.reduce(function (s, r) { return s + r.pares; }, 0);
+  const pendentesFiscal = filtrados.filter(function (r) { return r.situacao === 'Gerar Nota Fiscal'; });
+  const paresPendentesFiscal = pendentesFiscal.reduce(function (s, r) { return s + r.pares; }, 0);
+
+  // Aguardando coleta vem do Analítico, que não tem etapa própria — pra
   // Etapa valer aqui também, cruza pelo número da PFA com a situação atual
   // em Pendentes. PFA que não aparece mais em Pendentes fica de fora sempre
   // que algum filtro de etapa estiver ativo (não tem etapa que se afirme).
@@ -2743,9 +2763,6 @@ function renderizarPfas() {
   function passaEtapaCruzada(pfa) {
     return !filtroEtapaPfa.size || filtroEtapaPfa.has(etapaPorPfa.get(pfa));
   }
-  const nfFiltrado = (p.aguardando_nf || []).filter(function (r) {
-    return passaMarcaSegmentoPfa(r) && passaEtapaCruzada(r.pfa);
-  });
   const coletaFiltrado = (p.aguardando_coleta || []).filter(function (r) {
     return passaMarcaSegmentoPfa(r) && passaEtapaCruzada(r.pfa);
   });
@@ -2756,7 +2773,7 @@ function renderizarPfas() {
   // PFAs / 5.648 pç que a própria operação já tinha dito, na rodada
   // anterior, que não estavam mais em tela. Presença em Pendentes não
   // depende da cobertura de nenhum arquivo — não some quando o arquivo
-  // muda. O mesmo corte vale pras DUAS populações (sem nota e com nota).
+  // muda.
   function separarConfirmado(lista) {
     const conf = lista.filter(function (r) { return r.confirmado; });
     const naoConf = lista.filter(function (r) { return !r.confirmado; });
@@ -2767,7 +2784,6 @@ function renderizarPfas() {
       pfasConf: new Set(conf.map(function (r) { return r.pfa; })).size,
     };
   }
-  const nfSep = separarConfirmado(nfFiltrado);
   const coletaSep = separarConfirmado(coletaFiltrado);
   const qtdeColeta = coletaFiltrado.reduce(function (s, r) { return s + r.qtde; }, 0);
   const pfasColeta = new Set(coletaFiltrado.map(function (r) { return r.pfa; })).size;
@@ -2787,10 +2803,12 @@ function renderizarPfas() {
     '<div class="kpi"><div class="rot">Mais antiga em tela</div>' +
       '<div class="val forte" style="color:var(--amber)">' + (maisAntiga.dias ? fmtInt(maisAntiga.dias) + ' dias' : '—') + '</div>' +
       '<div class="sub">' + (maisAntiga.data ? 'importada ' + formatarDataSimples(maisAntiga.data) : 'sem PFA no recorte') + '</div></div>' +
+    '<div class="kpi"><div class="rot">PFAs em fluxo de coleta</div>' +
+      '<div class="val forte">' + fmtInt(paresFluxoColeta) + ' pares</div>' +
+      '<div class="sub">' + fmtInt(fluxoColeta.length) + ' PFAs · Não disp./Disp. p/ picking/Em picking</div></div>' +
     '<div class="kpi"><div class="rot">Conferido, aguard. nota fiscal</div>' +
-      '<div class="val forte">' + fmtInt(nfSep.qtdeConf) + ' pç</div>' +
-      '<div class="sub">' + fmtInt(nfSep.pfasConf) + ' PFAs · sem data, sem FIFO ainda' +
-      (nfSep.qtdeNaoConf ? ' · +' + fmtInt(nfSep.qtdeNaoConf) + ' pç não confirmados' : '') + '</div></div>' +
+      '<div class="val forte">' + fmtInt(paresPendentesFiscal) + ' pares</div>' +
+      '<div class="sub">' + fmtInt(pendentesFiscal.length) + ' PFAs · situação "Gerar Nota Fiscal"</div></div>' +
     '<div class="kpi"><div class="rot">Com nota, aguard. coleta</div>' +
       '<div class="val forte" style="color:var(--red)">' + fmtInt(coletaSep.qtdeConf) + ' pç</div>' +
       '<div class="sub">' + fmtInt(coletaSep.pfasConf) + ' PFAs' +
@@ -2878,13 +2896,11 @@ function renderizarPfas() {
         '</p>' +
     '</div>';
   })() +
-  ((coletaSep.qtdeNaoConf || nfSep.qtdeNaoConf) ? '<div class="aviso" style="border-color:var(--amber)">' +
-    (coletaSep.qtdeNaoConf ? '<strong>' + fmtInt(coletaSep.qtdeNaoConf) + ' peças</strong> (aguardando coleta)' : '') +
-    (coletaSep.qtdeNaoConf && nfSep.qtdeNaoConf ? ' e ' : '') +
-    (nfSep.qtdeNaoConf ? '<strong>' + fmtInt(nfSep.qtdeNaoConf) + ' peças</strong> (aguardando nota fiscal)' : '') +
-    ' aparecem no Analítico mas <strong>não estão na lista atual de Pendentes</strong> — ficam fora dos ' +
-    'KPIs acima. A operação confirmou que esse volume não está mais em tela: provável material fora do ' +
-    'range do arquivo de embarque ou B.O. em análise.</div>' : '');
+  (coletaSep.qtdeNaoConf ? '<div class="aviso" style="border-color:var(--amber)">' +
+    '<strong>' + fmtInt(coletaSep.qtdeNaoConf) + ' peças</strong> (aguardando coleta) aparecem no Analítico mas ' +
+    '<strong>não estão na lista atual de Pendentes</strong> — ficam fora dos KPIs acima. A operação confirmou ' +
+    'que esse volume não está mais em tela: provável material fora do range do arquivo de embarque ou B.O. ' +
+    'em análise.</div>' : '');
 
   /* ---------- funil por etapa ---------- */
   const porEtapa = new Map();
