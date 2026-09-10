@@ -265,6 +265,26 @@ eq(aju.linhas_invalidas, 1, 'tipo desconhecido conta como inválido (linha tem t
 eq(aju.registros[0].encomenda, '960841', 'encomenda preservada — é a chave que sobrevive a renumeração de PFA');
 eq(aju.registros[0].pfa_nova, '242305', 'PFA nova lida');
 
+secao('parsearAjustesPfa — sobrevive ao próprio modelo baixado (aspas em todo campo + "," de separador de lista do Windows, 10/09/2026)');
+const linhaAspas = function (delim) {
+  return ['tipo', 'encomenda', 'pfa_antiga', 'pfa_nova', 'cliente_codigo', 'cliente_nome', 'artigo', 'cor_tam',
+    'qtde_total_nf', 'qtde_inicial', 'qtde_pos_ajuste', 'motivo', 'data_solicitacao', 'solicitante']
+    .map(function (c) { return '"' + c + '"'; }).join(delim);
+};
+const linhaAspasDados = function (delim) {
+  return ['AJUSTE', '960841', '242018', '242305', '46212', 'CHARLESTON WILLIA', 'OIMCR24302', 'PT/PRT M',
+    '60', '5', '3', 'Ajuste de encomenda', '09/09/2026', 'ERIKA DOMINGUES LEME']
+    .map(function (c) { return '"' + c + '"'; }).join(delim);
+};
+const ajuAspasPontoVirgula = parsearAjustesPfa('﻿' + [linhaAspas(';'), linhaAspasDados(';')].join('\n'));
+eq(ajuAspasPontoVirgula.registros.length, 1, 'modelo baixado (";", tudo entre aspas) — sem o fix dava 0');
+eq(ajuAspasPontoVirgula.registros[0].encomenda, '960841', 'aspas removidas do campo, não fica "960841" com aspas coladas');
+eq(ajuAspasPontoVirgula.registros[0].qtde_inicial, 5, 'campo numérico entre aspas também converte certo');
+
+const ajuVirgula = parsearAjustesPfa([linhaAspas(','), linhaAspasDados(',')].join('\n'));
+eq(ajuVirgula.registros.length, 1, 'Excel com separador de lista em inglês salva com "," — mesmo bug real: dava 0 antes do fix');
+eq(ajuVirgula.registros[0].artigo, 'OIMCR24302', 'delimitador "," detectado e respeitado');
+
 secao('parsearAjustesPfa — tipo reconhece palavra-chave, não exige grafia exata (10/09/2026)');
 const ajuSinonimo = parsearAjustesPfa([CAB_AJU,
   linhaAju('cancelado', '960900', '242020', '', 'OIMCR24303', '10', '2', '0', 'Financeiro'),

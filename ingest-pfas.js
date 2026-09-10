@@ -342,17 +342,55 @@ const PFA_RETRABALHADA_SLA_DIAS_UTEIS = 1;
    própria: a assistente preenche qtde_inicial = qtde_pos_ajuste, e a perda
    líquida (calculada abaixo, nunca lida do arquivo) sai zero sozinha.
    ============================================================================ */
+/* Split de uma linha CSV respeitando aspas — precisa disso porque o próprio
+   modelo baixado (baixarModeloAjustesPfa) exporta com todo campo entre
+   aspas, e um `linha.split(delim)` ingênuo deixaria as aspas coladas no
+   valor (\"960841\" em vez de 960841), quebrando o cruzamento por
+   encomenda/pfa/artigo mais adiante. */
+function dividirLinhaCsv(linha, delim) {
+  const campos = [];
+  let atual = '';
+  let dentroAspas = false;
+  for (let i = 0; i < linha.length; i++) {
+    const c = linha[i];
+    if (dentroAspas) {
+      if (c === '"') {
+        if (linha[i + 1] === '"') { atual += '"'; i++; } else { dentroAspas = false; }
+      } else {
+        atual += c;
+      }
+    } else if (c === '"') {
+      dentroAspas = true;
+    } else if (c === delim) {
+      campos.push(atual);
+      atual = '';
+    } else {
+      atual += c;
+    }
+  }
+  campos.push(atual);
+  return campos;
+}
+
 function parsearAjustesPfa(textoArquivo) {
-  const linhas = String(textoArquivo || '').split(/\r?\n/);
+  const linhas = String(textoArquivo || '').replace(/^﻿/, '').split(/\r?\n/);
   const registros = [];
   let linhasInvalidas = 0;
+
+  // Delimitador flexível: a operação usa ";" (padrão pt-BR), mas o Excel
+  // salva CSV com "," quando o separador de lista do Windows está em inglês
+  // — sem detectar isso a planilha inteira dá "nenhuma linha reconhecida"
+  // mesmo estando 100% correta (bug real reportado 10/09/2026). Decide pelo
+  // delimitador mais frequente na primeira linha não vazia (cabeçalho).
+  const primeiraLinha = linhas.find(function (l) { return l.trim(); }) || '';
+  const delimitador = (primeiraLinha.split(',').length > primeiraLinha.split(';').length) ? ',' : ';';
 
   for (let i = 0; i < linhas.length; i++) {
     const linha = linhas[i];
     if (!linha.trim()) continue;
-    if (/^tipo\s*;/i.test(linha)) continue;
 
-    const p = linha.split(';');
+    const p = dividirLinhaCsv(linha, delimitador).map(function (c) { return c.trim(); });
+    if (/^tipo$/i.test(p[0])) continue; // cabeçalho, com ou sem aspas
     if (p.length < 14) continue;
 
     const tipo = normalizarTipoAjuste(p[0]);
