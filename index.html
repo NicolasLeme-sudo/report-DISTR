@@ -2793,10 +2793,18 @@ function renderizarPfas() {
         : 'nenhum ajuste travado aguardando importação') + '</div></div>' +
   '</div>' +
 
-  /* ---------- Perdas e ajustes do período (grupo à parte, com o próprio seletor) ---------- */
+  /* ---------- Perdas e ajustes do período (grupo à parte, com o próprio seletor) ----------
+     Marca/Segmento do topo TAMBÉM recortam este card (mesmo passaMarcaSegmentoPfa
+     das outras seções — o ajuste carrega marca/segmento_macro resolvidos pelo
+     artigo). FIFO e Etapa ficam de fora de propósito: nenhum dos dois tem
+     equivalente num evento de ajuste — FIFO mede dias desde a importação em
+     Pendentes e Etapa mede a situação atual, e a PFA antiga de um ajuste já
+     SAIU de Pendentes no momento do corte. Aplicá-los seria inventar um dado
+     que a linha não tem. */
   (function () {
     const janela = janelaPeriodoPerdasPfa();
-    const ajustesTodos = p.ajustes || [];
+    const ajustesTodos = (p.ajustes || []).filter(passaMarcaSegmentoPfa);
+    const fifoOuEtapaAtivos = filtroFifoPfa.size > 0 || filtroEtapaPfa.size > 0;
     function somaPorTipo(tipo) {
       const lista = ajustesTodos.filter(function (a) { return a.tipo === tipo && ajustePfaNoPeriodo(a, janela); });
       const pfas = new Set(lista.map(function (a) { return a.pfa_antiga; }));
@@ -2853,7 +2861,10 @@ function renderizarPfas() {
       '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Ajuste conta como perda só pelo ' +
         '<strong>líquido</strong> (qtde_inicial − qtde_pos_ajuste) — se o corte foi coberto por um artigo ' +
         'substituto (DE-PARA), a perda sai zero sozinha. Cancelamento sem reposição entra 100% na soma acima, ' +
-        'sem card próprio: já é perda inteira por definição.</p>' +
+        'sem card próprio: já é perda inteira por definição. Marca/Segmento do topo recortam este card também.' +
+        (fifoOuEtapaAtivos ? ' <strong style="color:var(--amber)">FIFO e Etapa não se aplicam aqui</strong> — ' +
+          'a PFA antiga de um ajuste já saiu de Pendentes, então não tem dias em aberto nem etapa atual pra filtrar.' : '') +
+        '</p>' +
     '</div>';
   })() +
   ((coletaSep.qtdeNaoConf || nfSep.qtdeNaoConf) ? '<div class="aviso" style="border-color:var(--amber)">' +

@@ -303,7 +303,12 @@ const ajustesTeste = { registros: [
     qtde_total_nf: 120, qtde_inicial: 120, qtde_pos_ajuste: 0, motivo: 'Recusa de envio parcial (AD)',
     data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
 ] };
-const snapAju = construirSnapshotPfas(pendAju, anaAju, { registros: [] }, mapaFamilias, { referencia: HOJE }, ajustesTeste);
+// Dicionário artigo->família: só OIMCR24302 está mapeado (família 102,
+// MIZUNO CALÇADO) — OIACS20044 fica de propósito sem entrada, pra provar
+// que artigo nunca visto num upload de Picking/Pulmão vira "sem marca",
+// não quebra nem inventa dado.
+const mapaArtFamTeste = new Map([['OIMCR24302', '102']]);
+const snapAju = construirSnapshotPfas(pendAju, anaAju, { registros: [] }, mapaFamilias, { referencia: HOJE }, ajustesTeste, mapaArtFamTeste);
 
 // Exclusão do pendente
 ok(!snapAju.pendentes.some(function (r) { return r.pfa === '242018'; }), 'PFA antiga (242018) some do pendente na hora do ajuste');
@@ -337,6 +342,12 @@ const pfaNovaAtrasada = snapAju.pendentes.find(function (r) { return r.pfa === '
 eq(pfaNovaAtrasada.situacao_pfa, 'retrabalhada_atrasada', 'importada há 3 dias úteis — estourou o SLA de 1 dia útil');
 const pfaNormal = snapAju.pendentes.find(function (r) { return r.pfa === '239900'; });
 eq(pfaNormal.situacao_pfa, 'normal', 'PFA que nunca foi "pfa_nova" de nenhum ajuste é sempre normal');
+
+/* -------------------------------------------------------------------------- */
+secao('ajustes carregam marca/segmento pelo artigo — pros filtros do topo também recortarem o card de perdas');
+eq(perdaAjusteReal.marca, 'MIZUNO', 'artigo OIMCR24302 resolvido pelo dicionário artigo->família');
+eq(perdaAjusteReal.segmento_macro, 'CALÇADO', 'segmento também vem do mesmo cruzamento');
+eq(perdaCancelamento.marca, null, 'OIACS20044 nunca apareceu num upload de Picking/Pulmão — fica sem marca, não quebra');
 
 /* -------------------------------------------------------------------------- */
 secao('diasUteisEntre — pula sábado e domingo');

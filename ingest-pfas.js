@@ -376,7 +376,7 @@ function parsearAjustesPfa(textoArquivo) {
    de FIFO) fica em arrays por PFA, pequenos o bastante pro navegador recortar
    na hora sem ida ao banco — mesmo padrão de `validacao`/`historico`.
    ============================================================================ */
-function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, meta, ajustes) {
+function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, meta, ajustes, mapaArtigoFamilia) {
   const hoje = (meta && meta.referencia) || hojeISO();
   const familiasNaoMapeadas = new Set();
   const ajustesLista = (ajustes && ajustes.registros) || [];
@@ -647,11 +647,27 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
      perda sai zero) sem precisar de coluna extra na planilha. A tela agrega
      por tipo E por período (data_solicitacao), filtrando este array —
      nenhuma soma pronta aqui além da que precisa cruzar com Pendentes. */
+  // Marca/Segmento do ajuste vêm do ARTIGO (não da família direto — a
+  // planilha manual não traz família nenhuma), pelo mesmo dicionário
+  // artigo->família que Ressuprimento já mantém. Artigo que nunca passou
+  // por um upload de Picking/Pulmão fica sem marca/segmento — os filtros
+  // do topo simplesmente não pegam essa linha, nunca escondida por outro
+  // motivo qualquer.
+  const mapaArtFam = mapaArtigoFamilia || new Map();
+  function marcaSegmentoDoArtigo(artigo) {
+    const familiaCod = mapaArtFam.get(artigo);
+    const fam = familiaCod ? mapaFamilias.get(familiaCod) : null;
+    if (!fam) return { marca: null, segmento_macro: null };
+    return { marca: fam.marca, segmento_macro: window.segmentoMacro(fam.segmento, fam.categoria) };
+  }
+
   const ajustesPayload = ajustesLista.map(function (a) {
     const perdaLiquida = Math.max(0, (a.qtde_inicial || 0) - (a.qtde_pos_ajuste || 0));
+    const ms = marcaSegmentoDoArtigo(a.artigo);
     return {
       tipo: a.tipo, encomenda: a.encomenda, pfa_antiga: a.pfa_antiga, pfa_nova: a.pfa_nova,
       cliente_nome: a.cliente_nome, artigo: a.artigo, cor_tam: a.cor_tam,
+      marca: ms.marca, segmento_macro: ms.segmento_macro,
       qtde_total_nf: a.qtde_total_nf, qtde_inicial: a.qtde_inicial, qtde_pos_ajuste: a.qtde_pos_ajuste,
       perda_liquida: perdaLiquida, motivo: a.motivo, data_solicitacao: a.data_solicitacao,
       solicitante: a.solicitante,
@@ -776,12 +792,23 @@ async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileE
     'tipo, encomenda, pfa_antiga, pfa_nova, cliente_nome, artigo, cor_tam, qtde_total_nf, qtde_inicial, qtde_pos_ajuste, motivo, data_solicitacao, solicitante');
   const ajustes = { registros: linhasAjustes };
 
+  // Dicionário artigo->família (populado a cada upload de Picking/Pulmão)
+  // é o que permite os filtros de Marca/Segmento do topo da tela também
+  // recortarem o card "Perdas e ajustes do período" — sem ele, ajuste não
+  // tem marca/segmento nenhum pra filtrar (a planilha manual só traz o
+  // código do artigo, não a família). Artigo que nunca passou por um
+  // upload de Picking/Pulmão fica sem marca/segmento — visível como tal,
+  // nunca escondido do card.
+  const linhasArtigoFamilia = await window.lerTudoPaginado(supabaseClient, 'dim_artigo_familia',
+    'artigo_codigo, familia_codigo');
+  const mapaArtigoFamiliaPfa = new Map(linhasArtigoFamilia.map(function (a) { return [a.artigo_codigo, a.familia_codigo]; }));
+
   avisar('Cruzando os arquivos…');
   const payload = construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, {
     arquivo_pendentes: filePendentes.name,
     arquivo_analitico: fileAnalitico.name,
     arquivo_embarcadas: fileEmbarcadas ? fileEmbarcadas.name : null,
-  }, ajustes);
+  }, ajustes, mapaArtigoFamiliaPfa);
 
   if (payload.stats.excluidas_por_embarque.pfas) {
     avisar(
