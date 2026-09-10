@@ -503,6 +503,21 @@ function deduplicarPosicoes(registros) {
   return { registros: Array.from(porChave.values()), colisoes: colisoes };
 }
 
+/* Busca o `payload` mais recente de uma página em dashboard_snapshots, ou
+   `null` se nunca houve upload. Usado por ingests que precisam saber "o que
+   já está em tela" pra abastecer um pedaço sozinho sem apagar os outros
+   (ex.: PFAs Pendentes sem reenviar Analítico — ver processarPfas). */
+async function buscarUltimoPayload(supabaseClient, pagina) {
+  const { data, error } = await supabaseClient
+    .from('dashboard_snapshots')
+    .select('payload')
+    .eq('pagina', pagina)
+    .order('gerado_em', { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  return (data && data[0] && data[0].payload) || null;
+}
+
 /* ----------------------------------------------------------------------------
    PAGINAÇÃO SEGURA (README 3.1)
    ----------------------------------------------------------------------------
@@ -904,6 +919,7 @@ window.processarEstoque = processarEstoque;
 // duplicar a lógica que acabou de ganhar 17 casos de teste em ingest.js.
 window.numeroBR = numeroBR;
 window.lerTudoPaginado = lerTudoPaginado;
+window.buscarUltimoPayload = buscarUltimoPayload;
 window.parsearRelatorio = parsearRelatorio;
 window.detectarLayout = detectarLayout;
 window.parsearRelatorioEstoque = parsearRelatorioEstoque;

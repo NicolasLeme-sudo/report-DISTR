@@ -398,6 +398,62 @@ eq(perdaAjusteReal.segmento_macro, 'CALÇADO', 'segmento também vem do mesmo cr
 eq(perdaCancelamento.marca, null, 'OIACS20044 nunca apareceu num upload de Picking/Pulmão — fica sem marca, não quebra');
 
 /* -------------------------------------------------------------------------- */
+secao('construirSnapshotPfas — abastecimento parcial (só Pendentes, ou só Embarcadas), sem apagar o resto (10/09/2026)');
+
+// snap1: rodada "completa", com os 3 arquivos.
+const pend1Parcial = parsearPfasPendentes([CAB_PEND,
+  linhaPend('S1', '01/09', '102', '2', 'Nao disp. picking', '10'), // 2 volumes, 1 conferido -> parcial
+  linhaPend('S2', '01/09', '102', '1', 'Nao disp. picking', '8'),  // com nota -> aguardando_coleta
+  linhaPend('E1', '01/09', '102', '1', 'Nao disp. picking', '7'),  // vai ser embarcada
+].join('\n'), HOJE);
+const ana1Parcial = parsearPfasAnalitico([CAB_ANA,
+  linhaAna('S1', '0', '', 'VOLA', '102', 'ART1', '4'),               // sem nota, 1 de 2 volumes lidos
+  linhaAna('S2', 'N100', '01/09/2026', 'VOLB', '102', 'ART2', '6'),  // com nota
+].join('\n'));
+const emb1Parcial = parsearPfasEmbarcadas([CAB_EMB, linhaEmb('E1', '01/09/2026', 'N1', '5')].join('\n'));
+const snap1Parcial = construirSnapshotPfas(pend1Parcial, ana1Parcial, emb1Parcial, mapaFamilias,
+  { referencia: HOJE, arquivo_pendentes: 'pend1.txt', arquivo_analitico: 'ana1.csv', arquivo_embarcadas: 'emb1.csv' },
+  { registros: [] }, new Map());
+
+ok(!snap1Parcial.pendentes.some(function (r) { return r.pfa === 'E1'; }), 'E1 embarcada some do pendente na rodada completa');
+eq(JSON.stringify(snap1Parcial.embarcadas_pfas), JSON.stringify(['E1']), 'PFA embarcada fica guardada no payload pra reaplicar depois');
+const s1Confere = snap1Parcial.pendentes.find(function (r) { return r.pfa === 'S1'; });
+eq(s1Confere.conferencia, 'parcial_rastreio', 'S1: 1 de 2 volumes lidos, parado há 7 dias na etapa -> parcial_rastreio');
+
+// snap2: só Pendentes é reenviado (Analítico e Embarcadas ficam de fora) —
+// o pedido real da operação (10/09/2026): atualizar etapa/FIFO rápido sem
+// precisar ter os outros dois arquivos em mãos. Nova referência (2 dias
+// depois) pra provar que o que É recalculável (dias_nota) avança mesmo sem
+// reenviar o Analítico.
+const pend2Parcial = parsearPfasPendentes([CAB_PEND,
+  linhaPend('S1', '01/09', '102', '2', 'Em picking', '10'),  // mesma PFA, etapa avançou
+  linhaPend('S3', '10/09', '102', '1', 'Nao disp. picking', '3'), // PFA nova, nunca vista antes
+  linhaPend('E1', '01/09', '102', '1', 'Nao disp. picking', '7'), // fonte atrasada: E1 volta a aparecer
+].join('\n'), '2026-09-10');
+const snap2Parcial = construirSnapshotPfas(pend2Parcial, null, null, mapaFamilias,
+  { referencia: '2026-09-10', arquivo_pendentes: 'pend2.txt' },
+  { registros: [] }, new Map(), snap1Parcial);
+
+ok(!snap2Parcial.pendentes.some(function (r) { return r.pfa === 'E1'; }), 'E1 continua excluída mesmo sem reenviar Embarcadas — reaplica embarcadas_pfas do último snapshot');
+eq(snap2Parcial.arquivo_embarcadas, 'emb1.csv', 'nome do arquivo de Embarcadas carregado do último snapshot, não fica null');
+const s1Novo = snap2Parcial.pendentes.find(function (r) { return r.pfa === 'S1'; });
+eq(s1Novo.situacao, 'Em picking', 'S1: etapa atualizada com o Pendentes novo');
+eq(s1Novo.conferencia, 'parcial_rastreio', 'S1: conferência CONGELADA no valor de quando o Analítico foi lido de verdade');
+eq(s1Novo.conferencia_lidos, 1, 'volumes lidos também congelados (1 de 2)');
+const s3Novo = snap2Parcial.pendentes.find(function (r) { return r.pfa === 'S3'; });
+eq(s3Novo.conferencia, 'nao_iniciada', 'S3: PFA nova, nunca vista no Analítico -> honesta, não herda nada');
+
+const semNotaCarregado = snap2Parcial.aguardando_nf.find(function (g) { return g.pfa === 'S1'; });
+ok(!!semNotaCarregado, 'aguardando_nf (S1) sobrevive ao upload que não reenviou Analítico');
+eq(semNotaCarregado.qtde, 4, 'quantidade do grupo carregado continua a mesma');
+ok(semNotaCarregado.confirmado, 'S1 continua confirmado — ainda está no Pendentes novo');
+
+const comNotaCarregado = snap2Parcial.aguardando_coleta.find(function (g) { return g.pfa === 'S2'; });
+ok(!!comNotaCarregado, 'aguardando_coleta (S2) também sobrevive');
+ok(!comNotaCarregado.confirmado, 'S2 vira NÃO confirmado — sumiu do Pendentes novo (confirmado é recalculado, não congelado)');
+eq(comNotaCarregado.dias_nota, diasEntre('2026-09-01', '2026-09-10'), 'dias_nota RECALCULADO pra hoje mesmo sem Analítico novo (a data da nota é real)');
+
+/* -------------------------------------------------------------------------- */
 secao('diasUteisEntre — pula sábado e domingo');
 eq(diasUteisEntre('2026-09-08', '2026-09-08'), 0, 'mesma data, zero dias úteis');
 eq(diasUteisEntre('2026-09-03', '2026-09-08'), 3, 'qui 03/09 → ter 08/09 = 3 dias úteis (sex, seg, ter — fim de semana fora)');

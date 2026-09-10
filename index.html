@@ -1199,14 +1199,18 @@ tr.total > th, tr.total > td {
       <div class="card">
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
           Alimenta o <strong>Start Inicial</strong>: o que está parado, em qual etapa e há quanto tempo.
-          Os dois primeiros são obrigatórios; o de <strong>NFs Embarcadas</strong> é o que tira do
-          pendente o que já saiu — sem ele, PFA já embarcada continua contando como parada.
+          Os três arquivos são <strong>independentes</strong> — pode selecionar só um (ex.: só Pendentes,
+          pra atualizar etapa/FIFO rápido) e clicar em Processar. O que não for reenviado continua
+          valendo do último abastecimento (nada é apagado ou zerado).
         </p>
         <ul style="font-size:12px;color:var(--text-muted);margin:-6px 0 14px 18px;padding:0">
-          <li><strong>PFAs Pendentes</strong> (.txt, "|") — uma linha por PFA, com etapa e data de importação.</li>
+          <li><strong>PFAs Pendentes</strong> (.txt, "|") — uma linha por PFA, com etapa e data de importação.
+            Sozinho, atualiza etapa/FIFO; a conferência de cada PFA fica congelada no último Analítico.</li>
           <li><strong>Analítico de volume pendente de leitura</strong> (.csv, ";") — volumes já conferidos,
             com e sem nota fiscal emitida.</li>
-          <li><strong>NFs Embarcadas</strong> (.csv, ";") — opcional, o que já saiu.</li>
+          <li><strong>NFs Embarcadas</strong> (.csv, ";") — o que já saiu. Depois de abastecido uma vez,
+            continua excluindo PFA já embarcada dos próximos uploads automaticamente — não precisa reenviar
+            toda vez.</li>
         </ul>
         <div class="dropzone" id="dropzonePfaPend">
           <span id="dropzonePfaPendTexto">Clique para selecionar o .txt de <strong>PFAs Pendentes</strong></span>
@@ -1217,7 +1221,7 @@ tr.total > th, tr.total > td {
           <input type="file" id="inputPfaAna" accept=".csv,text/csv" style="display:none">
         </div>
         <div class="dropzone" id="dropzonePfaEmb" style="margin-top:10px">
-          <span id="dropzonePfaEmbTexto">Clique para selecionar o .csv de <strong>NFs Embarcadas</strong> (opcional)</span>
+          <span id="dropzonePfaEmbTexto">Clique para selecionar o .csv de <strong>NFs Embarcadas</strong></span>
           <input type="file" id="inputPfaEmb" accept=".csv,text/csv" style="display:none">
         </div>
         <button class="btn-mini" id="btnProcessarPfas" style="margin-top:12px" disabled>
@@ -4645,21 +4649,22 @@ document.getElementById('btnProcessarKardex').addEventListener('click', async fu
 });
 
 /* ---------- PFAs em tela (Pendentes + Analítico + Embarcadas) ----------
-   Embarcadas é opcional de propósito (o botão libera com os dois primeiros):
-   sem ele a tela ainda serve, só não consegue tirar do pendente o que já
-   saiu — e avisa isso no topo da tela em vez de mostrar número inflado
-   calado. */
+   Os três são independentes (pedido da operação, 10/09/2026): o botão libera
+   com QUALQUER um selecionado. O que não for reenviado numa rodada continua
+   valendo do último snapshot — quem processa só Pendentes, por exemplo,
+   atualiza etapa/FIFO sem precisar ter Analítico/Embarcadas em mãos (ver
+   comentário em construirSnapshotPfas, ingest-pfas.js). */
 let arquivoPfaPendSelecionado = null;
 let arquivoPfaAnaSelecionado = null;
 let arquivoPfaEmbSelecionado = null;
 function atualizarEstadoDropzonePfas() {
-  document.getElementById('btnProcessarPfas').disabled = !(arquivoPfaPendSelecionado && arquivoPfaAnaSelecionado);
+  document.getElementById('btnProcessarPfas').disabled = !(arquivoPfaPendSelecionado || arquivoPfaAnaSelecionado || arquivoPfaEmbSelecionado);
   document.getElementById('dropzonePfaPendTexto').textContent = arquivoPfaPendSelecionado
     ? '✓ ' + arquivoPfaPendSelecionado.name : 'Clique para selecionar o .txt de PFAs Pendentes';
   document.getElementById('dropzonePfaAnaTexto').textContent = arquivoPfaAnaSelecionado
     ? '✓ ' + arquivoPfaAnaSelecionado.name : 'Clique para selecionar o .csv do Analítico';
   document.getElementById('dropzonePfaEmbTexto').textContent = arquivoPfaEmbSelecionado
-    ? '✓ ' + arquivoPfaEmbSelecionado.name : 'Clique para selecionar o .csv de NFs Embarcadas (opcional)';
+    ? '✓ ' + arquivoPfaEmbSelecionado.name : 'Clique para selecionar o .csv de NFs Embarcadas';
 }
 [['dropzonePfaPend', 'inputPfaPend'], ['dropzonePfaAna', 'inputPfaAna'], ['dropzonePfaEmb', 'inputPfaEmb']]
   .forEach(function (par) {

@@ -437,10 +437,20 @@ function parsearAjustesPfa(textoArquivo) {
    de FIFO) fica em arrays por PFA, pequenos o bastante pro navegador recortar
    na hora sem ida ao banco — mesmo padrão de `validacao`/`historico`.
    ============================================================================ */
-function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, meta, ajustes, mapaArtigoFamilia) {
+/* pendentes/analitico/embarcadas podem vir `null` — "não abasteci esse
+   pedaço agora" (pedido da operação, 10/09/2026: reprocessar só Pendentes
+   pra atualizar o andamento sem precisar ter o Analítico do dia em mãos).
+   `ultimoPayload` é o snapshot anterior completo, usado como fonte pro que
+   não foi reenviado — sem ele, o pedaço ausente ficaria zerado no snapshot
+   novo, apagando dado que ainda é válido. */
+function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, meta, ajustes, mapaArtigoFamilia, ultimoPayload) {
   const hoje = (meta && meta.referencia) || hojeISO();
   const familiasNaoMapeadas = new Set();
   const ajustesLista = (ajustes && ajustes.registros) || [];
+  const ultimo = ultimoPayload || null;
+  const pendentesFornecido = !!pendentes;
+  const analiticoFornecido = !!analitico;
+  const embarcadasFornecido = !!embarcadas;
 
   function infoFamilia(codigo) {
     const f = mapaFamilias.get(codigo);
@@ -458,8 +468,14 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
   /* ---------- 1. o que já embarcou sai de cena ----------
      Exclusão por PFA, aplicada ANTES de qualquer soma (decisão do plano). O
      que foi excluído vira número visível — some do KPI, mas não some da
-     conversa: é a medida do atraso da fonte de Pendentes. */
-  const pfasEmbarcadas = new Set(embarcadas.registros.map(function (e) { return e.pfa; }));
+     conversa: é a medida do atraso da fonte de Pendentes.
+     Sem arquivo novo de Embarcadas, reaplica o ÚLTIMO conjunto de PFAs
+     embarcadas conhecido (payload.embarcadas_pfas) — do contrário, cada
+     reprocessamento sem reenviar Embarcadas "ressuscitaria" PFA já
+     embarcada como pendente de novo, desfazendo a exclusão anterior. */
+  const pfasEmbarcadas = embarcadasFornecido
+    ? new Set(embarcadas.registros.map(function (e) { return e.pfa; }))
+    : new Set((ultimo && ultimo.embarcadas_pfas) || []);
 
   /* A JANELA do arquivo de Embarcadas importa tanto quanto o conteúdo: ele
      cobre só um intervalo (o real de 08/09/2026 vai de 17/08 a 08/09), então
@@ -468,16 +484,26 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
      Analítico não está mais em tela — ou saiu fora do range, ou é B.O. em
      análise. Marcar essa fatia como "não confirmada" evita que ela engorde o
      número de "aguardando coleta" como se fosse trabalho vivo. */
-  const datasEmb = embarcadas.registros.map(function (e) { return e.data_nota; }).filter(Boolean).sort();
-  const janelaEmbarcadas = datasEmb.length
-    ? { de: datasEmb[0], ate: datasEmb[datasEmb.length - 1] }
-    : null;
+  const statsAnteriores = (ultimo && ultimo.stats) || {};
+  const datasEmb = embarcadasFornecido
+    ? embarcadas.registros.map(function (e) { return e.data_nota; }).filter(Boolean).sort()
+    : [];
+  const janelaEmbarcadas = embarcadasFornecido
+    ? (datasEmb.length ? { de: datasEmb[0], ate: datasEmb[datasEmb.length - 1] } : null)
+    : (statsAnteriores.janela_embarcadas || null);
 
   const porOperacao = new Map();
-  embarcadas.registros.forEach(function (e) {
-    const op = e.operacao || '—';
-    porOperacao.set(op, (porOperacao.get(op) || 0) + 1);
-  });
+  if (embarcadasFornecido) {
+    embarcadas.registros.forEach(function (e) {
+      const op = e.operacao || '—';
+      porOperacao.set(op, (porOperacao.get(op) || 0) + 1);
+    });
+  }
+  const embarcadasPorOperacao = embarcadasFornecido
+    ? Array.from(porOperacao.entries())
+      .map(function (e) { return { operacao: e[0], notas: e[1] }; })
+      .sort(function (a, b) { return b.notas - a.notas; })
+    : (statsAnteriores.embarcadas_por_operacao || []);
 
   /* ---------- 1.5 PFA baixada por ajuste/cancelamento some do pendente ----------
      Mesmo mecanismo acima, mesma exclusão ANTES de somar. `pfa_antiga` de um
@@ -496,12 +522,29 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
   const pfasComAD = new Set();
   ajustesLista.forEach(function (a) { if (a.tipo === 'AD_DEVOLUCAO') pfasComAD.add(a.pfa_antiga); });
 
-  const todasPfasPendentesArquivo = new Set(pendentes.registros.map(function (r) { return r.pfa; }));
+  /* Sem arquivo novo de Pendentes, reconstrói as linhas "cruas" a partir do
+     ÚLTIMO snapshot — o payload.pendentes já guarda todo campo que o parser
+     do .txt produziria (pfa, data_importacao, situacao, etc.), então dá pra
+     alimentar o resto do pipeline sem duplicar lógica nenhuma. FIFO
+     (dias_abertos) fica congelado no valor de quando foi lido de verdade —
+     mesmo comportamento de "não abasteci hoje", só que dirigido a um único
+     pedaço da tela em vez da tela inteira. */
+  const pendentesRegistros = pendentesFornecido ? pendentes.registros : ((ultimo && ultimo.pendentes) || []).map(function (r) {
+    return {
+      pfa: r.pfa, data_importacao: r.data_importacao, dias_abertos: r.dias_abertos,
+      situacao: r.situacao, data_situacao: r.data_situacao, dias_na_etapa: r.dias_na_etapa,
+      cliente_codigo: r.cliente_codigo, cliente_nome: r.cliente_nome, familia_codigo: r.familia_codigo,
+      transportadora_nome: r.transportadora_nome, cluster: r.cluster, qt_volumes: r.qt_volumes,
+      pares: r.pares, personalizado: r.personalizado,
+    };
+  });
+
+  const todasPfasPendentesArquivo = new Set(pendentesRegistros.map(function (r) { return r.pfa; }));
 
   const pendentesAtivos = [];
   let excluidasPfas = 0, excluidasPares = 0;
   let excluidasPorAjustePfas = 0, excluidasPorAjustePares = 0;
-  pendentes.registros.forEach(function (r) {
+  pendentesRegistros.forEach(function (r) {
     if (pfasEmbarcadas.has(r.pfa)) { excluidasPfas++; excluidasPares += r.pares; return; }
     if (pfasAjustadas.has(r.pfa)) { excluidasPorAjustePfas++; excluidasPorAjustePares += r.pares; return; }
     pendentesAtivos.push(r);
@@ -514,7 +557,7 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
      (qtde_total_nf, não só a diferença), porque o comercial recusou mandar
      o resto: o prejuízo é a PFA toda, não o que faltava originalmente. */
   let excluidasPorAdPfas = 0, excluidasPorAdQtde = 0;
-  const analiticoAtivo = analitico.registros.filter(function (r) {
+  const analiticoAtivo = (analiticoFornecido ? analitico.registros : []).filter(function (r) {
     if (pfasEmbarcadas.has(r.pfa) || pfasAjustadas.has(r.pfa)) return false;
     if (pfasComAD.has(r.pfa)) { excluidasPorAdQtde += r.qtde; return false; }
     return true;
@@ -560,6 +603,24 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
     return { status: status, volumes_lidos: lidos, volumes_total: total };
   }
 
+  // Sem Analítico novo não dá pra recalcular conferência nenhuma (não tem
+  // volume lido pra contar) — em vez de "esquecer" o que já tinha sido
+  // conferido antes (voltando tudo pra "não iniciada"), reaproveita o
+  // último valor conhecido POR PFA. PFA nova, nunca vista, fica honesta em
+  // "não iniciada" mesmo assim — não tem de onde puxar histórico dela.
+  const conferenciaCongelada = new Map();
+  if (!analiticoFornecido && ultimo && ultimo.pendentes) {
+    ultimo.pendentes.forEach(function (r) {
+      conferenciaCongelada.set(r.pfa, {
+        status: r.conferencia, volumes_lidos: r.conferencia_lidos, volumes_total: r.conferencia_total,
+      });
+    });
+  }
+  function statusConferenciaOuCongelada(pfa, qtVolumes, diasNaEtapa) {
+    if (analiticoFornecido) return statusConferencia(pfa, qtVolumes, diasNaEtapa);
+    return conferenciaCongelada.get(pfa) || { status: 'nao_iniciada', volumes_lidos: 0, volumes_total: qtVolumes || 0 };
+  }
+
   /* PFA "nova" de um AJUSTE é reconhecida por aparecer como `pfa_nova` de
      alguma linha — não precisa de campo próprio no arquivo de Pendentes.
      O leadtime dela é o SLA curto (PFA_RETRABALHADA_SLA_DIAS_UTEIS), contado
@@ -574,7 +635,7 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
   /* ---------- 3. linhas de Pendentes, já enriquecidas ---------- */
   const linhasPendentes = pendentesAtivos.map(function (r) {
     const e = enriquecer(r.familia_codigo);
-    const conf = statusConferencia(r.pfa, r.qt_volumes, r.dias_na_etapa);
+    const conf = statusConferenciaOuCongelada(r.pfa, r.qt_volumes, r.dias_na_etapa);
     const ehRetrabalhada = pfaNovaParaAjuste.has(r.pfa);
     const diasUteisRetrabalho = ehRetrabalhada && r.data_importacao
       ? diasUteisEntre(r.data_importacao, hoje) : null;
@@ -646,11 +707,6 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
     }).sort(function (a, b) { return b.qtde - a.qtde; });
   }
 
-  const linhasSemNota = analiticoAtivo.filter(function (r) { return !r.nota; });
-  const linhasComNota = analiticoAtivo.filter(function (r) { return !!r.nota; });
-  const semNota = agregarPorPfaFamilia(linhasSemNota);
-  const comNota = agregarPorPfaFamilia(linhasComNota);
-
   function totalizar(agregado, linhasBrutas) {
     const pfas = new Set(), volumes = new Set();
     let qtde = 0;
@@ -658,9 +714,45 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
     linhasBrutas.forEach(function (r) { if (r.volume) volumes.add(r.volume); });
     return { qtde: qtde, pfas: pfas.size, volumes: volumes.size, linhas: linhasBrutas.length };
   }
+  // Sem Analítico novo, volumes/linhas não têm como ser recontados (não há
+  // linha SKU nova pra somar) — mantém o último valor conhecido em vez de
+  // zerar; qtde/pfas continuam corretos (vêm do grupo, não da linha bruta).
+  function totalizarCongelado(agregado, statsAntigo) {
+    const pfas = new Set();
+    let qtde = 0;
+    agregado.forEach(function (g) { pfas.add(g.pfa); qtde += g.qtde; });
+    return {
+      qtde: qtde, pfas: pfas.size,
+      volumes: (statsAntigo && statsAntigo.volumes) || 0,
+      linhas: (statsAntigo && statsAntigo.linhas) || 0,
+    };
+  }
 
-  const totalSemNota = totalizar(semNota, linhasSemNota);
-  const totalComNota = totalizar(comNota, linhasComNota);
+  let semNota, comNota, totalSemNota, totalComNota;
+  if (analiticoFornecido) {
+    const linhasSemNota = analiticoAtivo.filter(function (r) { return !r.nota; });
+    const linhasComNota = analiticoAtivo.filter(function (r) { return !!r.nota; });
+    semNota = agregarPorPfaFamilia(linhasSemNota);
+    comNota = agregarPorPfaFamilia(linhasComNota);
+    totalSemNota = totalizar(semNota, linhasSemNota);
+    totalComNota = totalizar(comNota, linhasComNota);
+  } else {
+    // Reaproveita os grupos do último snapshot, só reabrindo o que muda com
+    // o tempo mesmo sem Analítico novo: `confirmado` contra o Pendentes
+    // (fresco ou também congelado, tanto faz — ver pfasEmPendentes acima) e
+    // `dias_nota` recontado pra HOJE (a data da nota é real, então o
+    // backlog continua envelhecendo mesmo sem reenviar o arquivo).
+    const recarregarGrupo = function (g) {
+      return Object.assign({}, g, {
+        confirmado: pfasEmPendentes.has(g.pfa),
+        dias_nota: g.data_nota ? diasEntre(g.data_nota, hoje) : null,
+      });
+    };
+    semNota = ((ultimo && ultimo.aguardando_nf) || []).map(recarregarGrupo);
+    comNota = ((ultimo && ultimo.aguardando_coleta) || []).map(recarregarGrupo);
+    totalSemNota = totalizarCongelado(semNota, statsAnteriores.aguardando_nf);
+    totalComNota = totalizarCongelado(comNota, statsAnteriores.aguardando_coleta);
+  }
   // A mesma soma, partida por quem ainda está confirmado em Pendentes. Feito
   // pras DUAS populações (não só "com nota") — é o "bate os dados" pedido
   // pela operação (09/09/2026): sem nota já bate 1:1 com Pendentes hoje, mas
@@ -742,9 +834,11 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
   const ajustesAbertos = ajustesPayload.filter(function (a) { return a.aguardando_import_pfa_nova; });
 
   return {
-    arquivo_pendentes: (meta && meta.arquivo_pendentes) || null,
-    arquivo_analitico: (meta && meta.arquivo_analitico) || null,
-    arquivo_embarcadas: (meta && meta.arquivo_embarcadas) || null,
+    // Pedaço não reenviado nesta rodada → mantém o nome do arquivo que
+    // alimentou ele da última vez, pra tela continuar dizendo a fonte real.
+    arquivo_pendentes: pendentesFornecido ? ((meta && meta.arquivo_pendentes) || null) : ((ultimo && ultimo.arquivo_pendentes) || null),
+    arquivo_analitico: analiticoFornecido ? ((meta && meta.arquivo_analitico) || null) : ((ultimo && ultimo.arquivo_analitico) || null),
+    arquivo_embarcadas: embarcadasFornecido ? ((meta && meta.arquivo_embarcadas) || null) : ((ultimo && ultimo.arquivo_embarcadas) || null),
     referencia: hoje,
 
     // Recorte por PFA — é sobre isto que a tela filtra (marca/segmento/etapa/FIFO)
@@ -752,6 +846,9 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
     // Aguardando embarque, nas duas populações que NUNCA devem ser somadas
     aguardando_nf: semNota,
     aguardando_coleta: comNota,
+    // Último conjunto de PFAs embarcadas conhecido — reaplicado sozinho
+    // quando um upload futuro não reenviar o arquivo de Embarcadas.
+    embarcadas_pfas: Array.from(pfasEmbarcadas),
     // Ajuste/cancelamento/B.O. pós-NF/AD — lançados manualmente, cruzados por
     // encomenda/PFA com o que está em tela. A tela agrega e filtra por
     // período em cima deste array; nada aqui já vem somado por tipo.
@@ -780,7 +877,7 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
       // na extração) — sinal de abastecimento errado, não de dado real. Fica
       // visível pelo mesmo motivo que excluidas_por_embarque: é medida da
       // qualidade da fonte, não detalhe de implementação escondido.
-      pfas_duplicadas_no_arquivo: pendentes.pfas_duplicadas || 0,
+      pfas_duplicadas_no_arquivo: pendentesFornecido ? (pendentes.pfas_duplicadas || 0) : (statsAnteriores.pfas_duplicadas_no_arquivo || 0),
       // O que o arquivo de Embarcadas tirou do pendente — a medida do atraso
       // da fonte, não um detalhe de implementação: fica visível na tela.
       excluidas_por_embarque: { pfas: excluidasPfas, pares: excluidasPares },
@@ -789,11 +886,9 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
       excluidas_por_ajuste: { pfas: excluidasPorAjustePfas, pares: excluidasPorAjustePares },
       // Devolução por AD tirou a PFA inteira de "aguardando coleta".
       excluidas_por_ad: { pfas: excluidasPorAdPfas, qtde: excluidasPorAdQtde },
-      embarcadas_no_arquivo: embarcadas.registros.length,
+      embarcadas_no_arquivo: embarcadasFornecido ? embarcadas.registros.length : (statsAnteriores.embarcadas_no_arquivo || 0),
       janela_embarcadas: janelaEmbarcadas,
-      embarcadas_por_operacao: Array.from(porOperacao.entries())
-        .map(function (e) { return { operacao: e[0], notas: e[1] }; })
-        .sort(function (a, b) { return b.notas - a.notas; }),
+      embarcadas_por_operacao: embarcadasPorOperacao,
     },
 
     familias_nao_mapeadas: Array.from(familiasNaoMapeadas).sort(),
@@ -806,37 +901,57 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
 async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileEmbarcadas, onProgresso) {
   const avisar = onProgresso || function () {};
 
-  avisar('Lendo PFAs Pendentes…');
-  const pendentes = parsearPfasPendentes(await filePendentes.text());
-  if (pendentes.registros.length === 0) {
-    throw new Error('Nenhuma linha reconhecida no arquivo de PFAs Pendentes. Confira se é a extração com o cabeçalho ESTAB|PRE-FATURA|…, sem reformatação.');
-  }
-  if (pendentes.pfas_duplicadas) {
-    avisar(
-      'Atenção: ' + pendentes.pfas_duplicadas.toLocaleString('pt-BR') +
-      ' PFA(s) apareceram repetidas no arquivo de Pendentes — usada só a última ocorrência de cada. Confira a extração.'
-    );
+  if (!filePendentes && !fileAnalitico && !fileEmbarcadas) {
+    throw new Error('Selecione pelo menos um arquivo (Pendentes, Analítico ou Embarcadas).');
   }
 
-  avisar('Lendo Analítico…');
-  const analitico = parsearPfasAnalitico(await fileAnalitico.text());
-  if (analitico.registros.length === 0) {
-    throw new Error('Nenhuma linha reconhecida no Analítico. Confira se é o CSV com o cabeçalho EMPRESA;ESTABELECIMENTO;…, sem reformatação.');
+  // Os três agora são independentes — dá pra abastecer só Pendentes (pra
+  // atualizar etapa/FIFO rápido) ou só Embarcadas (uma vez, e ele continua
+  // valendo pros próximos uploads de Pendentes) sem precisar ter os outros
+  // dois em mãos. O que não for enviado agora entra como `null` em
+  // construirSnapshotPfas, que reaproveita o último snapshot pra aquele
+  // pedaço (ver comentário lá) — busca esse último snapshot só se
+  // realmente precisar dele.
+  let pendentes = null;
+  if (filePendentes) {
+    avisar('Lendo PFAs Pendentes…');
+    pendentes = parsearPfasPendentes(await filePendentes.text());
+    if (pendentes.registros.length === 0) {
+      throw new Error('Nenhuma linha reconhecida no arquivo de PFAs Pendentes. Confira se é a extração com o cabeçalho ESTAB|PRE-FATURA|…, sem reformatação.');
+    }
+    if (pendentes.pfas_duplicadas) {
+      avisar(
+        'Atenção: ' + pendentes.pfas_duplicadas.toLocaleString('pt-BR') +
+        ' PFA(s) apareceram repetidas no arquivo de Pendentes — usada só a última ocorrência de cada. Confira a extração.'
+      );
+    }
   }
 
-  // Embarcadas é opcional: sem ele a tela funciona, só não consegue tirar do
-  // pendente o que já saiu — e avisa isso na cara, em vez de silenciosamente
-  // mostrar número inflado.
-  let embarcadas = { registros: [] };
+  let analitico = null;
+  if (fileAnalitico) {
+    avisar('Lendo Analítico…');
+    analitico = parsearPfasAnalitico(await fileAnalitico.text());
+    if (analitico.registros.length === 0) {
+      throw new Error('Nenhuma linha reconhecida no Analítico. Confira se é o CSV com o cabeçalho EMPRESA;ESTABELECIMENTO;…, sem reformatação.');
+    }
+  }
+
+  let embarcadas = null;
   if (fileEmbarcadas) {
     avisar('Lendo NFs Embarcadas…');
     embarcadas = parsearPfasEmbarcadas(await fileEmbarcadas.text());
   }
 
+  let ultimoPayload = null;
+  if (!pendentes || !analitico || !embarcadas) {
+    avisar('Buscando o último abastecimento pra completar o que não foi reenviado agora…');
+    ultimoPayload = await window.buscarUltimoPayload(supabaseClient, 'pfas');
+  }
+
   avisar(
-    pendentes.registros.length.toLocaleString('pt-BR') + ' PFAs pendentes · ' +
-    analitico.registros.length.toLocaleString('pt-BR') + ' linhas no Analítico · ' +
-    embarcadas.registros.length.toLocaleString('pt-BR') + ' notas embarcadas.'
+    (pendentes ? pendentes.registros.length.toLocaleString('pt-BR') + ' PFAs pendentes (novo) · ' : 'Pendentes mantido do último abastecimento · ') +
+    (analitico ? analitico.registros.length.toLocaleString('pt-BR') + ' linhas no Analítico (novo) · ' : 'Analítico mantido do último abastecimento · ') +
+    (embarcadas ? embarcadas.registros.length.toLocaleString('pt-BR') + ' notas embarcadas (novo).' : 'Embarcadas mantido do último abastecimento.')
   );
 
   avisar('Carregando gabarito de famílias…');
@@ -871,10 +986,10 @@ async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileE
 
   avisar('Cruzando os arquivos…');
   const payload = construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, {
-    arquivo_pendentes: filePendentes.name,
-    arquivo_analitico: fileAnalitico.name,
+    arquivo_pendentes: filePendentes ? filePendentes.name : null,
+    arquivo_analitico: fileAnalitico ? fileAnalitico.name : null,
     arquivo_embarcadas: fileEmbarcadas ? fileEmbarcadas.name : null,
-  }, ajustes, mapaArtigoFamiliaPfa);
+  }, ajustes, mapaArtigoFamiliaPfa, ultimoPayload);
 
   if (payload.stats.excluidas_por_embarque.pfas) {
     avisar(
@@ -882,8 +997,8 @@ async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileE
       payload.stats.excluidas_por_embarque.pares.toLocaleString('pt-BR') + ' pares).'
     );
   }
-  if (!fileEmbarcadas) {
-    avisar('Aviso: sem o arquivo de NFs Embarcadas, o que já saiu continua contando como pendente.');
+  if (!embarcadas && !(ultimoPayload && ultimoPayload.embarcadas_pfas && ultimoPayload.embarcadas_pfas.length)) {
+    avisar('Aviso: nenhum arquivo de NFs Embarcadas foi enviado ainda — o que já saiu continua contando como pendente.');
   }
 
   avisar('Gravando snapshot…');
