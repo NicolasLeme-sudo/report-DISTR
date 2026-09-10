@@ -285,6 +285,21 @@ const ajuVirgula = parsearAjustesPfa([linhaAspas(','), linhaAspasDados(',')].joi
 eq(ajuVirgula.registros.length, 1, 'Excel com separador de lista em inglês salva com "," — mesmo bug real: dava 0 antes do fix');
 eq(ajuVirgula.registros[0].artigo, 'OIMCR24302', 'delimitador "," detectado e respeitado');
 
+// Caso real reportado pelo usuário (10/09/2026): copiou/colou do Excel e o
+// arquivo saiu com TAB entre os campos, sem aspas nenhuma — nem "," nem ";"
+// batiam, e o parser antigo (só ; ou ,) continuava dando 0 linhas.
+const linhaTab = function () {
+  return ['tipo', 'encomenda', 'pfa_antiga', 'pfa_nova', 'cliente_codigo', 'cliente_nome', 'artigo', 'cor_tam',
+    'qtde_total_nf', 'qtde_inicial', 'qtde_pos_ajuste', 'motivo', 'data_solicitacao', 'solicitante'].join('\t');
+};
+const linhaTabDados = function () {
+  return ['AJUSTE', '960841', '242018', '244900', '46212', 'CHARLESTON WILLIA', 'OIMCR24302', 'PT/PRT M',
+    '5', '5', '3', 'Ajuste de encomenda', '09/09/2026', 'ERIKA DOMINGUES LEME'].join('\t');
+};
+const ajuTab = parsearAjustesPfa([linhaTab(), linhaTabDados()].join('\r\n'));
+eq(ajuTab.registros.length, 1, 'planilha colada do Excel com TAB entre campos — mesmo bug real relatado 10/09/2026');
+eq(ajuTab.registros[0].pfa_nova, '244900', 'delimitador TAB detectado e respeitado');
+
 secao('parsearAjustesPfa — tipo reconhece palavra-chave, não exige grafia exata (10/09/2026)');
 const ajuSinonimo = parsearAjustesPfa([CAB_AJU,
   linhaAju('cancelado', '960900', '242020', '', 'OIMCR24303', '10', '2', '0', 'Financeiro'),

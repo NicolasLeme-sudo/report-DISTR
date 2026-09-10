@@ -378,12 +378,17 @@ function parsearAjustesPfa(textoArquivo) {
   let linhasInvalidas = 0;
 
   // Delimitador flexível: a operação usa ";" (padrão pt-BR), mas o Excel
-  // salva CSV com "," quando o separador de lista do Windows está em inglês
-  // — sem detectar isso a planilha inteira dá "nenhuma linha reconhecida"
-  // mesmo estando 100% correta (bug real reportado 10/09/2026). Decide pelo
+  // salva/cola com "," quando o separador de lista do Windows está em inglês,
+  // ou com TAB quando o conteúdo vem de um copiar-e-colar de célula do Excel
+  // pra um editor de texto (caso real reportado 10/09/2026, arquivo do
+  // usuário veio 100% tabulado) — sem detectar isso a planilha inteira dá
+  // "nenhuma linha reconhecida" mesmo estando correta. Decide pelo
   // delimitador mais frequente na primeira linha não vazia (cabeçalho).
   const primeiraLinha = linhas.find(function (l) { return l.trim(); }) || '';
-  const delimitador = (primeiraLinha.split(',').length > primeiraLinha.split(';').length) ? ',' : ';';
+  const candidatos = [';', ',', '\t'];
+  const delimitador = candidatos.reduce(function (melhor, d) {
+    return primeiraLinha.split(d).length > primeiraLinha.split(melhor).length ? d : melhor;
+  }, ';');
 
   for (let i = 0; i < linhas.length; i++) {
     const linha = linhas[i];
