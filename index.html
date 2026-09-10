@@ -278,8 +278,8 @@ html { overflow-x: hidden; }
      desalinhava a fileira inteira (bug real, 10/09/2026). */
   min-height: 26px;
 }
-.kpi .val { font-size: 21px; font-weight: 300; letter-spacing: -.01em; }
-.kpi .val.forte { font-weight: 700; font-size: 19px; }
+.kpi .val { font-size: 24px; font-weight: 300; letter-spacing: -.01em; }
+.kpi .val.forte { font-weight: 700; font-size: 23px; }
 .kpi .sub { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
 
 /* Card de ocupação com rosca — Ressuprimento (Picking × Pulmão). */
@@ -2804,41 +2804,32 @@ function renderizarPfas() {
   const coletaSep = separarConfirmado(coletaFiltrado);
   const qtdeColeta = coletaFiltrado.reduce(function (s, r) { return s + r.qtde; }, 0);
   const pfasColeta = new Set(coletaFiltrado.map(function (r) { return r.pfa; })).size;
-  const coletaMaisAntiga = coletaSep.conf.reduce(function (mx, r) {
-    return (r.dias_nota !== null && r.dias_nota > mx.dias) ? { dias: r.dias_nota, data: r.data_nota } : mx;
-  }, { dias: 0, data: null });
-
-  const exc = p.stats.excluidas_por_embarque;
-  const excAju = p.stats.excluidas_por_ajuste || { pfas: 0, pares: 0 };
   const ajustesEmAberto = p.ajustes_em_aberto || 0;
   const kpis = '<div class="kpi-row">' +
-    '<div class="kpi"><div class="rot">PFAs pendentes</div>' +
-      '<div class="val forte">' + fmtInt(filtrados.length) + '</div>' +
-      '<div class="sub">' + fmtInt(pares) + ' pares' +
-      (exc.pfas ? ' · já sem ' + fmtInt(exc.pfas) + ' PFA(s) embarcada(s)' : '') +
-      (excAju.pfas ? ' · já sem ' + fmtInt(excAju.pfas) + ' PFA(s) ajustada(s)' : '') + '</div></div>' +
-    '<div class="kpi"><div class="rot">Mais antiga em tela</div>' +
+    '<div class="kpi"><div class="rot">Material Pendente - Total</div>' +
+      '<div class="val forte">' + fmtInt(filtrados.length) + ' PFAs</div>' +
+      '<div class="sub">' + fmtInt(pares) + ' Pares</div></div>' +
+    '<div class="kpi"><div class="rot">PFA Mais antiga em tela</div>' +
       '<div class="val forte" style="color:var(--amber)">' + (maisAntiga.dias ? fmtInt(maisAntiga.dias) + ' dias' : '—') + '</div>' +
-      '<div class="sub">' + (maisAntiga.data ? 'importada ' + formatarDataSimples(maisAntiga.data) : 'sem PFA no recorte') + '</div></div>' +
-    '<div class="kpi"><div class="rot">PFAs ag. formação para coleta</div>' +
-      '<div class="val forte">' + fmtInt(agFormacao.length) + '</div>' +
-      '<div class="sub">' + fmtInt(paresAgFormacao) + ' pares · aguardando liberação/geração pro CD</div></div>' +
-    '<div class="kpi"><div class="rot">PFAs em fluxo de coleta</div>' +
-      '<div class="val forte">' + fmtInt(fluxoColeta.length) + '</div>' +
-      '<div class="sub">' + fmtInt(paresFluxoColeta) + ' pares · em separação no CD</div></div>' +
-    '<div class="kpi"><div class="rot">PFAs ag. nota fiscal</div>' +
-      '<div class="val forte">' + fmtInt(pendentesFiscal.length) + '</div>' +
-      '<div class="sub">' + fmtInt(paresPendentesFiscal) + ' pares · parado, precisa de NF</div></div>' +
-    '<div class="kpi"><div class="rot">Com nota, aguard. coleta</div>' +
-      '<div class="val forte" style="color:var(--red)">' + fmtInt(coletaSep.qtdeConf) + ' pç</div>' +
-      '<div class="sub">' + fmtInt(coletaSep.pfasConf) + ' PFAs · mais antiga com ' +
-      (coletaMaisAntiga.dias ? fmtInt(coletaMaisAntiga.dias) + ' dias' : '—') + ' em tela</div></div>' +
+      '<div class="sub">' + (maisAntiga.data ? 'Importada ' + formatarDataSimples(maisAntiga.data) : 'Sem PFA no recorte') + '</div></div>' +
+    '<div class="kpi"><div class="rot">Ag. Formação para Coleta</div>' +
+      '<div class="val forte">' + fmtInt(agFormacao.length) + ' PFAs</div>' +
+      '<div class="sub">' + fmtInt(paresAgFormacao) + ' Pares</div></div>' +
+    '<div class="kpi"><div class="rot">Material em Fluxo de Coleta</div>' +
+      '<div class="val forte">' + fmtInt(fluxoColeta.length) + ' PFAs</div>' +
+      '<div class="sub">' + fmtInt(paresFluxoColeta) + ' Pares</div></div>' +
+    '<div class="kpi"><div class="rot">Ag. Emissão de Nota Fiscal</div>' +
+      '<div class="val forte">' + fmtInt(pendentesFiscal.length) + ' PFAs</div>' +
+      '<div class="sub">' + fmtInt(paresPendentesFiscal) + ' Pares</div></div>' +
+    '<div class="kpi"><div class="rot">NF Emitida - Ag. Coleta</div>' +
+      '<div class="val forte" style="color:var(--red)">' + fmtInt(coletaSep.pfasConf) + ' PFAs</div>' +
+      '<div class="sub">' + fmtInt(coletaSep.qtdeConf) + ' Peças</div></div>' +
     '<div class="kpi" style="border-color:var(--accent)">' +
-      '<div class="rot" style="color:var(--accent)">Ajustes em aberto</div>' +
+      '<div class="rot" style="color:var(--accent)">Ajustes de PFA em aberto</div>' +
       '<div class="val forte" style="color:var(--accent)">' + fmtInt(ajustesEmAberto) + '</div>' +
       '<div class="sub">' + (ajustesEmAberto
-        ? 'ag. emissão de PFA para ajuste de saldo'
-        : 'nenhum ajuste travado aguardando importação') + '</div></div>' +
+        ? 'Ag. Ação do Time Comercial'
+        : 'Nenhum ajuste travado') + '</div></div>' +
   '</div>' +
 
   /* ---------- Perdas e ajustes do período (grupo à parte, com o próprio seletor) ----------
