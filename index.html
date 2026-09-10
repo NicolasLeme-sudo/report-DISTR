@@ -264,10 +264,19 @@ html { overflow-x: hidden; }
 .kpi {
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: 8px; padding: 13px 15px;
+  /* Título em cima, valor no meio, rótulo embaixo — sempre alinhados à
+     esquerda, mesmo quando um card vizinho é mais alto (grid já estica
+     todo .kpi da fileira pra mesma altura; o space-between distribui os
+     3 blocos dentro dela). Pedido da operação, 10/09/2026. */
+  display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start;
 }
 .kpi .rot {
   font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--text-label); margin-bottom: 5px;
+  color: var(--text-label); margin-bottom: 5px; line-height: 1.3;
+  /* Altura de 2 linhas sempre reservada — um título mais comprido que
+     quebra não empurra o valor pra baixo só naquele card, o que
+     desalinhava a fileira inteira (bug real, 10/09/2026). */
+  min-height: 26px;
 }
 .kpi .val { font-size: 21px; font-weight: 300; letter-spacing: -.01em; }
 .kpi .val.forte { font-weight: 700; font-size: 19px; }
@@ -2811,21 +2820,19 @@ function renderizarPfas() {
     '<div class="kpi"><div class="rot">Mais antiga em tela</div>' +
       '<div class="val forte" style="color:var(--amber)">' + (maisAntiga.dias ? fmtInt(maisAntiga.dias) + ' dias' : '—') + '</div>' +
       '<div class="sub">' + (maisAntiga.data ? 'importada ' + formatarDataSimples(maisAntiga.data) : 'sem PFA no recorte') + '</div></div>' +
-    '<div class="kpi"><div class="rot">Material ag. formação para coleta</div>' +
+    '<div class="kpi"><div class="rot">PFAs ag. formação para coleta</div>' +
       '<div class="val forte">' + fmtInt(agFormacao.length) + '</div>' +
       '<div class="sub">' + fmtInt(paresAgFormacao) + ' pares · aguardando liberação/geração pro CD</div></div>' +
     '<div class="kpi"><div class="rot">PFAs em fluxo de coleta</div>' +
       '<div class="val forte">' + fmtInt(fluxoColeta.length) + '</div>' +
       '<div class="sub">' + fmtInt(paresFluxoColeta) + ' pares · em separação no CD</div></div>' +
-    '<div class="kpi"><div class="rot">Conferido, aguard. nota fiscal</div>' +
+    '<div class="kpi"><div class="rot">PFAs ag. nota fiscal</div>' +
       '<div class="val forte">' + fmtInt(pendentesFiscal.length) + '</div>' +
       '<div class="sub">' + fmtInt(paresPendentesFiscal) + ' pares · parado, precisa de NF</div></div>' +
     '<div class="kpi"><div class="rot">Com nota, aguard. coleta</div>' +
       '<div class="val forte" style="color:var(--red)">' + fmtInt(coletaSep.qtdeConf) + ' pç</div>' +
       '<div class="sub">' + fmtInt(coletaSep.pfasConf) + ' PFAs · mais antiga com ' +
-      (coletaMaisAntiga.dias ? fmtInt(coletaMaisAntiga.dias) + ' dias' : '—') + ' em tela' +
-      (coletaSep.qtdeNaoConf ? ' · +' + fmtInt(coletaSep.qtdeNaoConf) + ' pç sem confirmação (prováv. já coletado)' : '') +
-      '</div></div>' +
+      (coletaMaisAntiga.dias ? fmtInt(coletaMaisAntiga.dias) + ' dias' : '—') + ' em tela</div></div>' +
     '<div class="kpi" style="border-color:var(--accent)">' +
       '<div class="rot" style="color:var(--accent)">Ajustes em aberto</div>' +
       '<div class="val forte" style="color:var(--accent)">' + fmtInt(ajustesEmAberto) + '</div>' +
