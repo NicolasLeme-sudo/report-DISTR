@@ -1538,12 +1538,15 @@ function atualizarSubtituloSecao(secao) {
 }
 window.atualizarSubtituloSecao = atualizarSubtituloSecao;
 
-// Fluxo de Processos e Ressuprimento carregam uma vez só, na primeira vez
-// que a seção abre — mesmo padrão do restante do app (ver carregarEstoque,
-// chamado 1x no login).
+// Toda seção carrega 1x só, na primeira vez que abre (nunca no login —
+// login sempre cai no Start Inicial, ver aplicarSessao). Balanço de Estoque
+// usava carregarEstoque() disparado no login antes dessa mudança; ficou
+// órfão (sem gatilho nenhum, tela travada em "Carregando snapshot…") até
+// ganhar o mesmo padrão aqui embaixo (bug real, 10/09/2026).
 let distrFluxoCarregado = false;
 let ressuprimentoCarregado = false;
 let pfasCarregado = false;
+let estoqueCarregado = false;
 
 function mostrarSecao(secao) {
   // Trava de rota: esconder o item do menu não basta, porque a navegação
@@ -1579,6 +1582,10 @@ function mostrarSecao(secao) {
   if (secao === 'start' && !pfasCarregado) {
     pfasCarregado = true;
     carregarPfas();
+  }
+  if (secao === 'estoque' && !estoqueCarregado) {
+    estoqueCarregado = true;
+    carregarEstoque();
   }
 }
 
