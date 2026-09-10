@@ -203,10 +203,19 @@ const snapComColaborador = ctx.construirSnapshotMovimentacoes(
 eq(snapComColaborador.por_dia[0].turnos.T01, undefined, 'EX1 cadastrado como T03 -- o T01 do horário some do dia 10');
 eq(snapComColaborador.por_dia[0].turnos.T03.pecas, 10, 'movimento das 08:00 de EX1 vira T03 pelo cadastro, não T01 pelo relógio');
 eq(snapComColaborador.por_dia[0].turnos.T02.pecas, 20, 'EX2 (não cadastrado) continua no fallback por horário -- T02');
-eq(snapComColaborador.resolucao_turno, { por_cadastro: 2, por_horario: 1 }, '2 movimentos de EX1 resolvidos pelo cadastro, 1 de EX2 pelo horário');
+eq({ por_cadastro: snapComColaborador.resolucao_turno.por_cadastro, por_horario: snapComColaborador.resolucao_turno.por_horario },
+  { por_cadastro: 2, por_horario: 1 }, '2 movimentos de EX1 resolvidos pelo cadastro, 1 de EX2 pelo horário');
+eq(snapComColaborador.resolucao_turno.sem_cadastro.length, 1, 'só EX2 (sem cadastro) entra na lista — EX1 está cadastrado, mesmo com turno diferente do chute');
+eq(snapComColaborador.resolucao_turno.sem_cadastro[0].login, 'EX2', 'login de quem ficou sem cadastro');
+eq(snapComColaborador.resolucao_turno.sem_cadastro[0].dividido_entre_turnos, false, 'EX2 só apareceu no T02 nesse recorte — não está dividido');
 
 const semColaborador = ctx.construirSnapshotMovimentacoes(ctx.parsearKardex(arquivoDias), { arquivo: 't.txt' });
-eq(semColaborador.resolucao_turno, { por_cadastro: 0, por_horario: 3 }, 'sem mapa de colaborador, os 3 movimentos caem no fallback por horário');
+eq({ por_cadastro: semColaborador.resolucao_turno.por_cadastro, por_horario: semColaborador.resolucao_turno.por_horario },
+  { por_cadastro: 0, por_horario: 3 }, 'sem mapa de colaborador, os 3 movimentos caem no fallback por horário');
+eq(semColaborador.resolucao_turno.sem_cadastro.length, 2, 'EX1 e EX2 aparecem na lista de sem-cadastro (nenhum dos dois está na base)');
+const ex1SemCadastro = semColaborador.resolucao_turno.sem_cadastro.find(function (m) { return m.login === 'EX1'; });
+eq(ex1SemCadastro.dividido_entre_turnos, true, 'EX1 caiu em T01 (08:00) e T03 (03:00) pelo horário — chute dividido entre dois turnos, o caso que o cadastro real resolve');
+eq(ex1SemCadastro.turnos_chutados, 'T01/T03', 'os dois turnos chutados aparecem, em ordem');
 
 /* ------------------------------------------------------------------ */
 console.log('\n=== cabeçalho com coluna renomeada falha nomeando a coluna ===');

@@ -560,6 +560,35 @@ tr.total > th, tr.total > td {
   text-align: center; color: var(--text-muted); cursor: pointer;
 }
 .dropzone:hover { border-color: var(--accent); color: var(--text); }
+
+/* Modelo da planilha manual (Admin) — imita a cara do Excel pra assistente
+   reconhecer o formato de bate-pronto, sem depender de imagem anexada que
+   envelhece quando o cabeçalho muda: o modelo é o próprio HTML, sempre em
+   sincronia com o parser e com o botão que baixa o .csv. */
+.modelo-planilha { overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; }
+.modelo-planilha table {
+  border-collapse: collapse; font-size: 11px; white-space: nowrap;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+.modelo-planilha thead th {
+  background: var(--bg-sidebar); color: #DCE3F5; padding: 6px 9px; text-align: left;
+  font-weight: 600; border-right: 1px solid rgba(255,255,255,.1); position: sticky; top: 0;
+}
+.modelo-planilha thead th:last-child { border-right: none; }
+.modelo-planilha tbody td {
+  padding: 5px 9px; border-top: 1px solid var(--border); border-right: 1px solid var(--border);
+  color: var(--text);
+}
+.modelo-planilha tbody td:last-child { border-right: none; }
+.modelo-planilha tbody tr:nth-child(even) { background: var(--bg-input); }
+/* Célula que fica VAZIA de propósito no modelo (pfa_nova em cancelamento,
+   B.O. e AD) — hachura em vez de espaço em branco, que passaria por
+   "esqueci de preencher". */
+.modelo-planilha tbody td.vazio {
+  background: repeating-linear-gradient(45deg, transparent, transparent 4px,
+    var(--border) 4px, var(--border) 5px);
+}
+.modelo-planilha tbody tr.destaque td { box-shadow: inset 0 0 0 99px var(--accent-soft); color: var(--text); }
 .log {
   margin-top: 14px; font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 11px; color: var(--text-muted); white-space: pre-wrap;
@@ -1199,10 +1228,56 @@ tr.total > th, tr.total > td {
           período" e a exclusão de PFA baixada só atualizam no <strong>próximo upload de PFAs</strong> acima
           (Pendentes/Analítico/Embarcadas) — esta caixa só grava a tabela.
         </p>
-        <ul style="font-size:12px;color:var(--text-muted);margin:-6px 0 14px 18px;padding:0">
-          <li><strong>ajustes_pfa.csv</strong> (.csv, ";") — cabeçalho fixo: tipo;encomenda;pfa_antiga;pfa_nova;
-            cliente_codigo;cliente_nome;artigo;cor_tam;qtde_total_nf;qtde_inicial;qtde_pos_ajuste;motivo;
-            data_solicitacao;solicitante.</li>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:-4px 0 8px">
+          <span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-label);font-weight:600">
+            Modelo da planilha — preencha exatamente nesta ordem
+          </span>
+          <button class="btn-mini" onclick="baixarModeloAjustesPfa()">⬇ Baixar modelo (.csv)</button>
+        </div>
+        <div class="modelo-planilha">
+          <table>
+            <thead>
+              <tr>
+                <th>tipo</th><th>encomenda</th><th>pfa_antiga</th><th>pfa_nova</th><th>cliente_codigo</th>
+                <th>cliente_nome</th><th>artigo</th><th>cor_tam</th><th>qtde_total_nf</th><th>qtde_inicial</th>
+                <th>qtde_pos_ajuste</th><th>motivo</th><th>data_solicitacao</th><th>solicitante</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>AJUSTE</td><td>960841</td><td>242018</td><td>242305</td><td>46212</td>
+                <td>CHARLESTON WILLIA</td><td>OIMCR24302</td><td>PT/PRT M</td><td>60</td><td>5</td>
+                <td>3</td><td>Ajuste de encomenda</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
+              </tr>
+              <tr>
+                <td>BO_POS_NF</td><td>959112</td><td>241650</td><td class="vazio"></td><td>46212</td>
+                <td>CHARLESTON WILLIA</td><td>OIMCR24302</td><td>PT/PRT M</td><td>60</td><td>2</td>
+                <td>0</td><td>Stockout</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
+              </tr>
+              <tr class="destaque">
+                <td>AJUSTE</td><td>961205</td><td>242190</td><td>242311</td><td>62410</td>
+                <td>GRUPO SPORTSTYLE</td><td>OIVCR23110</td><td>PT M</td><td>30</td><td>10</td>
+                <td>10</td><td>DE-PARA (artigo substituto)</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
+              </tr>
+              <tr>
+                <td>CANCELAMENTO</td><td>957004</td><td>241902</td><td class="vazio"></td><td>51330</td>
+                <td>REDE CALCADOS MG</td><td>OIACS20044</td><td>PT M</td><td>14</td><td>14</td>
+                <td>0</td><td>Financeiro</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
+              </tr>
+              <tr>
+                <td>AD_DEVOLUCAO</td><td>955390</td><td>240711</td><td class="vazio"></td><td>46212</td>
+                <td>CHARLESTON WILLIA</td><td>OIMCR24302</td><td>PT/PRT M</td><td>120</td><td>120</td>
+                <td>0</td><td>Recusa de envio parcial (AD)</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <ul style="font-size:12px;color:var(--text-muted);margin:10px 0 14px 18px;padding:0">
+          <li><strong>tipo</strong> só aceita: AJUSTE · CANCELAMENTO · BO_POS_NF · AD_DEVOLUCAO.</li>
+          <li><strong>pfa_nova</strong> fica em branco em cancelamento, B.O. pós-NF e AD — nenhum dos três gera PFA nova.</li>
+          <li><strong>DE-PARA</strong> (linha destacada): quando um artigo substituto cobre o corte inteiro,
+            preencha <strong>qtde_inicial e qtde_pos_ajuste com o mesmo número</strong> — a perda sai zero
+            sozinha, sem coluna extra.</li>
           <li>Reenviar a planilha nunca duplica: a linha é identificada por encomenda + pfa_antiga + artigo +
             cor_tam — subir de novo com esse quarteto igual substitui a linha, corrigindo um valor errado.</li>
         </ul>
@@ -1234,6 +1309,16 @@ tr.total > th, tr.total > td {
         <button class="btn-mini" id="btnProcessarAtivos" style="margin-top:12px" disabled>
           Processar Ativos
         </button>
+        <button class="btn-mini" id="btnExportarSemTurno" style="margin-top:12px;margin-left:8px"
+          onclick="exportarColaboradoresSemTurno()">
+          ⬇ Exportar quem está sem turno real
+        </button>
+        <p style="font-size:11px;color:var(--text-muted);margin:10px 0 0">
+          A exportação lista quem faz a produtividade cair no <strong>chute por horário</strong>: cadastrado
+          sem turno operacional (ADM/confiança/horário livre) e login que aparece movimentando no Kardex mas
+          não está na base de Ativos. Quem estiver nessa lista tem o turno adivinhado pelo relógio do
+          movimento — é ali que mora o caso do material que fica entre o T02 e o T03.
+        </p>
         <div class="aviso ok" id="okIngestAtivos" style="display:none;margin-top:10px"></div>
         <div class="log" id="logIngestAtivos"></div>
       </div>
@@ -4594,6 +4679,35 @@ document.getElementById('btnProcessarPfas').addEventListener('click', async func
   }
 });
 
+/* Cabeçalho do modelo de Ajustes de PFA — fonte ÚNICA: o mesmo array
+   alimenta o .csv que a assistente baixa e a tabela-modelo exibida no
+   Admin. Mudar a ordem aqui exige mudar parsearAjustesPfa junto (o parser
+   lê por POSIÇÃO, não por nome de coluna). */
+const CABECALHO_MODELO_AJUSTES_PFA = ['tipo', 'encomenda', 'pfa_antiga', 'pfa_nova', 'cliente_codigo',
+  'cliente_nome', 'artigo', 'cor_tam', 'qtde_total_nf', 'qtde_inicial', 'qtde_pos_ajuste', 'motivo',
+  'data_solicitacao', 'solicitante'];
+
+/* Uma linha de exemplo já preenchida vem junto de propósito: planilha só com
+   cabeçalho deixa dúvida de formato (data com barra? tipo em maiúscula?).
+   A assistente apaga a linha e digita as dela por cima. */
+const EXEMPLO_MODELO_AJUSTES_PFA = ['AJUSTE', '960841', '242018', '242305', '46212', 'CHARLESTON WILLIA',
+  'OIMCR24302', 'PT/PRT M', '60', '5', '3', 'Ajuste de encomenda', '09/09/2026', 'ERIKA DOMINGUES LEME'];
+
+function baixarModeloAjustesPfa() {
+  const linhas = [CABECALHO_MODELO_AJUSTES_PFA, EXEMPLO_MODELO_AJUSTES_PFA];
+  // Mesmo formato do resto do app: ";" e BOM, pro Excel pt-BR abrir em
+  // colunas sem pedir importação manual.
+  const csv = linhas.map(function (l) {
+    return l.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(';');
+  }).join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'modelo-ajustes-pfa.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 /* ---------- Ajustes de PFA (.csv) — planilha manual, upsert ----------
    Não recarrega o Start Inicial: os cards de "Perdas e ajustes" só refletem
    no PRÓXIMO upload de Pendentes/Analítico/Embarcadas (ver comentário em
@@ -4634,6 +4748,80 @@ document.getElementById('btnProcessarAjustesPfa').addEventListener('click', asyn
     btn.disabled = false;
   }
 });
+
+/* Exporta QUEM está fazendo a produtividade cair no chute por horário.
+   Duas populações, cada uma com o seu motivo — juntas numa planilha só
+   porque a ação é a mesma: acertar o cadastro na base de Ativos.
+
+     SEM_TURNO_OPERACIONAL — está na base, mas o campo "Horario" não é
+       1º/2º/3º Turno (ADM, CARGO DE CONFIANCA, horário livre digitado).
+     NAO_CADASTRADO — movimentou no Kardex e não existe na base nenhuma.
+       Este é o mais grave: produção real de gente que o report não sabe
+       de que turno é.
+
+   O código inválido (que não vira login EX...) não entra aqui porque nunca
+   chega ao banco — ele é listado no log do próprio upload, na hora. */
+async function exportarColaboradoresSemTurno() {
+  const btn = document.getElementById('btnExportarSemTurno');
+  const rotuloOriginal = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Montando…';
+  try {
+    const linhas = [['Motivo', 'Login', 'Nome', 'Horario na base de Ativos', 'Movimentos no ultimo Kardex',
+      'Pecas no ultimo Kardex', 'Turno(s) chutado(s) pelo horario', 'Dividido entre turnos']];
+
+    // 1) Cadastrados sem turno operacional (turno nulo em dim_colaboradores_turno).
+    const cadastrados = await window.lerTudoPaginado(supabaseClient, 'dim_colaboradores_turno',
+      'login, nome, turno, turno_bruto');
+    const semTurno = cadastrados.filter(function (c) { return !c.turno; });
+
+    // 2) Logins que movimentaram sem cadastro nenhum — vem do último snapshot
+    //    de movimentações (resolucao_turno.sem_cadastro), não de uma segunda
+    //    leitura do Kardex: o arquivo bruto não fica guardado.
+    const { data: snapMov } = await supabaseClient.from('dashboard_snapshots')
+      .select('payload, gerado_em').eq('pagina', 'ressuprimento_mov')
+      .order('gerado_em', { ascending: false }).limit(1);
+    const resolucao = (snapMov && snapMov[0] && snapMov[0].payload && snapMov[0].payload.resolucao_turno) || {};
+    const semCadastro = resolucao.sem_cadastro || [];
+    // Um login pode estar cadastrado SEM turno e também aparecer aqui — nesse
+    // caso o motivo mais específico (já está na base) é o que vale, e os
+    // números de movimento entram na mesma linha em vez de duplicar a pessoa.
+    const movPorLogin = new Map(semCadastro.map(function (m) { return [m.login, m]; }));
+
+    semTurno.forEach(function (c) {
+      const m = movPorLogin.get(c.login);
+      linhas.push(['SEM_TURNO_OPERACIONAL', c.login, c.nome || '', c.turno_bruto || '',
+        m ? m.movimentos : '', m ? m.pecas : '', m ? m.turnos_chutados : '',
+        m && m.dividido_entre_turnos ? 'SIM' : '']);
+      movPorLogin.delete(c.login);
+    });
+    movPorLogin.forEach(function (m) {
+      linhas.push(['NAO_CADASTRADO', m.login, m.nome || '', '', m.movimentos, m.pecas,
+        m.turnos_chutados, m.dividido_entre_turnos ? 'SIM' : '']);
+    });
+
+    if (linhas.length === 1) {
+      alert('Nenhum colaborador sem turno real — a base de Ativos está fechada com o último Kardex processado.');
+      return;
+    }
+
+    const csv = linhas.map(function (l) {
+      return l.map(function (c) { return '"' + String(c === null || c === undefined ? '' : c).replace(/"/g, '""') + '"'; }).join(';');
+    }).join('\n');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'colaboradores-sem-turno-real.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) {
+    alert('Não consegui montar a exportação: ' + (e && e.message ? e.message : String(e)));
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = rotuloOriginal;
+  }
+}
 
 /* ---------- Base de Ativos: turno real do colaborador (.xlsx) ---------- */
 let arquivoAtivosSelecionado = null;

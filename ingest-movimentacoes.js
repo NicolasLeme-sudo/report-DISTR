@@ -472,6 +472,10 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
   // movimento (login não cadastrado, ou ADM/confiança, que não tem turno
   // operacional) — visível na tela, nunca escondido.
   let porCadastro = 0, porHorario = 0;
+  // QUEM ficou sem turno real — não só quantos. Sem essa lista, "385
+  // movimentos por horário" não vira ação: a operação precisa do login pra
+  // cadastrar a pessoa na base de Ativos (ou confirmar que é ADM mesmo).
+  const semCadastro = new Map();
 
   movs.forEach(function (m) {
     // Turno REAL do colaborador quando existir cadastro pra esse login;
@@ -479,7 +483,21 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
     // calculado em casarMovimentos). Nunca sobrescreve com um turno vazio —
     // ADM/CARGO DE CONFIANCA e login desconhecido não têm entrada aqui.
     const turnoCadastrado = mapaColaboradorTurno.get(m.login);
-    if (turnoCadastrado) { m.turno = turnoCadastrado; porCadastro++; } else { porHorario++; }
+    if (turnoCadastrado) {
+      m.turno = turnoCadastrado; porCadastro++;
+    } else {
+      porHorario++;
+      if (!semCadastro.has(m.login)) {
+        semCadastro.set(m.login, { login: m.login, nome: m.nome || '', movimentos: 0, pecas: 0, turnos_chutados: {} });
+      }
+      const sc = semCadastro.get(m.login);
+      sc.movimentos += 1;
+      sc.pecas += m.qtd;
+      // Em quais turnos o CHUTE por horário jogou os movimentos dessa
+      // pessoa. Um login espalhado entre dois turnos é exatamente o caso
+      // que o horário resolve mal (ex.: vira do T02 pro T03 à meia-noite).
+      sc.turnos_chutados[m.turno] = (sc.turnos_chutados[m.turno] || 0) + 1;
+    }
 
     const rota = m.origem.zona + ' -> ' + m.destino.zona;
     if (!rotas.has(rota)) rotas.set(rota, { rota: rota, pecas: 0, movimentos: 0 });
@@ -605,7 +623,23 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
     historico_diario_operador: Array.from(porDiaTurnoOperador.values()),
     // Quantos movimentos tiveram o turno resolvido pelo cadastro real
     // (dim_colaboradores_turno) vs. chutado pelo horário — nunca escondido.
-    resolucao_turno: { por_cadastro: porCadastro, por_horario: porHorario },
+    resolucao_turno: {
+      por_cadastro: porCadastro, por_horario: porHorario,
+      // Lista dos logins que movimentaram sem turno cadastrado, do maior
+      // volume pro menor — é a fila de trabalho pra fechar a base de Ativos.
+      sem_cadastro: Array.from(semCadastro.values())
+        .map(function (sc) {
+          const turnos = Object.keys(sc.turnos_chutados).sort();
+          return {
+            login: sc.login, nome: sc.nome, movimentos: sc.movimentos, pecas: sc.pecas,
+            turnos_chutados: turnos.join('/'),
+            // Movimento espalhado por mais de um turno = o chute por horário
+            // não é confiável nem "em média" pra essa pessoa.
+            dividido_entre_turnos: turnos.length > 1,
+          };
+        })
+        .sort(function (a, b) { return b.pecas - a.pecas; }),
+    },
     // Artigo que nunca apareceu num upload de Picking/Pulmão não tem entrada
     // no dicionário artigo→família ainda — fica de fora da quebra por
     // segmento e do cruzamento de planejamento, mas visível aqui, nunca
