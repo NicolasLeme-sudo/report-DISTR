@@ -1102,7 +1102,7 @@ tr.total > th, tr.total > td {
 
   <header class="topbar">
     <div>
-      <div class="topbar-titulo" id="tituloSecao">Balanço e Detalhamento de Estoque</div>
+      <div class="topbar-titulo" id="tituloSecao">Balanço de Estoque</div>
       <div class="topbar-sub" id="topbarSub"></div>
     </div>
     <div class="topbar-busca" id="topbarBusca"></div>
@@ -1505,11 +1505,14 @@ function corDoTema(nome) {
 /* ============================================================
    NAVEGAÇÃO
    ============================================================ */
+// Só o nome do setor — mesmo padrão do Report E-commerce (sem emoji, sem
+// subtítulo colado; "Última atualização" já vai embaixo, ver
+// atualizarSubtituloSecao). Mesmo texto do item do menu correspondente.
 const TITULOS = {
-  start: 'Start Inicial — PFAs em tela',
+  start: 'Start Inicial',
   ressuprimento: 'Ressuprimento',
-  estoqueop: '🏪 Estoque',
-  estoque: 'Balanço e Detalhamento de Estoque',
+  estoqueop: 'Estoque',
+  estoque: 'Balanço de Estoque',
   distr: 'Fluxo de Processos',
   atualizar: 'Abastecimento',
 };
@@ -2463,13 +2466,16 @@ const ROT_ETAPA_PFA = {
 };
 function rotEtapaPfa(e) { return ROT_ETAPA_PFA[e] || e || '—'; }
 
-/* "PFAs em fluxo de coleta" (KPI, pedido da operação 10/09/2026): tudo que
-   ainda está sendo trabalhado na operação, antes de chegar em Leitura
-   expedição/Gerar Nota Fiscal — Leitura expedição já SAIU do fluxo de coleta
-   (já tem NF, já foi encaminhada pro embarque; exceção sabida: personalizado
-   pode aparecer aqui mesmo sem ter ido pro embarque de verdade, por passar
-   pela etapa de persona — a operação vai investigar isso à parte). */
-const ETAPAS_FLUXO_COLETA = ['Nao disp. picking', 'Disp. p/ picking', 'Em picking'];
+/* Dois cards de KPI (pedido da operação 10/09/2026), cada um com seu recorte
+   de situação — Leitura expedição fica de fora dos dois: já tem NF, já foi
+   encaminhada pro embarque (exceção sabida: personalizado pode aparecer
+   aqui mesmo sem ter ido pro embarque de verdade, por passar pela etapa de
+   persona — a operação vai investigar essa fatia à parte).
+   - "Material ag. formação para coleta": ainda não liberado (Nao disp.
+     picking) ou já liberado mas nem começou (Disp. p/ picking).
+   - "PFAs em fluxo de coleta": coleta em andamento de verdade (Em picking). */
+const ETAPAS_AG_FORMACAO = ['Nao disp. picking', 'Disp. p/ picking'];
+const ETAPAS_FLUXO_COLETA = ['Em picking'];
 
 /* Cor da etapa no funil: não é semáforo de "ruim", é posição no fluxo — o
    material anda da esquerda (ainda nem liberado) pra direita (só falta a
@@ -2749,6 +2755,8 @@ function renderizarPfas() {
   // aguard. nota fiscal" precisa mostrar só quem está genuinamente parado
   // com o fiscal (situação = Gerar Nota Fiscal) — Leitura expedição já tem
   // NF e já foi pro embarque, não entra em nenhum dos dois.
+  const agFormacao = filtrados.filter(function (r) { return ETAPAS_AG_FORMACAO.indexOf(r.situacao) !== -1; });
+  const paresAgFormacao = agFormacao.reduce(function (s, r) { return s + r.pares; }, 0);
   const fluxoColeta = filtrados.filter(function (r) { return ETAPAS_FLUXO_COLETA.indexOf(r.situacao) !== -1; });
   const paresFluxoColeta = fluxoColeta.reduce(function (s, r) { return s + r.pares; }, 0);
   const pendentesFiscal = filtrados.filter(function (r) { return r.situacao === 'Gerar Nota Fiscal'; });
@@ -2803,22 +2811,26 @@ function renderizarPfas() {
     '<div class="kpi"><div class="rot">Mais antiga em tela</div>' +
       '<div class="val forte" style="color:var(--amber)">' + (maisAntiga.dias ? fmtInt(maisAntiga.dias) + ' dias' : '—') + '</div>' +
       '<div class="sub">' + (maisAntiga.data ? 'importada ' + formatarDataSimples(maisAntiga.data) : 'sem PFA no recorte') + '</div></div>' +
+    '<div class="kpi"><div class="rot">Material ag. formação para coleta</div>' +
+      '<div class="val forte">' + fmtInt(agFormacao.length) + '</div>' +
+      '<div class="sub">' + fmtInt(paresAgFormacao) + ' pares · aguardando liberação/geração pro CD</div></div>' +
     '<div class="kpi"><div class="rot">PFAs em fluxo de coleta</div>' +
-      '<div class="val forte">' + fmtInt(paresFluxoColeta) + ' pares</div>' +
-      '<div class="sub">' + fmtInt(fluxoColeta.length) + ' PFAs · Não disp./Disp. p/ picking/Em picking</div></div>' +
+      '<div class="val forte">' + fmtInt(fluxoColeta.length) + '</div>' +
+      '<div class="sub">' + fmtInt(paresFluxoColeta) + ' pares · em separação no CD</div></div>' +
     '<div class="kpi"><div class="rot">Conferido, aguard. nota fiscal</div>' +
-      '<div class="val forte">' + fmtInt(paresPendentesFiscal) + ' pares</div>' +
-      '<div class="sub">' + fmtInt(pendentesFiscal.length) + ' PFAs · situação "Gerar Nota Fiscal"</div></div>' +
+      '<div class="val forte">' + fmtInt(pendentesFiscal.length) + '</div>' +
+      '<div class="sub">' + fmtInt(paresPendentesFiscal) + ' pares · parado, precisa de NF</div></div>' +
     '<div class="kpi"><div class="rot">Com nota, aguard. coleta</div>' +
       '<div class="val forte" style="color:var(--red)">' + fmtInt(coletaSep.qtdeConf) + ' pç</div>' +
-      '<div class="sub">' + fmtInt(coletaSep.pfasConf) + ' PFAs' +
-      (coletaMaisAntiga.dias ? ' · mais antiga há ' + fmtInt(coletaMaisAntiga.dias) + ' dias' : '') +
-      (coletaSep.qtdeNaoConf ? ' · +' + fmtInt(coletaSep.qtdeNaoConf) + ' pç não confirmados' : '') + '</div></div>' +
+      '<div class="sub">' + fmtInt(coletaSep.pfasConf) + ' PFAs · mais antiga com ' +
+      (coletaMaisAntiga.dias ? fmtInt(coletaMaisAntiga.dias) + ' dias' : '—') + ' em tela' +
+      (coletaSep.qtdeNaoConf ? ' · +' + fmtInt(coletaSep.qtdeNaoConf) + ' pç sem confirmação (prováv. já coletado)' : '') +
+      '</div></div>' +
     '<div class="kpi" style="border-color:var(--accent)">' +
       '<div class="rot" style="color:var(--accent)">Ajustes em aberto</div>' +
       '<div class="val forte" style="color:var(--accent)">' + fmtInt(ajustesEmAberto) + '</div>' +
       '<div class="sub">' + (ajustesEmAberto
-        ? 'aguardando a PFA nova aparecer em Pendentes'
+        ? 'ag. emissão de PFA para ajuste de saldo'
         : 'nenhum ajuste travado aguardando importação') + '</div></div>' +
   '</div>' +
 
