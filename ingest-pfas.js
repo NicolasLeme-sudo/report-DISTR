@@ -849,8 +849,12 @@ async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileE
   // refletem no PRÓXIMO upload de Pendentes/Analítico/Embarcadas — não tem
   // como recalcular sem os arquivos brutos, que não ficam guardados.
   avisar('Carregando ajustes de PFA…');
+  // PK de ajustes_pfa é 'id' — não 'codigo' (default do paginador, pensado
+  // pras dimensões dim_armazens/dim_familias). Sem passar isso explícito
+  // a paginação tentava ORDER BY numa coluna que não existe na tabela.
   const linhasAjustes = await window.lerTudoPaginado(supabaseClient, 'ajustes_pfa',
-    'tipo, encomenda, pfa_antiga, pfa_nova, cliente_nome, artigo, cor_tam, qtde_total_nf, qtde_inicial, qtde_pos_ajuste, motivo, data_solicitacao, solicitante');
+    'tipo, encomenda, pfa_antiga, pfa_nova, cliente_nome, artigo, cor_tam, qtde_total_nf, qtde_inicial, qtde_pos_ajuste, motivo, data_solicitacao, solicitante',
+    null, 'id');
   const ajustes = { registros: linhasAjustes };
 
   // Dicionário artigo->família (populado a cada upload de Picking/Pulmão)
@@ -860,8 +864,9 @@ async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileE
   // código do artigo, não a família). Artigo que nunca passou por um
   // upload de Picking/Pulmão fica sem marca/segmento — visível como tal,
   // nunca escondido do card.
+  // PK de dim_artigo_familia é 'artigo_codigo' — mesmo motivo acima.
   const linhasArtigoFamilia = await window.lerTudoPaginado(supabaseClient, 'dim_artigo_familia',
-    'artigo_codigo, familia_codigo');
+    'artigo_codigo, familia_codigo', null, 'artigo_codigo');
   const mapaArtigoFamiliaPfa = new Map(linhasArtigoFamilia.map(function (a) { return [a.artigo_codigo, a.familia_codigo]; }));
 
   avisar('Cruzando os arquivos…');
