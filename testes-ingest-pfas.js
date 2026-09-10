@@ -454,6 +454,41 @@ ok(!comNotaCarregado.confirmado, 'S2 vira NÃO confirmado — sumiu do Pendentes
 eq(comNotaCarregado.dias_nota, diasEntre('2026-09-01', '2026-09-10'), 'dias_nota RECALCULADO pra hoje mesmo sem Analítico novo (a data da nota é real)');
 
 /* -------------------------------------------------------------------------- */
+secao('construirSnapshotPfas — mesma PFA origem com vários artigos em falta, cada um sua linha (10/09/2026)');
+const pendMultiArtigo = parsearPfasPendentes([CAB_PEND,
+  linhaPend('500001', '01/09', '102', '2', 'Nao disp. picking', '10'), // PFA origem — some do pendente 1x só
+  linhaPend('500099', '08/09', '102', '1', 'Nao disp. picking', '3'),  // PFA nova (renumerada), única pra toda a PFA
+].join('\n'), HOJE);
+const ajustesMultiArtigo = { registros: [
+  // 3 artigos em falta na MESMA pfa_antiga/pfa_nova — a assistente lança uma
+  // linha por artigo, cada um com sua própria quantidade.
+  { tipo: 'AJUSTE', encomenda: '900001', pfa_antiga: '500001', pfa_nova: '500099',
+    cliente_nome: 'CLIENTE X', artigo: 'ART-A', cor_tam: 'P M',
+    qtde_total_nf: 20, qtde_inicial: 10, qtde_pos_ajuste: 6, motivo: 'Falta de artigo A',
+    data_solicitacao: '2026-09-09', solicitante: 'ERIKA' },
+  { tipo: 'AJUSTE', encomenda: '900001', pfa_antiga: '500001', pfa_nova: '500099',
+    cliente_nome: 'CLIENTE X', artigo: 'ART-B', cor_tam: 'P G',
+    qtde_total_nf: 20, qtde_inicial: 5, qtde_pos_ajuste: 2, motivo: 'Falta de artigo B',
+    data_solicitacao: '2026-09-09', solicitante: 'ERIKA' },
+  { tipo: 'AJUSTE', encomenda: '900001', pfa_antiga: '500001', pfa_nova: '500099',
+    cliente_nome: 'CLIENTE X', artigo: 'ART-C', cor_tam: 'P GG',
+    qtde_total_nf: 20, qtde_inicial: 8, qtde_pos_ajuste: 8, motivo: 'DE-PARA artigo C',
+    data_solicitacao: '2026-09-09', solicitante: 'ERIKA' },
+] };
+const snapMultiArtigo = construirSnapshotPfas(pendMultiArtigo, { registros: [] }, { registros: [] }, mapaFamilias,
+  { referencia: HOJE }, ajustesMultiArtigo, new Map());
+
+eq(snapMultiArtigo.ajustes.length, 3, 'uma linha de ajuste por artigo — nenhum é descartado como duplicata');
+eq(snapMultiArtigo.stats.excluidas_por_ajuste.pfas, 1, 'a PFA origem só é contada 1x na exclusão, mesmo com 3 artigos');
+ok(!snapMultiArtigo.pendentes.some(function (r) { return r.pfa === '500001'; }), 'PFA origem some do pendente (uma vez só, não 3)');
+const perdaTotalMultiArtigo = snapMultiArtigo.ajustes.reduce(function (s, a) { return s + a.perda_liquida; }, 0);
+eq(perdaTotalMultiArtigo, 7, 'perda soma os 3 artigos: (10-6) + (5-2) + (8-8) = 4+3+0 = 7');
+const pfasDistintasMultiArtigo = new Set(snapMultiArtigo.ajustes.map(function (a) { return a.pfa_antiga; })).size;
+eq(pfasDistintasMultiArtigo, 1, 'PFAs distintas nos ajustes continua 1, mesmo com 3 linhas (uma por artigo)');
+const pfaNovaMultiArtigo = snapMultiArtigo.pendentes.find(function (r) { return r.pfa === '500099'; });
+eq(pfaNovaMultiArtigo.situacao_pfa, 'retrabalhada', 'a PFA nova (única, compartilhada pelos 3 artigos) é reconhecida como retrabalhada certinho');
+
+/* -------------------------------------------------------------------------- */
 secao('diasUteisEntre — pula sábado e domingo');
 eq(diasUteisEntre('2026-09-08', '2026-09-08'), 0, 'mesma data, zero dias úteis');
 eq(diasUteisEntre('2026-09-03', '2026-09-08'), 3, 'qui 03/09 → ter 08/09 = 3 dias úteis (sex, seg, ter — fim de semana fora)');
