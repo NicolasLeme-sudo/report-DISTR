@@ -1389,7 +1389,14 @@ tr.total > th, tr.total > td {
 const SUPABASE_URL = 'https://qaehjplsasumuhszjcnu.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_NkbzLFHMLhVVJYSKDW9NrA_JWQAnPI9';
 
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// persistSession: false -- pedido do usuário (10/09/2026): a sessão não fica
+// salva no navegador, então recarregar a página SEMPRE volta pra tela de
+// login em vez de reentrar sozinho na última tela (Balanço de Estoque, hoje
+// o destino padrão de gestor/admin). Efeito: vale pra qualquer usuário, em
+// qualquer aba -- ninguém mais fica "logado" entre um F5 e outro.
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: false },
+});
 
 /* ============================================================
    FORMATAÇÃO
