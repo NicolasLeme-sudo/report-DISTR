@@ -4717,14 +4717,25 @@ const CABECALHO_MODELO_AJUSTES_PFA = ['tipo', 'encomenda', 'pfa_antiga', 'pfa_no
   'cliente_nome', 'artigo', 'cor_tam', 'qtde_total_nf', 'qtde_inicial', 'qtde_pos_ajuste', 'motivo',
   'data_solicitacao', 'solicitante'];
 
-/* Uma linha de exemplo já preenchida vem junto de propósito: planilha só com
-   cabeçalho deixa dúvida de formato (data com barra? tipo em maiúscula?).
-   A assistente apaga a linha e digita as dela por cima. */
-const EXEMPLO_MODELO_AJUSTES_PFA = ['AJUSTE', '960841', '242018', '242305', '46212', 'CHARLESTON WILLIA',
-  'OIMCR24302', 'PT/PRT M', '60', '5', '3', 'Ajuste de encomenda', '09/09/2026', 'ERIKA DOMINGUES LEME'];
+/* Linhas de exemplo já preenchidas vêm juntas de propósito — as MESMAS 5 do
+   quadro visual acima (um exemplo por tipo, mais o caso DE-PARA), pra quem
+   for abastecer ver de cara todo tipo/motivo possível em vez de só um caso
+   isolado. A assistente apaga as linhas e digita as dela por cima. */
+const EXEMPLOS_MODELO_AJUSTES_PFA = [
+  ['AJUSTE', '960841', '242018', '242305', '46212', 'CHARLESTON WILLIA',
+    'OIMCR24302', 'PT/PRT M', '60', '5', '3', 'Ajuste de encomenda', '09/09/2026', 'ERIKA DOMINGUES LEME'],
+  ['BO_POS_NF', '959112', '241650', '', '46212', 'CHARLESTON WILLIA',
+    'OIMCR24302', 'PT/PRT M', '60', '2', '0', 'Stockout', '09/09/2026', 'ERIKA DOMINGUES LEME'],
+  ['AJUSTE', '961205', '242190', '242311', '62410', 'GRUPO SPORTSTYLE',
+    'OIVCR23110', 'PT M', '30', '10', '10', 'DE-PARA (artigo substituto)', '09/09/2026', 'ERIKA DOMINGUES LEME'],
+  ['CANCELAMENTO', '957004', '241902', '', '51330', 'REDE CALCADOS MG',
+    'OIACS20044', 'PT M', '14', '14', '0', 'Financeiro', '09/09/2026', 'ERIKA DOMINGUES LEME'],
+  ['AD_DEVOLUCAO', '955390', '240711', '', '46212', 'CHARLESTON WILLIA',
+    'OIMCR24302', 'PT/PRT M', '120', '120', '0', 'Recusa de envio parcial (AD)', '09/09/2026', 'ERIKA DOMINGUES LEME'],
+];
 
 function baixarModeloAjustesPfa() {
-  const linhas = [CABECALHO_MODELO_AJUSTES_PFA, EXEMPLO_MODELO_AJUSTES_PFA];
+  const linhas = [CABECALHO_MODELO_AJUSTES_PFA].concat(EXEMPLOS_MODELO_AJUSTES_PFA);
   // Mesmo formato do resto do app: ";" e BOM, pro Excel pt-BR abrir em
   // colunas sem pedir importação manual.
   const csv = linhas.map(function (l) {

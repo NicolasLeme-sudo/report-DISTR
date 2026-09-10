@@ -265,6 +265,19 @@ eq(aju.linhas_invalidas, 1, 'tipo desconhecido conta como inválido (linha tem t
 eq(aju.registros[0].encomenda, '960841', 'encomenda preservada — é a chave que sobrevive a renumeração de PFA');
 eq(aju.registros[0].pfa_nova, '242305', 'PFA nova lida');
 
+secao('parsearAjustesPfa — tipo reconhece palavra-chave, não exige grafia exata (10/09/2026)');
+const ajuSinonimo = parsearAjustesPfa([CAB_AJU,
+  linhaAju('cancelado', '960900', '242020', '', 'OIMCR24303', '10', '2', '0', 'Financeiro'),
+  linhaAju('Devolução AD', '960901', '242021', '', 'OIMCR24303', '10', '2', '0', 'Recusa'),
+  linhaAju('B.O. pós-NF', '960902', '242022', '', 'OIMCR24303', '10', '2', '0', 'Stockout'),
+  linhaAju('ajustes', '960903', '242023', '242311', 'OIMCR24303', '10', '2', '0', 'Corte'),
+].join('\n'));
+eq(ajuSinonimo.registros.length, 4, 'as 4 grafias alternativas foram todas reconhecidas');
+eq(ajuSinonimo.registros[0].tipo, 'CANCELAMENTO', '"cancelado" normaliza pro rótulo oficial');
+eq(ajuSinonimo.registros[1].tipo, 'AD_DEVOLUCAO', '"Devolução AD" normaliza pro rótulo oficial');
+eq(ajuSinonimo.registros[2].tipo, 'BO_POS_NF', '"B.O. pós-NF" normaliza pro rótulo oficial');
+eq(ajuSinonimo.registros[3].tipo, 'AJUSTE', '"ajustes" (plural) normaliza pro rótulo oficial');
+
 /* -------------------------------------------------------------------------- */
 secao('construirSnapshotPfas + ajustes_pfa — exclusão, DE-PARA, AD e PFA retrabalhada');
 const pendAju = parsearPfasPendentes([CAB_PEND,

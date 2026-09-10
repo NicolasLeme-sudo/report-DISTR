@@ -302,6 +302,24 @@ function parsearPfasEmbarcadas(textoArquivo) {
    e-mail do comercial (ver especificação validada em 09/09/2026). */
 const TIPOS_AJUSTE_PFA = ['AJUSTE', 'CANCELAMENTO', 'BO_POS_NF', 'AD_DEVOLUCAO'];
 
+/* `tipo` não precisa vir digitado igualzinho ao rótulo oficial — o operador
+   que preenche a planilha não decora a lista, então reconhecemos a palavra-
+   chave em vez de exigir grafia exata (pedido da operação, 10/09/2026).
+   `motivo` continua 100% livre — nunca comparado, só guardado e exibido. */
+function normalizarTipoAjuste(bruto) {
+  const t = String(bruto || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // tira acento
+    .toUpperCase();
+  // pra reconhecer a palavra-chave não pode importar pontuação/espaço no meio
+  // ("B.O. pós-NF", "B.O pos NF" e "BOPOSNF" têm que cair no mesmo lugar).
+  const soLetras = t.replace(/[^A-Z]/g, '');
+  if (/DEVOL/.test(soLetras)) return 'AD_DEVOLUCAO';
+  if (/CANCEL/.test(soLetras)) return 'CANCELAMENTO';
+  if (/BO/.test(soLetras) && /NF/.test(soLetras)) return 'BO_POS_NF';
+  if (/AJUST/.test(soLetras)) return 'AJUSTE';
+  return t.trim(); // não reconhecido — cai fora na checagem contra TIPOS_AJUSTE_PFA
+}
+
 /* SLA de leadtime de uma PFA "retrabalhada" (nascida de um AJUSTE): ela não
    repete conferência nem separação, só reetiqueta — por isso o prazo real é
    bem mais curto que o FIFO normal de uma PFA original. */
@@ -337,7 +355,7 @@ function parsearAjustesPfa(textoArquivo) {
     const p = linha.split(';');
     if (p.length < 14) continue;
 
-    const tipo = (p[0] || '').trim().toUpperCase();
+    const tipo = normalizarTipoAjuste(p[0]);
     const encomenda = (p[1] || '').trim();
     const pfaAntiga = (p[2] || '').trim();
     const artigo = (p[6] || '').trim();
