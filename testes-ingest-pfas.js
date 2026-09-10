@@ -323,6 +323,33 @@ eq(ajuXlsxSimulado.registros.length, 2, 'cabeçalho e linha em branco ficam de f
 eq(ajuXlsxSimulado.registros[0].qtde_total_pedido, 60, 'número que chega como Number (célula do Excel), não string, também converte certo');
 eq(ajuXlsxSimulado.registros[1].familia_codigo, null, 'familia_codigo vazio vira null, não string vazia');
 
+secao('CANCELAMENTO enxuto do time comercial — só tipo/pfa_antiga/qtde/data/solicitante preenchidos (10/09/2026)');
+// Caso real: às vezes o comercial pede cancelamento da PFA inteira e não
+// preenche encomenda, artigo, cor/tam, família nem motivo — só o essencial.
+const linhasCancelamentoEnxuto = [
+  ['tipo', 'encomenda', 'pfa_antiga', 'pfa_nova', 'cliente', 'familia_codigo', 'artigo', 'cor', 'tam',
+    'qtde_total_pedido', 'qtde_faltante', 'motivo', 'data_solicitacao', 'solicitante'],
+  ['CANCELAMENTO', '', '234205', '', '', '', '', '', '', 60, '', '', '04/08/2026', 'ERIKA DOMINGUES LEME'],
+];
+const ajuCancelEnxuto = parsearLinhasAjustesPfa(linhasCancelamentoEnxuto);
+eq(ajuCancelEnxuto.linhas_invalidas, 0, 'não é mais descartada só por faltar encomenda/artigo');
+eq(ajuCancelEnxuto.registros.length, 1, 'a linha enxuta vira 1 registro válido');
+eq(ajuCancelEnxuto.registros[0].encomenda, '', 'encomenda fica vazia mesmo, sem inventar valor');
+eq(ajuCancelEnxuto.registros[0].artigo, '', 'artigo fica vazio mesmo, sem inventar valor');
+eq(ajuCancelEnxuto.registros[0].qtde_faltante, 60, 'sem qtde_faltante informada, assume o total do pedido (cancelou tudo)');
+
+// Sem pfa_antiga não dá pra saber qual PFA cancelar — continua inválida.
+const ajuCancelSemPfa = parsearLinhasAjustesPfa([
+  ['CANCELAMENTO', '', '', '', '', '', '', '', '', 60, '', '', '04/08/2026', 'ERIKA DOMINGUES LEME'],
+]);
+eq(ajuCancelSemPfa.linhas_invalidas, 1, 'CANCELAMENTO sem pfa_antiga continua inválido — não dá pra identificar a PFA');
+
+// AJUSTE continua exigindo encomenda e artigo normalmente (não é CANCELAMENTO).
+const ajuNaoCancelEnxuto = parsearLinhasAjustesPfa([
+  ['AJUSTE', '', '242018', '', '', '', '', '', '', 60, '', '', '04/08/2026', 'ERIKA'],
+]);
+eq(ajuNaoCancelEnxuto.linhas_invalidas, 1, 'AJUSTE sem encomenda/artigo continua sendo rejeitado — regra só afrouxa pra CANCELAMENTO');
+
 secao('parsearAjustesPfa — tipo reconhece palavra-chave, não exige grafia exata (10/09/2026)');
 const ajuSinonimo = parsearAjustesPfa([CAB_AJU,
   linhaAju('cancelado', '960900', '242020', '', 'OIMCR24303', '10', '2', '0', 'Financeiro'),

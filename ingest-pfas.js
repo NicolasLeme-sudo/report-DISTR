@@ -415,13 +415,32 @@ function parsearLinhasAjustesPfa(linhas) {
     const encomenda = (p[1] || '').trim();
     const pfaAntiga = (p[2] || '').trim();
     const artigo = (p[6] || '').trim();
-    if (TIPOS_AJUSTE_PFA.indexOf(tipo) === -1 || !encomenda || !pfaAntiga || !artigo) {
+
+    /* CANCELAMENTO às vezes chega do time comercial quase em branco — só
+       tipo, pfa_antiga, qtde_total_pedido, data_solicitacao e solicitante
+       preenchidos (encomenda/artigo/cor/tam/família/motivo ficam vazios).
+       Como o material inteiro está sendo cancelado, não faz sentido exigir
+       encomenda/artigo pra esse tipo: exigimos só tipo + pfa_antiga. Os
+       demais tipos continuam exigindo encomenda e artigo, como antes. */
+    const exigeEncomendaEArtigo = tipo !== 'CANCELAMENTO';
+    if (
+      TIPOS_AJUSTE_PFA.indexOf(tipo) === -1 ||
+      !pfaAntiga ||
+      (exigeEncomendaEArtigo && (!encomenda || !artigo))
+    ) {
       linhasInvalidas++;
       continue;
     }
 
     const cor = (p[7] || '').trim();
     const tam = (p[8] || '').trim();
+    const qtdeTotalPedido = window.numeroBR(p[9]);
+    let qtdeFaltante = window.numeroBR(p[10]);
+    // CANCELAMENTO sem qtde_faltante informada: cancelou tudo, então a
+    // quantidade faltante é a própria quantidade total do pedido.
+    if (tipo === 'CANCELAMENTO' && !qtdeFaltante && qtdeTotalPedido) {
+      qtdeFaltante = qtdeTotalPedido;
+    }
     registros.push({
       tipo: tipo,
       encomenda: encomenda,
@@ -431,8 +450,8 @@ function parsearLinhasAjustesPfa(linhas) {
       familia_codigo: (p[5] || '').trim() || null,
       artigo: artigo,
       cor_tam: [cor, tam].filter(Boolean).join(' '),
-      qtde_total_pedido: window.numeroBR(p[9]),
-      qtde_faltante: window.numeroBR(p[10]),
+      qtde_total_pedido: qtdeTotalPedido,
+      qtde_faltante: qtdeFaltante,
       motivo: (p[11] || '').trim(),
       data_solicitacao: dataDDMMAAAA(p[12]),
       solicitante: (p[13] || '').trim(),

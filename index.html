@@ -1308,6 +1308,11 @@ tr.total > th, tr.total > td {
             preencha <strong>qtde_faltante com 0</strong> — a perda sai zero sozinha, sem coluna extra.</li>
           <li>Reenviar a planilha nunca duplica: a linha é identificada por encomenda + pfa_antiga + artigo +
             cor + tam — subir de novo com esse quinteto igual substitui a linha, corrigindo um valor errado.</li>
+          <li><strong>CANCELAMENTO enxuto</strong>: às vezes o comercial pede o cancelamento de uma PFA inteira e só
+            preenche tipo, pfa_antiga, qtde_total_pedido, data_solicitacao e solicitante — sem encomenda, artigo,
+            cor/tam nem motivo. Essa linha <strong>é aceita normalmente</strong> (só CANCELAMENTO dispensa
+            encomenda/artigo); se qtde_faltante ficar em branco, assume-se o próprio qtde_total_pedido, já que a
+            PFA inteira está sendo cancelada.</li>
         </ul>
         <div class="dropzone" id="dropzoneAjustesPfa">
           <span id="dropzoneAjustesPfaTexto">Clique para selecionar o .xlsx (ou .csv/.txt) de <strong>Ajustes de PFA</strong></span>
