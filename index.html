@@ -282,9 +282,16 @@ html { overflow-x: hidden; }
 .kpi .val.forte { font-weight: 700; font-size: 20px; }
 .kpi .sub { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
 
-/* Card de ocupação com rosca — Ressuprimento (Picking × Pulmão). */
-.kpi-ocup { display: flex; align-items: center; gap: 12px; }
-.donut-ocup text { fill: var(--text); font-size: 11px; font-weight: 700; font-family: inherit; }
+/* Card de ocupação com rosca — Ressuprimento (Picking × Pulmão). Sobrescreve
+   TODO o flex de .kpi (que virou column/space-between pros cards de PFA,
+   10/09/2026) de propósito — sem isso a rosca e o texto empilhavam na
+   vertical em vez de lado a lado, espremendo a rosca e deformando o card
+   (bug real reportado pelo usuário, 10/09/2026). */
+.kpi-row-ocup { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.kpi-ocup { display: flex; flex-direction: row; justify-content: flex-start; align-items: center; gap: 14px; }
+.kpi-ocup .rot { min-height: 0; font-size: 11px; }
+.donut-ocup { flex: none; } /* nunca deixa o grid encolher a rosca pra caber o texto */
+.donut-ocup text { fill: var(--text); font-size: 13px; font-weight: 700; font-family: inherit; }
 
 /* ============================================================
    5) FILTRO DE STATUS
@@ -3353,12 +3360,15 @@ const ROT_FILTRO_RESSUP = { picking: 'Picking', pulmao: 'Pulmão', todos: 'Todos
 /* Rosca de ocupação — SVG inline, sem lib (mesma filosofia dos outros
    gráficos desta tela: string HTML pronta, sem canvas/lib externa). */
 function donutOcupacao(pctVal, cor) {
-  const tam = 56, r = 21, c = 2 * Math.PI * r;
+  // Aumentada de 56 pra 72 (10/09/2026, pedido do usuário: "gráfico de rosca
+  // muito pequeno") — junto com o stroke mais grosso, fica proporcional ao
+  // card em vez de sumir num canto.
+  const tam = 72, r = 27, c = 2 * Math.PI * r;
   const pv = Math.max(0, Math.min(100, pctVal || 0));
   const off = c * (1 - pv / 100);
   return '<svg width="' + tam + '" height="' + tam + '" viewBox="0 0 ' + tam + ' ' + tam + '" class="donut-ocup">' +
-    '<circle cx="' + (tam / 2) + '" cy="' + (tam / 2) + '" r="' + r + '" fill="none" stroke="var(--border)" stroke-width="6"/>' +
-    '<circle cx="' + (tam / 2) + '" cy="' + (tam / 2) + '" r="' + r + '" fill="none" stroke="' + cor + '" stroke-width="6" ' +
+    '<circle cx="' + (tam / 2) + '" cy="' + (tam / 2) + '" r="' + r + '" fill="none" stroke="var(--border)" stroke-width="7"/>' +
+    '<circle cx="' + (tam / 2) + '" cy="' + (tam / 2) + '" r="' + r + '" fill="none" stroke="' + cor + '" stroke-width="7" ' +
       'stroke-linecap="round" stroke-dasharray="' + c.toFixed(2) + '" stroke-dashoffset="' + off.toFixed(2) + '" ' +
       'transform="rotate(-90 ' + (tam / 2) + ' ' + (tam / 2) + ')"/>' +
     '<text x="50%" y="52%" text-anchor="middle" dominant-baseline="middle">' + fmtPct(pv) + '</text>' +
@@ -3509,7 +3519,7 @@ function renderizarEstoqueOperacao(p) {
     }
     const unidade = modo === 'itens' ? 'pç' : 'pos. alocadas';
     return cabecalho +
-      '<div class="kpi-row">' +
+      '<div class="kpi-row kpi-row-ocup">' +
         cardOcupacao(ROT_BUCKET.total, linha.total, unidade) +
         cardOcupacao(ROT_BUCKET.meia, linha.meia, unidade) +
         cardOcupacao(ROT_BUCKET.vestuario, linha.vestuario, unidade) +
