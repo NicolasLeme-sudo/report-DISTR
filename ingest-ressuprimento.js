@@ -926,14 +926,30 @@ async function processarRessuprimento(supabaseClient, filePicking, filePulmao, o
    10/09/2026: "sempre me guio pelo último upload de pulmão e picking"). Em
    lotes porque o arquivo real passa de dezenas de milhares de linhas. */
 const LOTE_INSERT_SALDO = 500;
+/* Mesmo raciocínio de upsertArtigoFamilia (tabela nova, quem não rodou a
+   migração ou não tem permissão não pode ficar sem o Ressuprimento inteiro
+   por causa disso): erro aqui vira aviso, nunca derruba o upload — o
+   snapshot principal (dashboard_snapshots) já foi gravado antes desta
+   chamada. Sem isso, um erro no meio dos lotes (rede caiu, RLS, etc.)
+   fazia a tela inteira mostrar "ERRO" mesmo com o Ressuprimento em si já
+   salvo com sucesso — confuso pra quem só queria saber se o upload foi. */
 async function substituirSaldoEnderecos(supabaseClient, saldos, onProgresso) {
   const avisar = onProgresso || function () {};
   const { error: errDelete } = await supabaseClient.from('ressuprimento_saldo_enderecos').delete().gte('id', 0);
-  if (errDelete) throw errDelete;
+  if (errDelete) {
+    avisar('Aviso: não deu pra atualizar o saldo por endereço (' + errDelete.message + ') — ' +
+      'o relatório de gap de estoque das perdas de PFA vai continuar com o saldo antigo até o próximo upload que funcionar.');
+    return;
+  }
   for (let i = 0; i < saldos.length; i += LOTE_INSERT_SALDO) {
     const lote = saldos.slice(i, i + LOTE_INSERT_SALDO);
     const { error } = await supabaseClient.from('ressuprimento_saldo_enderecos').insert(lote);
-    if (error) throw error;
+    if (error) {
+      avisar('Aviso: saldo por endereço parou de gravar no meio do caminho (' + error.message + ') — ' +
+        Math.min(i, saldos.length).toLocaleString('pt-BR') + ' / ' + saldos.length.toLocaleString('pt-BR') +
+        ' linhas gravadas. O relatório de gap de estoque vai ficar incompleto até reprocessar de novo.');
+      return;
+    }
     avisar('Gravando saldo por endereço… ' +
       Math.min(i + LOTE_INSERT_SALDO, saldos.length).toLocaleString('pt-BR') +
       ' / ' + saldos.length.toLocaleString('pt-BR'));

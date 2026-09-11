@@ -2935,7 +2935,10 @@ function renderizarPfas() {
         '<strong>Gap de estoque (.xlsx)</strong>: exporta AJUSTE e B.O. pós-NF com perda (DE-PARA sai zerado ' +
         'sozinho, sem linha) cruzados com o saldo físico por endereço do <strong>último</strong> Picking/Pulmão ' +
         'abastecido — pra achar onde o material perdido ainda tem saldo físico e corrigir o estoque. Cancelamento ' +
-        'e AD ficam de fora: dependem de decisão do comercial, não são erro operacional pra validar no armazém.' +
+        'e AD ficam de fora: dependem de decisão do comercial, não são erro operacional pra validar no armazém. ' +
+        '<strong style="color:var(--amber)">Precisa reprocessar Picking/Pulmão pelo menos 1x</strong> em Admin › ' +
+        'Atualizar dados depois de ligar este relatório — sem isso toda linha sai "sem saldo", mesmo com estoque ' +
+        'real no armazém, porque o saldo por endereço ainda não existe pra cruzar.' +
         '</p>' +
     '</div>';
   })();
@@ -4867,6 +4870,26 @@ async function exportarGapEstoqueAjustes() {
       return;
     }
 
+    // Confere se o saldo por endereço já foi abastecido ALGUMA VEZ antes de
+    // cruzar — sem isso, uma tabela vazia (Picking/Pulmão nunca reprocessado
+    // desde que este relatório existe) fica indistinguível de "artigo sem
+    // saldo de verdade", e cada linha sairia com "SEM SALDO" mesmo quando
+    // existe estoque real no armazém (bug real reportado pelo usuário,
+    // 11/09/2026 — a tabela nunca tinha sido gravada nenhuma vez ainda).
+    const { count: totalSaldo, error: errCount } = await supabaseClient
+      .from('ressuprimento_saldo_enderecos').select('id', { count: 'exact', head: true });
+    if (errCount) throw errCount;
+    if (!totalSaldo) {
+      alert('O saldo por endereço (Picking/Pulmão) ainda não foi abastecido nenhuma vez — ' +
+        'suba os dois arquivos de novo em Admin › Atualizar dados › Ressuprimento antes de ' +
+        'exportar este relatório, senão toda linha sai como "sem saldo" mesmo quando existe ' +
+        'estoque de verdade no armazém.');
+      return;
+    }
+    const { data: freschura } = await supabaseClient.from('ressuprimento_saldo_enderecos')
+      .select('atualizado_em').order('atualizado_em', { ascending: false }).limit(1);
+    const dataSaldo = freschura && freschura[0] ? new Date(freschura[0].atualizado_em).toLocaleString('pt-BR') : null;
+
     const artigos = Array.from(new Set(perdas.map(function (a) { return a.artigo; }).filter(Boolean)));
     const { data: saldos, error } = await supabaseClient.from('ressuprimento_saldo_enderecos')
       .select('artigo_codigo, cor, tamanho, rua, nivel, box, classificacao, qtd')
@@ -4917,6 +4940,12 @@ async function exportarGapEstoqueAjustes() {
     a.download = 'gap-estoque-ajustes-pfa.xlsx';
     a.click();
     URL.revokeObjectURL(a.href);
+    // Confirma a data-fonte do saldo cruzado — sem isso não dá pra saber, só
+    // olhando o arquivo, se "sem saldo" é de verdade ou é saldo desatualizado
+    // (mesmo bug relatado pelo usuário, 11/09/2026).
+    if (dataSaldo) {
+      alert('Relatório gerado — cruzado com o saldo de Picking/Pulmão abastecido em ' + dataSaldo + '.');
+    }
   } catch (e) {
     alert('Não foi possível montar o relatório: ' + (e && e.message ? e.message : String(e)));
     console.error(e);
