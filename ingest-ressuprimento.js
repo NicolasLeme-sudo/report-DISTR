@@ -331,9 +331,15 @@ function parsearPulmao(textoArquivo) {
    manual usa ocupado × 1.2 (decisão da operação, provisório até a capacidade
    real ser levantada).
    ============================================================================ */
-function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidadesManual, meta, capacidadesItensManual) {
-  const cap = capacidadesManual || {};
-  const capItens = capacidadesItensManual || {};
+/* ============================================================================
+   CLASSIFICAÇÃO — separa Picking "de verdade" do que é Pulmão-dentro-do-
+   picking, e enriquece os dois com marca/segmento/bucket. Extraída como
+   função própria (10/09/2026): além de alimentar construirSnapshotRessuprimento,
+   é a mesma base que alimenta construirSaldoEnderecos (saldo por endereço,
+   persistido pra dar suporte ao relatório de gap de estoque das perdas de
+   PFA) — mesma regra de classificação nos dois lugares, sem duplicar.
+   ============================================================================ */
+function classificarPickingEPulmao(picking, pulmao, mapaFamilias) {
   const familiasNaoMapeadas = new Set();
 
   function infoFamilia(codigo) {
@@ -386,6 +392,68 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
       classif_rotulo: r.motivo,
     });
   }));
+
+  return { pickingReal: pickingReal, pulmaoTudo: pulmaoTudo, familias_nao_mapeadas: familiasNaoMapeadas };
+}
+
+/* ============================================================================
+   SALDO POR ENDEREÇO — persistido em ressuprimento_saldo_enderecos
+   ------------------------------------------------------------------------
+   Pedido do usuário (10/09/2026): poder exportar, pra qualquer artigo que
+   gerou perda numa PFA (AJUSTE/B.O. pós-NF), onde esse material AINDA TEM
+   saldo físico no armazém — pra validar e corrigir o estoque. O upload de
+   Ressuprimento é o único lugar que enxerga o endereço físico (Balanço de
+   Estoque só soma por família/armazém); o resto do relatório nunca precisou
+   descer a esse nível de detalhe, só este relatório de gap precisa.
+
+   Guiado SEMPRE pelo ÚLTIMO upload (pedido explícito do usuário): a tabela é
+   substituída inteira a cada Picking/Pulmão processado, nunca acumula
+   histórico — processarRessuprimento apaga tudo e grava de novo.
+
+   PICKING: já é uma linha por SKU+endereço — qtd = disponível + cativado
+   (mesmo gabarito de "peças ocupadas" usado no resto do arquivo: material
+   cativado é saldo real, só não está livre).
+   PULMÃO: uma linha por VOLUME — soma tudo (real + reclassificado do
+   Picking) por SKU+endereço antes de gravar, senão o mesmo endereço apareceria
+   repetido uma vez por volume/pallete.
+   classificacao é só PICKING/PULMAO (pedido do usuário) — a subdivisão fina
+   de Pulmão (validação/trânsito) não importa pra "onde tem saldo físico".
+   ============================================================================ */
+function construirSaldoEnderecos(pickingReal, pulmaoTudo) {
+  const saldos = [];
+
+  pickingReal.forEach(function (r) {
+    const qtd = (r.qtd || 0) + (r.qtd_cativado || 0);
+    if (qtd <= 0) return; // endereço alocado sem saldo não ajuda a achar material físico
+    saldos.push({
+      artigo_codigo: r.artigo_codigo, cor: r.cor, tamanho: r.tamanho, familia_codigo: r.familia_codigo,
+      rua: r.rua, nivel: r.nivel, box: r.box, classificacao: 'PICKING', qtd: qtd,
+    });
+  });
+
+  const porEnderecoPulmao = new Map();
+  pulmaoTudo.forEach(function (r) {
+    if (!(r.qtd > 0)) return;
+    const chave = [r.artigo_codigo, r.cor, r.tamanho, r.rua, r.nivel, r.box].join('|');
+    if (!porEnderecoPulmao.has(chave)) {
+      porEnderecoPulmao.set(chave, {
+        artigo_codigo: r.artigo_codigo, cor: r.cor, tamanho: r.tamanho, familia_codigo: r.familia_codigo,
+        rua: r.rua, nivel: r.nivel, box: r.box, classificacao: 'PULMAO', qtd: 0,
+      });
+    }
+    porEnderecoPulmao.get(chave).qtd += r.qtd;
+  });
+
+  return saldos.concat(Array.from(porEnderecoPulmao.values()));
+}
+
+function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidadesManual, meta, capacidadesItensManual) {
+  const cap = capacidadesManual || {};
+  const capItens = capacidadesItensManual || {};
+  const classif = classificarPickingEPulmao(picking, pulmao, mapaFamilias);
+  const pickingReal = classif.pickingReal;
+  const pulmaoTudo = classif.pulmaoTudo;
+  const familiasNaoMapeadas = classif.familias_nao_mapeadas;
 
   /* ---------- posições ocupadas = endereços ALOCADOS, não "com saldo" ----------
      Um endereço de Picking com o SKU endereçado e saldo zero continua OCUPADO:
@@ -841,8 +909,35 @@ async function processarRessuprimento(supabaseClient, filePicking, filePulmao, o
   avisar('Atualizando dicionário artigo→família…');
   await upsertArtigoFamilia(supabaseClient, picking, pulmao, avisar);
 
+  // Saldo por endereço, pra sustentar o relatório de gap de estoque das
+  // perdas de PFA (Ajustes de PFA → "onde tenho saldo desse material que
+  // perdi por falta"). Pedido do usuário (10/09/2026): guiar-se sempre pelo
+  // ÚLTIMO upload — a tabela é substituída inteira, nunca acumula histórico.
+  avisar('Atualizando saldo por endereço (Picking/Pulmão)…');
+  const classif = classificarPickingEPulmao(picking, pulmao, mapaFamilias);
+  const saldos = construirSaldoEnderecos(classif.pickingReal, classif.pulmaoTudo);
+  await substituirSaldoEnderecos(supabaseClient, saldos, avisar);
+
   avisar('Concluído.');
   return payload;
+}
+
+/* Apaga tudo e grava de novo — nunca acumula histórico (pedido do usuário,
+   10/09/2026: "sempre me guio pelo último upload de pulmão e picking"). Em
+   lotes porque o arquivo real passa de dezenas de milhares de linhas. */
+const LOTE_INSERT_SALDO = 500;
+async function substituirSaldoEnderecos(supabaseClient, saldos, onProgresso) {
+  const avisar = onProgresso || function () {};
+  const { error: errDelete } = await supabaseClient.from('ressuprimento_saldo_enderecos').delete().gte('id', 0);
+  if (errDelete) throw errDelete;
+  for (let i = 0; i < saldos.length; i += LOTE_INSERT_SALDO) {
+    const lote = saldos.slice(i, i + LOTE_INSERT_SALDO);
+    const { error } = await supabaseClient.from('ressuprimento_saldo_enderecos').insert(lote);
+    if (error) throw error;
+    avisar('Gravando saldo por endereço… ' +
+      Math.min(i + LOTE_INSERT_SALDO, saldos.length).toLocaleString('pt-BR') +
+      ' / ' + saldos.length.toLocaleString('pt-BR'));
+  }
 }
 
 window.processarRessuprimento = processarRessuprimento;
@@ -850,6 +945,8 @@ window.upsertArtigoFamilia = upsertArtigoFamilia;
 window.parsearPicking = parsearPicking;
 window.parsearPulmao = parsearPulmao;
 window.construirSnapshotRessuprimento = construirSnapshotRessuprimento;
+window.classificarPickingEPulmao = classificarPickingEPulmao;
+window.construirSaldoEnderecos = construirSaldoEnderecos;
 window.classificarRuaPulmao = classificarRuaPulmao;
 window.classificarBucket = classificarBucket;
 window.segmentoMacro = segmentoMacro;

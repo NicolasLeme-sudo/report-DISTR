@@ -403,6 +403,7 @@ function dividirLinhaCsv(linha, delim) {
    coisa que texto puro não guarda). */
 function parsearLinhasAjustesPfa(linhas) {
   const registros = [];
+  const avisos = [];
   let linhasInvalidas = 0;
 
   for (let i = 0; i < linhas.length; i++) {
@@ -441,6 +442,16 @@ function parsearLinhasAjustesPfa(linhas) {
     if (tipo === 'CANCELAMENTO' && !qtdeFaltante && qtdeTotalPedido) {
       qtdeFaltante = qtdeTotalPedido;
     }
+    // Pedido do usuário (10/09/2026): avisar, sem descartar a linha (o dado
+    // ainda é gravado), quando a falta declarada é maior que o próprio
+    // pedido — sinal de erro de digitação na planilha. "LINHA" é o número
+    // da linha no arquivo (1 = cabeçalho), igual ao que aparece no Excel.
+    if (qtdeFaltante > qtdeTotalPedido) {
+      avisos.push(
+        'Inconsistência detectada na PFA ' + pfaAntiga + ' / LINHA ' + (i + 1) +
+        ' da planilha - saldo faltante > saldo total pedido'
+      );
+    }
     registros.push({
       tipo: tipo,
       encomenda: encomenda,
@@ -458,7 +469,7 @@ function parsearLinhasAjustesPfa(linhas) {
     });
   }
 
-  return { registros: registros, linhas_invalidas: linhasInvalidas };
+  return { registros: registros, linhas_invalidas: linhasInvalidas, avisos: avisos };
 }
 
 function parsearAjustesPfa(textoArquivo) {
@@ -901,6 +912,54 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
     return { marca: fam.marca, segmento_macro: window.segmentoMacro(fam.segmento, fam.categoria) };
   }
 
+  /* ---------- divergência entre a falta manual e o automático (10/09/2026) ----------
+     CANCELAMENTO tira a PFA inteira do Pendentes (pfasAjustadas) — se a soma
+     de qtde_faltante das linhas de CANCELAMENTO daquela PFA não bate com o
+     total de pares que a PFA tinha em Pendentes, é sinal de erro de
+     digitação (esqueceu uma linha, ou o valor não reflete o pedido real).
+     AD_DEVOLUCAO tira a PFA inteira de "aguardando coleta" (nunca passa por
+     Pendentes) — mesma lógica, comparando contra a qtde do Analítico. Não
+     bloqueia nada, só avisa — mesmo formato de mensagem pedido pra
+     inconsistência de planilha (PFA identificada, sem forçar correção). */
+  const avisosDivergenciaAjustes = [];
+  const faltantePorPfaCancelamento = new Map();
+  ajustesLista.forEach(function (a) {
+    if (a.tipo !== 'CANCELAMENTO') return;
+    faltantePorPfaCancelamento.set(a.pfa_antiga,
+      (faltantePorPfaCancelamento.get(a.pfa_antiga) || 0) + (a.qtde_faltante || 0));
+  });
+  pendentesRegistros.forEach(function (r) {
+    if (!faltantePorPfaCancelamento.has(r.pfa)) return;
+    const declarado = faltantePorPfaCancelamento.get(r.pfa);
+    if (declarado !== r.pares) {
+      avisosDivergenciaAjustes.push(
+        'Inconsistência detectada na PFA ' + r.pfa + ' - saldo faltante informado (' +
+        declarado + ') diferente do saldo total da PFA em Pendentes (' + r.pares + ')'
+      );
+    }
+  });
+  const faltantePorPfaAD = new Map();
+  ajustesLista.forEach(function (a) {
+    if (a.tipo !== 'AD_DEVOLUCAO') return;
+    faltantePorPfaAD.set(a.pfa_antiga, (faltantePorPfaAD.get(a.pfa_antiga) || 0) + (a.qtde_faltante || 0));
+  });
+  if (analiticoFornecido) {
+    const qtdePorPfaAnalitico = new Map();
+    analitico.registros.forEach(function (r) {
+      if (!pfasComAD.has(r.pfa)) return;
+      qtdePorPfaAnalitico.set(r.pfa, (qtdePorPfaAnalitico.get(r.pfa) || 0) + (r.qtde || 0));
+    });
+    faltantePorPfaAD.forEach(function (declarado, pfa) {
+      const real = qtdePorPfaAnalitico.get(pfa) || 0;
+      if (declarado !== real) {
+        avisosDivergenciaAjustes.push(
+          'Inconsistência detectada na PFA ' + pfa + ' - saldo faltante informado (' +
+          declarado + ') diferente do saldo da PFA no Analítico (' + real + ')'
+        );
+      }
+    });
+  }
+
   const ajustesPayload = ajustesLista.map(function (a) {
     const perdaLiquida = Math.max(0, a.qtde_faltante || 0);
     const ms = marcaSegmentoDoAjuste(a);
@@ -941,6 +1000,9 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
     // período em cima deste array; nada aqui já vem somado por tipo.
     ajustes: ajustesPayload,
     ajustes_em_aberto: ajustesAbertos.length,
+    // Divergência entre a falta digitada manualmente e o valor calculado a
+    // partir de Pendentes/Analítico — nunca bloqueia o upload, só avisa.
+    avisos_divergencia_ajustes: avisosDivergenciaAjustes,
 
     etapas: ORDEM_ETAPA_PFA.concat(etapasVistas),
     faixas_fifo: FAIXAS_FIFO_PFA.map(function (f) { return { chave: f.chave, rotulo: f.rotulo }; }),
@@ -1087,6 +1149,10 @@ async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileE
   if (!embarcadas && !(ultimoPayload && ultimoPayload.embarcadas_pfas && ultimoPayload.embarcadas_pfas.length)) {
     avisar('Aviso: nenhum arquivo de NFs Embarcadas foi enviado ainda — o que já saiu continua contando como pendente.');
   }
+  // Não bloqueia nada — só avisa (pedido do usuário, 10/09/2026): a falta
+  // digitada num CANCELAMENTO/AD_DEVOLUCAO não bate com o que Pendentes/
+  // Analítico mostravam antes da PFA ser excluída da tela.
+  (payload.avisos_divergencia_ajustes || []).forEach(function (a) { avisar('⚠ ' + a); });
 
   avisar('Gravando snapshot…');
   const { error } = await supabaseClient.from('dashboard_snapshots').insert({
@@ -1120,9 +1186,13 @@ async function processarAjustesPfa(supabaseClient, fileAjustes, onProgresso) {
   if (ajustes.linhas_invalidas) {
     avisar(
       'Atenção: ' + ajustes.linhas_invalidas.toLocaleString('pt-BR') +
-      ' linha(s) ignorada(s) por tipo desconhecido ou campo obrigatório vazio (encomenda/pfa_antiga/artigo).'
+      ' linha(s) ignorada(s) por tipo desconhecido ou campo obrigatório vazio (pfa_antiga sempre; ' +
+      'encomenda/artigo, exceto em CANCELAMENTO).'
     );
   }
+  // Não bloqueia a gravação — só avisa (pedido do usuário, 10/09/2026): erro
+  // de digitação na planilha não deve travar quem está tentando corrigir.
+  (ajustes.avisos || []).forEach(function (a) { avisar('⚠ ' + a); });
 
   avisar('Gravando ' + ajustes.registros.length.toLocaleString('pt-BR') + ' linha(s) em ajustes_pfa…');
   const { error } = await supabaseClient.from('ajustes_pfa')

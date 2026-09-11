@@ -350,6 +350,27 @@ const ajuNaoCancelEnxuto = parsearLinhasAjustesPfa([
 ]);
 eq(ajuNaoCancelEnxuto.linhas_invalidas, 1, 'AJUSTE sem encomenda/artigo continua sendo rejeitado — regra só afrouxa pra CANCELAMENTO');
 
+secao('parsearLinhasAjustesPfa — avisa (sem descartar) qtde_faltante > qtde_total_pedido (10/09/2026)');
+const ajuFaltaMaiorQueTotal = parsearLinhasAjustesPfa([
+  ['tipo', 'encomenda', 'pfa_antiga', 'pfa_nova', 'cliente', 'familia_codigo', 'artigo', 'cor', 'tam',
+    'qtde_total_pedido', 'qtde_faltante', 'motivo', 'data_solicitacao', 'solicitante'],
+  ['AJUSTE', '960841', '242018', '', '46212 CHARLESTON WILLIA', '102', 'OIMCR24302', 'PT/PRT', 'M',
+    5, 8, 'Ajuste de encomenda', '09/09/2026', 'ERIKA DOMINGUES LEME'],
+]);
+eq(ajuFaltaMaiorQueTotal.registros.length, 1, 'a linha é gravada mesmo com a inconsistência — só avisa, não descarta');
+eq(ajuFaltaMaiorQueTotal.avisos.length, 1, 'exatamente 1 aviso gerado');
+eq(
+  ajuFaltaMaiorQueTotal.avisos[0],
+  'Inconsistência detectada na PFA 242018 / LINHA 2 da planilha - saldo faltante > saldo total pedido',
+  'mensagem no formato exato pedido pelo usuário — PFA e número da linha (linha 1 = cabeçalho)'
+);
+
+const ajuFaltaOk = parsearLinhasAjustesPfa([
+  ['AJUSTE', '960841', '242018', '', '46212 CHARLESTON WILLIA', '102', 'OIMCR24302', 'PT/PRT', 'M',
+    5, 2, 'Ajuste de encomenda', '09/09/2026', 'ERIKA DOMINGUES LEME'],
+]);
+eq(ajuFaltaOk.avisos.length, 0, 'faltante dentro do total não gera aviso nenhum');
+
 secao('parsearAjustesPfa — tipo reconhece palavra-chave, não exige grafia exata (10/09/2026)');
 const ajuSinonimo = parsearAjustesPfa([CAB_AJU,
   linhaAju('cancelado', '960900', '242020', '', 'OIMCR24303', '10', '2', '0', 'Financeiro'),
@@ -597,6 +618,58 @@ const pfasDistintasMultiArtigo = new Set(snapMultiArtigo.ajustes.map(function (a
 eq(pfasDistintasMultiArtigo, 1, 'PFAs distintas nos ajustes continua 1, mesmo com 3 linhas (uma por artigo)');
 const pfaNovaMultiArtigo = snapMultiArtigo.pendentes.find(function (r) { return r.pfa === '500099'; });
 eq(pfaNovaMultiArtigo.situacao_pfa, 'retrabalhada', 'a PFA nova (única, compartilhada pelos 3 artigos) é reconhecida como retrabalhada certinho');
+
+secao('construirSnapshotPfas — avisa divergência entre falta manual e o automático de Pendentes/Analítico (10/09/2026)');
+// CANCELAMENTO: a PFA tinha 50 pares em Pendentes, mas a assistente digitou
+// qtde_faltante = 30 — sinal de que esqueceu de somar tudo, ou o valor não
+// reflete o pedido real.
+const pendDivergCancel = parsearPfasPendentes([CAB_PEND,
+  linhaPend('600001', '01/09', '102', '2', 'Nao disp. picking', '50'),
+].join('\n'), HOJE);
+const ajustesDivergCancel = { registros: [
+  { tipo: 'CANCELAMENTO', encomenda: '910001', pfa_antiga: '600001', pfa_nova: null,
+    cliente: '910001 CLIENTE Y', artigo: 'ART-D', cor_tam: 'P M',
+    qtde_total_pedido: 30, qtde_faltante: 30, motivo: 'Financeiro',
+    data_solicitacao: '2026-09-09', solicitante: 'ERIKA' },
+] };
+const snapDivergCancel = construirSnapshotPfas(pendDivergCancel, { registros: [] }, { registros: [] }, mapaFamilias,
+  { referencia: HOJE }, ajustesDivergCancel, new Map());
+eq(snapDivergCancel.avisos_divergencia_ajustes.length, 1, 'gera 1 aviso — 30 informado != 50 que a PFA tinha em Pendentes');
+eq(
+  snapDivergCancel.avisos_divergencia_ajustes[0],
+  'Inconsistência detectada na PFA 600001 - saldo faltante informado (30) diferente do saldo total da PFA em Pendentes (50)',
+  'mensagem no mesmo formato pedido (PFA identificada, sem travar o upload)'
+);
+
+// Cancelamento sem divergência: soma das linhas bate com o total do Pendentes.
+const ajustesSemDivergCancel = { registros: [
+  { tipo: 'CANCELAMENTO', encomenda: '910001', pfa_antiga: '600001', pfa_nova: null,
+    cliente: '910001 CLIENTE Y', artigo: 'ART-D', cor_tam: 'P M',
+    qtde_total_pedido: 50, qtde_faltante: 50, motivo: 'Financeiro',
+    data_solicitacao: '2026-09-09', solicitante: 'ERIKA' },
+] };
+const snapSemDivergCancel = construirSnapshotPfas(pendDivergCancel, { registros: [] }, { registros: [] }, mapaFamilias,
+  { referencia: HOJE }, ajustesSemDivergCancel, new Map());
+eq(snapSemDivergCancel.avisos_divergencia_ajustes.length, 0, 'faltante bate com o Pendentes — nenhum aviso');
+
+// AD_DEVOLUCAO: a PFA tinha 120 no Analítico, mas a assistente digitou 90.
+const anaDivergAd = parsearPfasAnalitico([CAB_ANA,
+  linhaAna('600002', '548821', '01/09/2026', 'V-AD', '102', 'A9', '120,0'),
+].join('\n'));
+const ajustesDivergAd = { registros: [
+  { tipo: 'AD_DEVOLUCAO', encomenda: '910002', pfa_antiga: '600002', pfa_nova: null,
+    cliente: '910002 CLIENTE Z', artigo: 'ART-E', cor_tam: 'P G',
+    qtde_total_pedido: 90, qtde_faltante: 90, motivo: 'Recusa de envio parcial (AD)',
+    data_solicitacao: '2026-09-09', solicitante: 'ERIKA' },
+] };
+const snapDivergAd = construirSnapshotPfas({ registros: [] }, anaDivergAd, { registros: [] }, mapaFamilias,
+  { referencia: HOJE }, ajustesDivergAd, new Map());
+eq(snapDivergAd.avisos_divergencia_ajustes.length, 1, 'gera 1 aviso — 90 informado != 120 do Analítico');
+ok(
+  snapDivergAd.avisos_divergencia_ajustes[0].indexOf('PFA 600002') !== -1 &&
+  snapDivergAd.avisos_divergencia_ajustes[0].indexOf('Analítico') !== -1,
+  'mensagem identifica a PFA e cita o Analítico como fonte automática'
+);
 
 /* -------------------------------------------------------------------------- */
 secao('diasUteisEntre — pula sábado e domingo');

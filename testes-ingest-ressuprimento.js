@@ -180,6 +180,42 @@ eq(a3Rua24.nivel, '1', 'linha de validação carrega nível');
 eq(a3Rua24.box, '1', 'linha de validação carrega box');
 
 /* -------------------------------------------------------------------------- */
+secao('construirSaldoEnderecos — saldo físico por endereço, pro relatório de gap de estoque (10/09/2026)');
+// Reaproveita o mesmo picking/pulmão/mapaFamilias do teste de cima.
+const classifSaldo = classificarPickingEPulmao(picking, pulmao, mapaFamilias);
+const saldos = construirSaldoEnderecos(classifSaldo.pickingReal, classifSaldo.pulmaoTudo);
+
+eq(saldos.length, 7, '2 endereços de Picking (A1, A5) + 5 de Pulmão (A1, A3x2, A2, A4)');
+const saldoA1Picking = saldos.find(function (s) { return s.artigo_codigo === 'A1' && s.classificacao === 'PICKING'; });
+eq(saldoA1Picking.qtd, 65, 'Picking soma disponível + cativado (50+15), mesmo gabarito de "peças ocupadas" do resto do arquivo');
+eq(saldoA1Picking.rua, '1', 'carrega o endereço físico certo');
+const saldoA5Picking = saldos.find(function (s) { return s.artigo_codigo === 'A5' && s.classificacao === 'PICKING'; });
+eq(saldoA5Picking.qtd, 4, 'sem qtd_cativado, soma só o disponível (4+0)');
+const saldosA3Pulmao = saldos.filter(function (s) { return s.artigo_codigo === 'A3' && s.classificacao === 'PULMAO'; });
+eq(saldosA3Pulmao.length, 2, 'A3 físico em 2 endereços diferentes (rua 24 real + rua 70 reclassificada) vira 2 linhas, não soma');
+const saldoA2Pulmao = saldos.find(function (s) { return s.artigo_codigo === 'A2'; });
+eq(saldoA2Pulmao.classificacao, 'PULMAO', 'A2 (reclassificada da rua 20 do picking) entra como PULMAO, não PICKING — pedido do usuário é só essas 2 classificações');
+ok(saldos.every(function (s) { return s.classificacao === 'PICKING' || s.classificacao === 'PULMAO'; }),
+  'nenhuma linha escapa da classificação binária PICKING/PULMAO — a subdivisão fina de validação não importa aqui');
+
+// Múltiplos volumes do Pulmão no MESMO endereço+SKU têm que somar numa linha só.
+const pulmaoMultiVolume = [
+  { artigo_codigo: 'B1', cor: 'PT', tamanho: '40', familia_codigo: '101', rua: '5', nivel: '1', box: '1', qtd: 100 },
+  { artigo_codigo: 'B1', cor: 'PT', tamanho: '40', familia_codigo: '101', rua: '5', nivel: '1', box: '1', qtd: 50 },
+  { artigo_codigo: 'B1', cor: 'PT', tamanho: '40', familia_codigo: '101', rua: '5', nivel: '1', box: '2', qtd: 30 }, // endereço diferente
+];
+const saldosMultiVolume = construirSaldoEnderecos([], pulmaoMultiVolume);
+eq(saldosMultiVolume.length, 2, '2 volumes no mesmo endereço viram 1 linha; o 3º (endereço diferente) vira outra');
+const somaBoxUm = saldosMultiVolume.find(function (s) { return s.box === '1'; });
+eq(somaBoxUm.qtd, 150, 'soma os 2 volumes do mesmo endereço (100+50)');
+
+// Endereço alocado com saldo zero não entra — não ajuda a achar material físico.
+const saldosComZerado = construirSaldoEnderecos(
+  [{ artigo_codigo: 'C1', cor: 'PT', tamanho: '40', familia_codigo: '101', rua: '1', nivel: '1', box: '1', qtd: 0, qtd_cativado: 0 }], []
+);
+eq(saldosComZerado.length, 0, 'Picking com saldo zero (disponível+cativado) não vira linha de saldo físico');
+
+/* -------------------------------------------------------------------------- */
 secao('ocupação — endereço ALOCADO conta, saldo zero não esvazia a posição');
 // Confirmado contra a planilha de Ocupação da gestão (02/09/2026): pelo critério
 // de alocação o Picking de meia bate EXATO (361 dos dois lados); pelo critério

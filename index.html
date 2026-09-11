@@ -2892,6 +2892,9 @@ function renderizarPfas() {
           '<input type="date" value="' + escapar(periodoPerdasPfa.ate || '') + '" ' +
             'onchange="definirPeriodoPerdasPfa(\'ate\', this.value)" ' +
             'style="padding:4px 6px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border);font-size:11px">' +
+          '<button class="btn-mini" id="btnExportarGapEstoque" onclick="exportarGapEstoqueAjustes()" ' +
+            'title="AJUSTE e B.O. pós-NF com perda — cruza com o saldo por endereço do último Picking/Pulmão abastecido">' +
+            '⬇ Gap de estoque (.xlsx)</button>' +
         '</div>' +
       '</div>' +
       '<p style="font-size:12px;color:var(--text-muted);margin:4px 0 12px">' + rotuloPeriodo + ' · ' +
@@ -2920,6 +2923,12 @@ function renderizarPfas() {
         'sem card próprio: já é perda inteira por definição. Marca/Segmento do topo recortam este card também.' +
         (fifoOuEtapaAtivos ? ' <strong style="color:var(--amber)">FIFO e Etapa não se aplicam aqui</strong> — ' +
           'a PFA antiga de um ajuste já saiu de Pendentes, então não tem dias em aberto nem etapa atual pra filtrar.' : '') +
+        '</p>' +
+      '<p style="font-size:11px;color:var(--text-muted);margin-top:4px">' +
+        '<strong>Gap de estoque (.xlsx)</strong>: exporta AJUSTE e B.O. pós-NF com perda (DE-PARA sai zerado ' +
+        'sozinho, sem linha) cruzados com o saldo físico por endereço do <strong>último</strong> Picking/Pulmão ' +
+        'abastecido — pra achar onde o material perdido ainda tem saldo físico e corrigir o estoque. Cancelamento ' +
+        'e AD ficam de fora: dependem de decisão do comercial, não são erro operacional pra validar no armazém.' +
         '</p>' +
     '</div>';
   })();
@@ -4819,6 +4828,92 @@ async function baixarModeloAjustesPfa() {
   a.download = 'modelo-ajustes-pfa.xlsx';
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+/* ---------- Gap de estoque das perdas de PFA (10/09/2026) ----------
+   Pedido do usuário: pra cada AJUSTE/B.O. pós-NF que virou perda (falta de
+   verdade, não DE-PARA — esse já sai com qtde_faltante=0 e nem entra aqui),
+   achar onde esse MESMO artigo ainda tem saldo físico no armazém, quebrado
+   por endereço e PICKING/PULMÃO — pra validar e corrigir o estoque. Cruza
+   com ressuprimento_saldo_enderecos, que é sempre o ÚLTIMO Picking/Pulmão
+   abastecido (nunca histórico — ver comentário em construirSaldoEnderecos,
+   ingest-ressuprimento.js). CANCELAMENTO/AD ficam de fora: dependem de
+   decisão do comercial, não são erro operacional de estoque pra corrigir.
+   Mesmo recorte de Marca/Segmento/Período do card "Perdas e ajustes". */
+const TIPOS_GAP_ESTOQUE = ['AJUSTE', 'BO_POS_NF'];
+async function exportarGapEstoqueAjustes() {
+  const btn = document.getElementById('btnExportarGapEstoque');
+  const rotuloOriginal = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Montando…';
+  try {
+    const janela = janelaPeriodoPerdasPfa();
+    const perdas = (dadosPfas.ajustes || []).filter(function (a) {
+      return TIPOS_GAP_ESTOQUE.indexOf(a.tipo) !== -1 && (a.perda_liquida || 0) > 0 &&
+        passaMarcaSegmentoPfa(a) && ajustePfaNoPeriodo(a, janela);
+    });
+    if (perdas.length === 0) {
+      alert('Nenhuma perda de AJUSTE/B.O. pós-NF no recorte atual (Marca/Segmento/Período) — nada pra exportar.');
+      return;
+    }
+
+    const artigos = Array.from(new Set(perdas.map(function (a) { return a.artigo; }).filter(Boolean)));
+    const { data: saldos, error } = await supabaseClient.from('ressuprimento_saldo_enderecos')
+      .select('artigo_codigo, cor, tamanho, rua, nivel, box, classificacao, qtd')
+      .in('artigo_codigo', artigos);
+    if (error) throw error;
+    const saldosPorArtigo = new Map();
+    (saldos || []).forEach(function (s) {
+      if (!saldosPorArtigo.has(s.artigo_codigo)) saldosPorArtigo.set(s.artigo_codigo, []);
+      saldosPorArtigo.get(s.artigo_codigo).push(s);
+    });
+
+    const cabecalho = ['pfa', 'tipo', 'artigo', 'cor_tam', 'motivo', 'data_solicitacao',
+      'qtde_faltante', 'endereco', 'classificacao', 'qtd_no_endereco'];
+    const linhas = [];
+    perdas.forEach(function (a) {
+      const enderecos = saldosPorArtigo.get(a.artigo) || [];
+      if (enderecos.length === 0) {
+        linhas.push([a.pfa_antiga, a.tipo, a.artigo, a.cor_tam, a.motivo || '',
+          formatarDataSimples(a.data_solicitacao), a.perda_liquida, '—',
+          'SEM SALDO NO ÚLTIMO PICKING/PULMÃO', 0]);
+        return;
+      }
+      enderecos.forEach(function (e) {
+        linhas.push([a.pfa_antiga, a.tipo, a.artigo, a.cor_tam, a.motivo || '',
+          formatarDataSimples(a.data_solicitacao), a.perda_liquida,
+          e.rua + '-' + e.nivel + '-' + e.box, e.classificacao, e.qtd]);
+      });
+    });
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Gap de estoque');
+    ws.columns = cabecalho.map(function (chave) {
+      return {
+        header: capitalizarPrimeiraLetra(chave), key: chave, width: Math.max(chave.length + 2, 13),
+        style: { alignment: { horizontal: 'center', vertical: 'middle' } },
+      };
+    });
+    linhas.forEach(function (linha) { ws.addRow(linha); });
+    ws.getRow(1).eachCell(function (celula) {
+      celula.font = { bold: true, italic: true };
+      celula.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'gap-estoque-ajustes-pfa.xlsx';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) {
+    alert('Não foi possível montar o relatório: ' + (e && e.message ? e.message : String(e)));
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = rotuloOriginal;
+  }
 }
 
 /* ---------- Ajustes de PFA (.xlsx ou .csv/.txt) — planilha manual, upsert ----------
