@@ -1464,6 +1464,15 @@ function formatarDataSimples(yyyymmdd) {
   const p = String(yyyymmdd).split('-');
   return p[2] + '/' + p[1] + '/' + p[0];
 }
+/* Endereço sempre no padrão rua(2)-nível(2)-box(3), completando com zero à
+   esquerda quando algum segmento vem com menos dígitos (ex: rua "2" e
+   nível "7" viram "02" e "07") — mesmo formato do arquivo que a assistente
+   extrai do WMS (planilha "Gap de estoque"), pedido do usuário 14/09/2026,
+   estendido pra toda tela que mostra endereço (não só aquele export). */
+function formatarEndereco(rua, nivel, box) {
+  const pad = function (v, tam) { return String(v).padStart(tam, '0'); };
+  return pad(rua, 2) + '-' + pad(nivel, 2) + '-' + pad(box, 3);
+}
 const DIAS_SEMANA_ABREV = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 /* Dia da semana a partir de "AAAA-MM-DD" — monta a data em UTC (meio-dia, não
    meia-noite) pra nunca escorregar de dia por fuso do navegador do operador. */
@@ -3710,7 +3719,7 @@ function renderizarEstoqueOperacao(p) {
         // encontrava nada, porque o texto buscado só batia campo a campo
         // separado por espaço (bug real, achado testando a busca).
         const alvo = [
-          v.rua, v.nivel, v.box, v.rua + ' · ' + v.nivel + ' · ' + v.box, v.classificacao,
+          v.rua, v.nivel, v.box, formatarEndereco(v.rua, v.nivel, v.box), v.classificacao,
           v.artigo_codigo, v.cor, v.tamanho, v.artigo_codigo + '/' + v.cor + '/' + v.tamanho,
           v.descricao, v.qtd, fmtInt(v.qtd), v.mais_antigo ? formatarDataSimples(v.mais_antigo) : '',
         ].join(' ').toLowerCase();
@@ -3746,7 +3755,7 @@ function renderizarEstoqueOperacao(p) {
     }
 
     const linhasBO = linhasCarregadas.map(function (v) {
-      return '<tr><th class="centro">' + escapar(v.rua) + ' · ' + escapar(v.nivel) + ' · ' + escapar(v.box) + '</th>' +
+      return '<tr><th class="centro">' + escapar(formatarEndereco(v.rua, v.nivel, v.box)) + '</th>' +
         '<td class="centro">' + escapar(v.classificacao) + '</td>' +
         '<td class="centro">' + escapar(v.artigo_codigo) + '/' + escapar(v.cor) + '/' + escapar(v.tamanho) + '</td>' +
         '<td class="centro">' + escapar(v.descricao) + '</td>' +
@@ -3765,7 +3774,7 @@ function renderizarEstoqueOperacao(p) {
     const totalFiltradoQtd = filtradasBO.reduce(function (s, v) { return s + v.qtd; }, 0);
     const enderecosFiltrados = new Set(filtradasBO.map(function (v) { return v.rua + '|' + v.nivel + '|' + v.box; }));
     const rotuloTotalBO = enderecosFiltrados.size === 1
-      ? Array.from(enderecosFiltrados)[0].split('|').join(' · ')
+      ? formatarEndereco.apply(null, Array.from(enderecosFiltrados)[0].split('|'))
       : 'TOTAL GERAL';
     const linhaTotalBO = '<tr class="total"><th class="centro">' + escapar(rotuloTotalBO) + '</th>' +
       '<td class="centro" colspan="2">' + fmtInt(enderecosFiltrados.size) + ' endereço(s) · ' + fmtInt(filtradasBO.length) + ' linha(s)</td>' +
@@ -4629,7 +4638,7 @@ function exportarCSVValidacao() {
     // a busca visível encontrou, nem mais nem menos linhas.
     linhasFiltro = linhasFiltro.filter(function (v) {
       const alvo = [
-        v.rua, v.nivel, v.box, v.rua + ' · ' + v.nivel + ' · ' + v.box, v.classificacao,
+        v.rua, v.nivel, v.box, formatarEndereco(v.rua, v.nivel, v.box), v.classificacao,
         v.artigo_codigo, v.cor, v.tamanho, v.artigo_codigo + '/' + v.cor + '/' + v.tamanho,
         v.descricao, v.qtd, v.mais_antigo,
       ].join(' ').toLowerCase();
@@ -4639,7 +4648,7 @@ function exportarCSVValidacao() {
   const linhas = [['Endereco', 'Classificacao', 'SKU', 'Nome do produto', 'QTDE', 'Data do lote']];
   linhasFiltro.forEach(function (v) {
     linhas.push([
-      v.rua + '.' + v.nivel + '.' + v.box, v.classificacao,
+      formatarEndereco(v.rua, v.nivel, v.box), v.classificacao,
       v.artigo_codigo + '/' + v.cor + '/' + v.tamanho, v.descricao,
       v.qtd, v.mais_antigo || '',
     ]);
@@ -4943,14 +4952,6 @@ async function exportarGapEstoqueAjustes() {
       if (!saldosPorArtigo.has(s.artigo_codigo)) saldosPorArtigo.set(s.artigo_codigo, []);
       saldosPorArtigo.get(s.artigo_codigo).push(s);
     });
-
-    // Endereço sempre no padrão rua(2)-nível(2)-box(3), completando com zero à
-    // esquerda quando a rua ou o nível vêm com um único dígito (ex: rua "2" e
-    // nível "7" viram "02" e "07") — pedido do usuário, 14/09/2026.
-    const formatarEndereco = function (rua, nivel, box) {
-      const pad = function (v, tam) { return String(v).padStart(tam, '0'); };
-      return pad(rua, 2) + '-' + pad(nivel, 2) + '-' + pad(box, 3);
-    };
 
     const cabecalho = ['pfa', 'tipo', 'artigo', 'cor_tam', 'motivo', 'data_solicitacao',
       'qtde_faltante', 'endereco', 'classificacao', 'qtd_no_endereco'];
