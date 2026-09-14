@@ -2335,7 +2335,9 @@ let dataSnapshotMovimentacoes = null;    // gerado_em do último Kardex (tela Re
    principal agora, a família só aparece dentro de uma data expandida. */
 const abertosSemPlano = new Set();
 let filtroTextoSemPlano = '';
-let ordemSemPlano = { campo: 'pecas', direcao: 'desc' };
+// Padrão por data, do mais antigo pro mais novo (pedido do usuário,
+// 14/09/2026) — lê como uma linha do tempo do que ficou sem planejamento.
+let ordemSemPlano = { campo: 'data', direcao: 'asc' };
 function alternarAbertoSemPlano(chave) {
   if (abertosSemPlano.has(chave)) abertosSemPlano.delete(chave); else abertosSemPlano.add(chave);
   renderizarRessuprimento();
