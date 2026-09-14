@@ -4267,8 +4267,22 @@ function blocoMovimentacoes() {
     const naoRessup = plano.filter(function (p) { return p.status === 'planejado_nao_ressuprido'; });
     const aguardando = plano.filter(function (p) { return p.status === 'aguardando'; });
     const pecasSemPlano = semPlano.reduce(function (s, r) { return s + r.pecas; }, 0);
-    const pecasD0 = d0.reduce(function (s, p) { return s + p.pecas; }, 0);
-    const pecasD1 = d1.reduce(function (s, p) { return s + p.pecas; }, 0);
+    // p.pecas é o total da FAMÍLIA no dia (o Kardex não separa por PFA — ver
+    // comentário em ingest-movimentacoes.js), então quando várias PFAs
+    // compartilham a mesma família+data elas repetem o MESMO número. Somar
+    // direto (reduce ingênuo) contava esse total uma vez por PFA — uma
+    // família com 63 PFAs inflava o card em 63× o valor real (bug real,
+    // achado pelo usuário 14/09/2026 comparando o card com a árvore
+    // Turno›Família, que já deduplicava certo). Mesma dedupe usada lá.
+    function pecasUnicasPorFamiliaData(lista) {
+      const vistos = new Map();
+      lista.forEach(function (p) { vistos.set(p.familia_codigo + '|' + p.data, p.pecas); });
+      let soma = 0;
+      vistos.forEach(function (v) { soma += v; });
+      return soma;
+    }
+    const pecasD0 = pecasUnicasPorFamiliaData(d0);
+    const pecasD1 = pecasUnicasPorFamiliaData(d1);
 
     // "Planejado, não ressuprido" nunca passou pelo Kardex, então p.pecas
     // aqui é sempre 0 (classificarPlanejamento não tem como saber quantos
@@ -4305,20 +4319,9 @@ function blocoMovimentacoes() {
     /* ---------- árvore Turno › Família › PFA ----------
        Minimiza espaço: turno e família mostram só a contagem por status,
        colapsados por padrão. A PFA individual (a que mais ocupa espaço) só
-       aparece expandindo — é o nível que o usuário pediu pra jogar pro fim. */
-    // p.pecas é o total da FAMÍLIA no dia (o Kardex não separa por PFA — ver
-    // comentário em ingest-movimentacoes.js), então quando várias PFAs
-    // compartilham a mesma família+data elas repetem o MESMO número. Somar
-    // direto (reduce ingênuo) contava esse total uma vez por PFA — uma
-    // família com 63 PFAs aparecia com 63× o valor real. Aqui deduplicamos
-    // por família+data antes de somar, contando cada total uma única vez.
-    function pecasUnicasPorFamiliaData(lista) {
-      const vistos = new Map();
-      lista.forEach(function (p) { vistos.set(p.familia_codigo + '|' + p.data, p.pecas); });
-      let soma = 0;
-      vistos.forEach(function (v) { soma += v; });
-      return soma;
-    }
+       aparece expandindo — é o nível que o usuário pediu pra jogar pro fim.
+       Reaproveita pecasUnicasPorFamiliaData (definida acima, junto do card
+       D0/D-1) pra somar peças sem duplicar por família+data. */
     function resumoStatus(lista) {
       const c = { D0: 0, 'D-1': 0, planejado_nao_ressuprido: 0, aguardando: 0 };
       lista.forEach(function (p) { c[p.status] = (c[p.status] || 0) + 1; });
