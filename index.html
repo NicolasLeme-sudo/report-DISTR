@@ -4966,10 +4966,11 @@ async function exportarGapEstoqueAjustes() {
 }
 
 /* ---------- Ajustes de PFA (.xlsx ou .csv/.txt) — planilha manual, upsert ----------
-   Não recarrega o Start Inicial: os cards de "Perdas e ajustes" só refletem
-   no PRÓXIMO upload de Pendentes/Analítico/Embarcadas (ver comentário em
-   processarPfas, ingest-pfas.js) — não tem como recalcular sem os arquivos
-   brutos, que não ficam guardados entre uploads. */
+   processarAjustesPfa (ingest-pfas.js) já recalcula o snapshot de PFAs
+   sozinho depois de gravar a planilha (14/09/2026) — não precisa mais
+   reenviar Pendentes/Analítico/Embarcadas só pra os cards enxergarem o
+   ajuste. Só falta a tela "Start Inicial" puxar esse snapshot novo se já
+   estiver aberta — por isso o aviso abaixo pede pra reabrir/atualizar ela. */
 let arquivoAjustesPfaSelecionado = null;
 function atualizarEstadoDropzoneAjustesPfa() {
   document.getElementById('btnProcessarAjustesPfa').disabled = !arquivoAjustesPfaSelecionado;
@@ -4993,8 +4994,9 @@ document.getElementById('btnProcessarAjustesPfa').addEventListener('click', asyn
   btn.disabled = true;
   try {
     await window.processarAjustesPfa(supabaseClient, arquivoAjustesPfaSelecionado, escrever);
-    ok.textContent = '✔ Gravado com sucesso — suba o Pendentes/Analítico/Embarcadas de novo (seção acima) ' +
-      'pra tela puxar os números atualizados.';
+    ok.textContent = '✔ Gravado e recalculado com sucesso — os cards de "PFAs em tela" (Start Inicial) já ' +
+      'refletem esses ajustes. Se a tela já estiver aberta, entre nela de novo (ou troque de aba e volte) ' +
+      'pra puxar o snapshot atualizado.';
     ok.style.display = '';
     arquivoAjustesPfaSelecionado = null;
     document.getElementById('inputAjustesPfa').value = '';

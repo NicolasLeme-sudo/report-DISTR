@@ -1047,10 +1047,17 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
 /* ============================================================================
    UPLOAD
    ============================================================================ */
-async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileEmbarcadas, onProgresso) {
+async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileEmbarcadas, onProgresso, opcoes) {
   const avisar = onProgresso || function () {};
+  opcoes = opcoes || {};
 
-  if (!filePendentes && !fileAnalitico && !fileEmbarcadas) {
+  // `permitirRecalculoSemArquivo` (14/09/2026): usado só pelo recálculo
+  // automático depois de gravar Ajustes de PFA (ver processarAjustesPfa) —
+  // reconstrói o snapshot inteiro a partir do ÚLTIMO payload (mesmo caminho
+  // de "não reenviei esse arquivo agora", só que pros três de uma vez) com a
+  // tabela ajustes_pfa fresca. Fora desse caso, upload sem nenhum arquivo
+  // selecionado continua sendo erro do usuário na tela.
+  if (!filePendentes && !fileAnalitico && !fileEmbarcadas && !opcoes.permitirRecalculoSemArquivo) {
     throw new Error('Selecione pelo menos um arquivo (Pendentes, Analítico ou Embarcadas).');
   }
 
@@ -1170,9 +1177,15 @@ async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileE
    Upsert, nunca insert puro: a chave natural (encomenda, pfa_antiga, artigo,
    cor_tam) é a mesma constraint UNIQUE da tabela — reenviar a planilha com
    uma linha corrigida SUBSTITUI a linha antiga em vez de duplicar o
-   prejuízo. Não recalcula o snapshot de PFAs sozinho (ver comentário em
-   processarPfas) — só grava a tabela; os cards atualizam no próximo upload
-   de Pendentes/Analítico/Embarcadas.
+   prejuízo. Grava a tabela e, em seguida, RECALCULA o snapshot de PFAs
+   sozinho (14/09/2026, pedido do usuário: exigir reenvio de Pendentes/
+   Analítico/Embarcadas só pra os cards enxergarem um ajuste já gravado
+   virava "toda vez que mexo em algo preciso reabastecer tudo") — chama
+   processarPfas sem nenhum arquivo novo, que reconstrói o payload inteiro a
+   partir do ÚLTIMO snapshot salvo + a tabela ajustes_pfa (lida fresca).
+   Só pula esse recálculo quando ainda não existe NENHUM snapshot de PFAs
+   (nunca subiu Pendentes/Analítico/Embarcadas) — nesse caso não há o que
+   reconstruir, e os cards só existem a partir do primeiro upload de verdade.
    ============================================================================ */
 async function processarAjustesPfa(supabaseClient, fileAjustes, onProgresso) {
   const avisar = onProgresso || function () {};
@@ -1199,7 +1212,15 @@ async function processarAjustesPfa(supabaseClient, fileAjustes, onProgresso) {
     .upsert(ajustes.registros, { onConflict: 'encomenda,pfa_antiga,artigo,cor_tam' });
   if (error) throw error;
 
-  avisar('Concluído — os cards da tela "PFAs em tela" atualizam no próximo upload de Pendentes/Analítico/Embarcadas.');
+  const ultimoPayload = await window.buscarUltimoPayload(supabaseClient, 'pfas');
+  if (!ultimoPayload) {
+    avisar('Concluído — ainda não existe nenhum snapshot de "PFAs em tela" pra atualizar; ' +
+      'os cards nascem no primeiro upload de Pendentes/Analítico/Embarcadas.');
+    return ajustes;
+  }
+  avisar('Recalculando os cards de "PFAs em tela" com os ajustes recém-gravados…');
+  await processarPfas(supabaseClient, null, null, null, avisar, { permitirRecalculoSemArquivo: true });
+  avisar('Concluído — os cards de "PFAs em tela" já refletem os ajustes.');
   return ajustes;
 }
 
