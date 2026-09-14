@@ -45,8 +45,8 @@ eq(diasEntre('2026-02-25', '2026-09-08'), 195, '25/02 → 08/09 = 195 dias (o ba
 /* -------------------------------------------------------------------------- */
 secao('parsearPfasPendentes — PARES são itens, QT.VOL são volumes');
 const CAB_PEND = 'ESTAB|PRE-FATURA|DATA|CLIENTE|DESCRICAO|FAM|ENCOMENDA|TRS 1PERC|DESCRICAO|TRS 2PERC|DESCRICAO|EXP|QT.VOL.|SITUACAO|DATA|NOTA FISCAL|DT. NF|VL.PND|VL.INC|VL.CLT|VL.EXP|PARES|BOX|PERS|DT.AGE.ENTREGA INICIO|DT.AGE.ENTREGA FIM|HORA AGE. INICIO|HORA AGE. FIM|DT.LIB.NF INICIO|DT.LIB.NF FIM|CLUSTER|VOLUMES PENDENTES DE COLETA';
-function linhaPend(pfa, data, fam, qtVol, situacao, pares, cluster) {
-  return ['DISTR', pfa, data, 'CL-1-1', 'CLIENTE TESTE LTDA', fam, 'EBM - 1 (1)', '00585', 'TRANSP X', '', '',
+function linhaPend(pfa, data, fam, qtVol, situacao, pares, cluster, encomenda) {
+  return ['DISTR', pfa, data, 'CL-1-1', 'CLIENTE TESTE LTDA', fam, encomenda || 'EBM - 1 (1)', '00585', 'TRANSP X', '', '',
     'ROD', qtVol, situacao, data, '1-1-1', '01/09/26', '0', '0', '0', '1', pares, '5', 'N',
     '', '', '', '', '', '', cluster || '25', '1'].join('|');
 }
@@ -391,6 +391,10 @@ const pendAju = parsearPfasPendentes([CAB_PEND,
   linhaPend('242305', '08/09', '102', '1', 'Nao disp. picking', '3'),    // PFA nova, importada HOJE — dentro do SLA
   linhaPend('242410', '03/09', '102', '1', 'Nao disp. picking', '3'),    // PFA nova, importada há 3 dias úteis — atrasada
   linhaPend('239900', '01/09', '102', '1', 'Leitura expedicao', '20'),   // PFA normal, sem relação com ajuste nenhum
+  // PFA nova que o comercial já criou de fato, mas ninguém formalizou na
+  // planilha de ajustes (pfa_nova ficou em branco) — mesma encomenda de um
+  // ajuste "em aberto" abaixo, achada só pelo cruzamento por encomenda.
+  linhaPend('244777', '10/09', '102', '1', 'Nao disp. picking', '4', '25', '976001'),
 ].join('\n'), HOJE);
 const anaAju = parsearPfasAnalitico([CAB_ANA,
   linhaAna('240711', '548820', '01/09/2026', 'V-AD', '102', 'A9', '120,0'), // AD: some de aguardando_coleta
@@ -406,10 +410,25 @@ const ajustesTeste = { registros: [
     cliente: '62410 GRUPO SPORTSTYLE', artigo: 'OIVCR23110', cor_tam: 'PT M',
     qtde_total_pedido: 30, qtde_faltante: 0, motivo: 'DE-PARA (artigo substituto)',
     data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
-  // Ajuste em aberto: PFA nova declarada mas NUNCA vista em nenhum arquivo de Pendentes.
+  // AJUSTE com pfa_nova preenchida: conta como perda de venda, ponto final —
+  // não fica "em aberto" nem quando essa PFA nova nunca aparece em nenhum
+  // arquivo (242999 não existe em lugar nenhum do teste).
   { tipo: 'AJUSTE', encomenda: '958220', pfa_antiga: '241987', pfa_nova: '242999',
     cliente: '62410 GRUPO SPORTSTYLE', artigo: 'OIVCR23110', cor_tam: 'PT M',
     qtde_total_pedido: 40, qtde_faltante: 6, motivo: 'Stockout',
+    data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
+  // Em aberto de verdade: sem pfa_nova, e a encomenda (959111) não aparece
+  // em nenhuma PFA do Pendentes — pendência real do comercial.
+  { tipo: 'AJUSTE', encomenda: '959111', pfa_antiga: '241500', pfa_nova: null,
+    cliente: '62410 GRUPO SPORTSTYLE', artigo: 'OIVCR23110', cor_tam: 'PT M',
+    qtde_total_pedido: 20, qtde_faltante: 4, motivo: 'Stockout',
+    data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
+  // Sem pfa_nova, mas a MESMA encomenda (976001) já aparece em Pendentes com
+  // uma PFA diferente (244777) — o comercial já criou a PFA nova, só
+  // esqueceram de formalizar na planilha. Não deve contar como "em aberto".
+  { tipo: 'AJUSTE', encomenda: '976001', pfa_antiga: '243900', pfa_nova: null,
+    cliente: '62410 GRUPO SPORTSTYLE', artigo: 'OIVCR23110', cor_tam: 'PT M',
+    qtde_total_pedido: 20, qtde_faltante: 4, motivo: 'Stockout',
     data_solicitacao: '2026-09-08', solicitante: 'ERIKA' },
   // Cancelamento sem reposição: 100% vira perda, PFA antiga some do pendente.
   { tipo: 'CANCELAMENTO', encomenda: '957004', pfa_antiga: '241902', pfa_nova: null,
@@ -447,12 +466,18 @@ eq(perdaDePara.perda_liquida, 0, 'DE-PARA: qtde_faltante = 0 → perda líquida 
 const perdaCancelamento = snapAju.ajustes.find(function (a) { return a.pfa_antiga === '241902'; });
 eq(perdaCancelamento.perda_liquida, 14, 'cancelamento sem reposição: 100% do valor é perda');
 
-// Ajustes em aberto
-eq(snapAju.ajustes_em_aberto, 1, 'só o ajuste com PFA nova (242999) nunca vista em Pendentes conta como em aberto');
-const emAberto = snapAju.ajustes.find(function (a) { return a.pfa_nova === '242999'; });
-ok(emAberto.aguardando_import_pfa_nova, 'a própria linha também carrega o selo de aguardando importação');
-const jaConfirmado = snapAju.ajustes.find(function (a) { return a.pfa_nova === '242305'; });
-ok(!jaConfirmado.aguardando_import_pfa_nova, 'PFA nova que já apareceu em Pendentes não fica presa em "aguardando"');
+// Ajustes em aberto (regra confirmada com o usuário, 14/09/2026): só AJUSTE
+// SEM pfa_nova conta, e só quando o cruzamento por encomenda não acha uma
+// PFA diferente já criada pelo comercial em Pendentes.
+eq(snapAju.ajustes_em_aberto, 1, 'só o ajuste sem pfa_nova e sem PFA achada por encomenda (241500) conta como em aberto');
+const comPfaNova = snapAju.ajustes.find(function (a) { return a.pfa_nova === '242999'; });
+ok(!comPfaNova.em_aberto, 'AJUSTE com pfa_nova preenchida nunca fica "em aberto", mesmo essa PFA nunca aparecendo em nenhum arquivo');
+const semPfaNovaAberto = snapAju.ajustes.find(function (a) { return a.pfa_antiga === '241500'; });
+ok(semPfaNovaAberto.em_aberto, 'sem pfa_nova e sem achado por encomenda: fica em aberto de verdade (pendência do comercial)');
+eq(semPfaNovaAberto.pfa_nova_por_encomenda, null, 'nada achado pra essa encomenda em Pendentes');
+const resolvidoPorEncomenda = snapAju.ajustes.find(function (a) { return a.pfa_antiga === '243900'; });
+ok(!resolvidoPorEncomenda.em_aberto, 'mesma encomenda já tem outra PFA em Pendentes — comercial já criou, não fica "em aberto"');
+eq(resolvidoPorEncomenda.pfa_nova_por_encomenda, '244777', 'expõe qual PFA foi achada pelo cruzamento de encomenda');
 
 // PFA retrabalhada — dentro do SLA vs atrasada
 const pfaNovaNoPrazo = snapAju.pendentes.find(function (r) { return r.pfa === '242305'; });

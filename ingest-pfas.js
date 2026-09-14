@@ -634,8 +634,6 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
     };
   });
 
-  const todasPfasPendentesArquivo = new Set(pendentesRegistros.map(function (r) { return r.pfa; }));
-
   const pendentesAtivos = [];
   let excluidasPfas = 0, excluidasPares = 0;
   let excluidasPorAjustePfas = 0, excluidasPorAjustePares = 0;
@@ -963,6 +961,27 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
   const ajustesPayload = ajustesLista.map(function (a) {
     const perdaLiquida = Math.max(0, a.qtde_faltante || 0);
     const ms = marcaSegmentoDoAjuste(a);
+    // Pendência do comercial (14/09/2026, regra confirmada com o usuário —
+    // ver conversa): AJUSTE COM pfa_nova conta direto como perda de venda
+    // (ajustes/líquido), pronto, não importa se essa PFA já apareceu em
+    // algum arquivo ou não — não gera alerta nenhum. AJUSTE SEM pfa_nova é
+    // que é "material pendente do comercial" (assistente esqueceu de
+    // abastecer, ou o comercial esqueceu de mandar a formalização).
+    //
+    // Antes de contar como pendência de verdade, cruza pelo número da
+    // ENCOMENDA (o comercial troca a PFA, mas a encomenda nunca muda) contra
+    // o Pendentes atual: se já existe uma PFA DIFERENTE da antiga na MESMA
+    // encomenda, o comercial já criou a PFA nova no sistema — só ninguém
+    // formalizou isso aqui. Nesse caso a pendência já foi resolvida na
+    // operação; só falta atualizar a planilha, então não conta mais como
+    // "em aberto".
+    let pfaNovaPorEncomenda = null;
+    if (a.tipo === 'AJUSTE' && !a.pfa_nova && a.encomenda) {
+      const achado = pendentesRegistros.find(function (r) {
+        return r.encomenda === a.encomenda && r.pfa !== a.pfa_antiga;
+      });
+      if (achado) pfaNovaPorEncomenda = achado.pfa;
+    }
     return {
       tipo: a.tipo, encomenda: a.encomenda, pfa_antiga: a.pfa_antiga, pfa_nova: a.pfa_nova,
       cliente: a.cliente, familia_codigo: a.familia_codigo || null, artigo: a.artigo, cor_tam: a.cor_tam,
@@ -970,14 +989,14 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
       qtde_total_pedido: a.qtde_total_pedido, qtde_faltante: a.qtde_faltante,
       perda_liquida: perdaLiquida, motivo: a.motivo, data_solicitacao: a.data_solicitacao,
       solicitante: a.solicitante,
-      // Só existe pra AJUSTE com pfa_nova: a PFA nova ainda não apareceu em
-      // NENHUMA extração de Pendentes até hoje (não é "não está mais ativa
-      // hoje" — é "nunca foi vista"). Enquanto isso, ela conta como "em
-      // aberto" em vez de virar sujeira silenciosa.
-      aguardando_import_pfa_nova: a.tipo === 'AJUSTE' && !!a.pfa_nova && !todasPfasPendentesArquivo.has(a.pfa_nova),
+      // PFA que o comercial já criou de fato pra essa encomenda, achada
+      // pelo cruzamento acima — só informativo (não vira pfa_nova de
+      // verdade, ninguém confirmou isso formalmente ainda).
+      pfa_nova_por_encomenda: pfaNovaPorEncomenda,
+      em_aberto: a.tipo === 'AJUSTE' && !a.pfa_nova && !pfaNovaPorEncomenda,
     };
   });
-  const ajustesAbertos = ajustesPayload.filter(function (a) { return a.aguardando_import_pfa_nova; });
+  const ajustesAbertos = ajustesPayload.filter(function (a) { return a.em_aberto; });
 
   return {
     // Pedaço não reenviado nesta rodada → mantém o nome do arquivo que
