@@ -2300,6 +2300,16 @@ let filtroHistAte = null;  // 'AAAA-MM-DD'
 let historicoFamiliaRessuprimento = [];
 let planejamentoTudo = [];       // ressuprimento_planejamento inteira (persistente, não filtrada por data)
 let mapaFamiliasGlobal = new Map(); // dim_familias, carregado uma vez por sessão da tela
+// Pares por PFA do ÚLTIMO snapshot de "PFAs em tela" (pagina='pfas') —
+// carregado junto com o Ressuprimento (14/09/2026) só pra dar peças ao card
+// "Planejado, não ressuprido": essa PFA nunca chegou no Kardex, então
+// classificarPlanejamento não tem como saber quantos pares ela carrega; o
+// relatório de Pendentes é a única fonte que sabe (mesma PFA, mesmo número —
+// ver comentário no topo de ingest-pfas.js). PFA que não aparece mais em
+// Pendentes (já embarcou, foi ajustada etc.) fica de fora do mapa de
+// propósito — o card mostra separado quantas não foram encontradas, em vez
+// de fingir 0 pares como se fosse peça real.
+let paresPorPfaPendente = new Map();
 // Histórico de QUEM trabalhou (ressuprimento_operador_diario), mesmo
 // intervalo do gráfico — alimenta a coluna "Operadores" quando a fonte é o
 // histórico acumulado (05/09/2026, achado pelo usuário: sempre mostrava
@@ -3231,7 +3241,7 @@ async function carregarRessuprimento() {
   // Ressuprimento) e são independentes entre si: posição (Picking+Pulmão) é
   // do dia, Kardex é de período. Um pode existir sem o outro — cada tela
   // mostra o que tiver e avisa sobre o que falta, sem depender da outra.
-  const [resPosicao, resMov, , , , resPlano, resFam] = await Promise.all([
+  const [resPosicao, resMov, , , , resPlano, resFam, resPfas] = await Promise.all([
     supabaseClient.from('dashboard_snapshots')
       .select('payload, gerado_em').eq('pagina', 'ressuprimento')
       .order('gerado_em', { ascending: false }).limit(1),
@@ -3248,9 +3258,21 @@ async function carregarRessuprimento() {
     supabaseClient.from('ressuprimento_planejamento').select('pfa, familia_codigo, turno, data')
       .then(function (r) { return r; }).catch(function () { return { data: [], error: true }; }),
     window.lerTudoPaginado ? window.lerTudoPaginado(supabaseClient, 'dim_familias', 'codigo, marca, categoria, segmento').catch(function () { return []; }) : Promise.resolve([]),
+    // Só pra dar peças ao card "Planejado, não ressuprido" (14/09/2026) —
+    // reaproveita o snapshot que a tela "PFAs em tela" já mantém sozinha,
+    // não exige nenhum upload novo aqui.
+    supabaseClient.from('dashboard_snapshots')
+      .select('payload').eq('pagina', 'pfas').order('gerado_em', { ascending: false }).limit(1)
+      .then(function (r) { return r; }).catch(function () { return { data: [], error: true }; }),
   ]);
   dadosMovimentacoes = (!resMov.error && resMov.data && resMov.data.length) ? resMov.data[0].payload : null;
   planejamentoTudo = (resPlano && !resPlano.error && resPlano.data) ? resPlano.data : [];
+  paresPorPfaPendente = new Map();
+  if (resPfas && !resPfas.error && resPfas.data && resPfas.data[0]) {
+    ((resPfas.data[0].payload || {}).pendentes || []).forEach(function (r) {
+      paresPorPfaPendente.set(r.pfa, r.pares);
+    });
+  }
   mapaFamiliasGlobal = new Map((resFam || []).map(function (f) { return [f.codigo, f]; }));
 
   /* ---------- tela Estoque (posição Picking/Pulmão) ---------- */
@@ -4237,6 +4259,20 @@ function blocoMovimentacoes() {
     const pecasD0 = d0.reduce(function (s, p) { return s + p.pecas; }, 0);
     const pecasD1 = d1.reduce(function (s, p) { return s + p.pecas; }, 0);
 
+    // "Planejado, não ressuprido" nunca passou pelo Kardex, então p.pecas
+    // aqui é sempre 0 (classificarPlanejamento não tem como saber quantos
+    // pares a PFA carrega) — cruza pelo número da PFA com o ÚLTIMO
+    // relatório de Pendentes (paresPorPfaPendente) pra achar isso. PFA que
+    // não aparece mais em Pendentes (já embarcou, foi ajustada, arquivo
+    // desatualizado) fica de fora da soma e conta à parte — nunca vira 0
+    // pares como se fosse peça real.
+    let paresNaoRessup = 0, naoRessupSemPfa = 0;
+    naoRessup.forEach(function (p) {
+      const pares = paresPorPfaPendente.get(p.pfa);
+      if (pares == null) { naoRessupSemPfa++; return; }
+      paresNaoRessup += pares;
+    });
+
     const kpisPlano = '<div class="kpi-row">' +
       '<div class="kpi"><div class="rot">D0 — ressuprido no dia</div>' +
         '<div class="val forte" style="color:var(--olive)">' + fmtInt(pecasD0) + ' Peças</div>' +
@@ -4245,8 +4281,11 @@ function blocoMovimentacoes() {
         '<div class="val forte" style="color:var(--accent)">' + fmtInt(pecasD1) + ' Peças</div>' +
         '<div class="sub">' + fmtInt(d1.length) + ' PFAs ressupridas no dia anterior</div></div>' +
       '<div class="kpi"><div class="rot">Planejado, não ressuprido</div>' +
-        '<div class="val forte" style="color:var(--red)">' + fmtInt(naoRessup.length) + '</div>' +
-        '<div class="sub">' + (aguardando.length ? '+ ' + fmtInt(aguardando.length) + ' aguardando o turno' : 'PFA sem nenhum movimento no Kardex') + '</div></div>' +
+        '<div class="val forte" style="color:var(--red)">' + fmtInt(paresNaoRessup) + ' Pares</div>' +
+        '<div class="sub">' + fmtInt(naoRessup.length) + ' PFAs' +
+          (aguardando.length ? ' (+ ' + fmtInt(aguardando.length) + ' aguardando o turno)' : ' sem nenhum movimento no Kardex') +
+          (naoRessupSemPfa ? ' · ' + fmtInt(naoRessupSemPfa) + ' fora do Pendentes atual' : '') +
+        '</div></div>' +
       '<div class="kpi"><div class="rot">Sem planejamento</div>' +
         '<div class="val forte" style="color:var(--amber)">' + fmtInt(pecasSemPlano) + '</div>' +
         '<div class="sub">' + fmtInt(semPlano.length) + ' família(s) ressupridas à toa</div></div>' +
