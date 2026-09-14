@@ -4901,6 +4901,14 @@ async function exportarGapEstoqueAjustes() {
       saldosPorArtigo.get(s.artigo_codigo).push(s);
     });
 
+    // Endereço sempre no padrão rua(2)-nível(2)-box(3), completando com zero à
+    // esquerda quando a rua ou o nível vêm com um único dígito (ex: rua "2" e
+    // nível "7" viram "02" e "07") — pedido do usuário, 14/09/2026.
+    const formatarEndereco = function (rua, nivel, box) {
+      const pad = function (v, tam) { return String(v).padStart(tam, '0'); };
+      return pad(rua, 2) + '-' + pad(nivel, 2) + '-' + pad(box, 3);
+    };
+
     const cabecalho = ['pfa', 'tipo', 'artigo', 'cor_tam', 'motivo', 'data_solicitacao',
       'qtde_faltante', 'endereco', 'classificacao', 'qtd_no_endereco'];
     const linhas = [];
@@ -4915,7 +4923,7 @@ async function exportarGapEstoqueAjustes() {
       enderecos.forEach(function (e) {
         linhas.push([a.pfa_antiga, a.tipo, a.artigo, a.cor_tam, a.motivo || '',
           formatarDataSimples(a.data_solicitacao), a.perda_liquida,
-          e.rua + '-' + e.nivel + '-' + e.box, e.classificacao, e.qtd]);
+          formatarEndereco(e.rua, e.nivel, e.box), e.classificacao, e.qtd]);
       });
     });
 
