@@ -2831,23 +2831,23 @@ function renderizarPfas() {
   const ajustesEmAberto = p.ajustes_em_aberto || 0;
   const kpis = '<div class="kpi-row">' +
     '<div class="kpi"><div class="rot">Material Pendente - Total</div>' +
-      '<div class="val forte">' + fmtInt(filtrados.length) + ' PFAs</div>' +
-      '<div class="sub">' + fmtInt(pares) + ' Pares</div></div>' +
+      '<div class="val forte">' + fmtInt(pares) + ' Pares</div>' +
+      '<div class="sub">' + fmtInt(filtrados.length) + ' PFAs</div></div>' +
     '<div class="kpi"><div class="rot">PFA Mais antiga em tela</div>' +
       '<div class="val forte" style="color:var(--amber)">' + (maisAntiga.dias ? fmtInt(maisAntiga.dias) + ' dias' : '—') + '</div>' +
       '<div class="sub">' + (maisAntiga.data ? 'Importada ' + formatarDataSimples(maisAntiga.data) : 'Sem PFA no recorte') + '</div></div>' +
     '<div class="kpi"><div class="rot">Ag. Formação para Coleta</div>' +
-      '<div class="val forte">' + fmtInt(agFormacao.length) + ' PFAs</div>' +
-      '<div class="sub">' + fmtInt(paresAgFormacao) + ' Pares</div></div>' +
+      '<div class="val forte">' + fmtInt(paresAgFormacao) + ' Pares</div>' +
+      '<div class="sub">' + fmtInt(agFormacao.length) + ' PFAs</div></div>' +
     '<div class="kpi"><div class="rot">Material em Fluxo de Coleta</div>' +
-      '<div class="val forte">' + fmtInt(fluxoColeta.length) + ' PFAs</div>' +
-      '<div class="sub">' + fmtInt(paresFluxoColeta) + ' Pares</div></div>' +
+      '<div class="val forte">' + fmtInt(paresFluxoColeta) + ' Pares</div>' +
+      '<div class="sub">' + fmtInt(fluxoColeta.length) + ' PFAs</div></div>' +
     '<div class="kpi"><div class="rot">Ag. Emissão de Nota Fiscal</div>' +
-      '<div class="val forte">' + fmtInt(pendentesFiscal.length) + ' PFAs</div>' +
-      '<div class="sub">' + fmtInt(paresPendentesFiscal) + ' Pares</div></div>' +
+      '<div class="val forte">' + fmtInt(paresPendentesFiscal) + ' Pares</div>' +
+      '<div class="sub">' + fmtInt(pendentesFiscal.length) + ' PFAs</div></div>' +
     '<div class="kpi"><div class="rot">NF Emitida - Ag. Coleta</div>' +
-      '<div class="val forte" style="color:var(--red)">' + fmtInt(coletaSep.pfasConf) + ' PFAs</div>' +
-      '<div class="sub">' + fmtInt(coletaSep.qtdeConf) + ' Peças</div></div>' +
+      '<div class="val forte" style="color:var(--red)">' + fmtInt(coletaSep.qtdeConf) + ' Peças</div>' +
+      '<div class="sub">' + fmtInt(coletaSep.pfasConf) + ' PFAs</div></div>' +
     '<div class="kpi" style="border-color:var(--accent)">' +
       '<div class="rot" style="color:var(--accent)">Ajustes de PFA em aberto</div>' +
       '<div class="val forte" style="color:var(--accent)">' + fmtInt(ajustesEmAberto) + '</div>' +
@@ -4234,14 +4234,16 @@ function blocoMovimentacoes() {
     const naoRessup = plano.filter(function (p) { return p.status === 'planejado_nao_ressuprido'; });
     const aguardando = plano.filter(function (p) { return p.status === 'aguardando'; });
     const pecasSemPlano = semPlano.reduce(function (s, r) { return s + r.pecas; }, 0);
+    const pecasD0 = d0.reduce(function (s, p) { return s + p.pecas; }, 0);
+    const pecasD1 = d1.reduce(function (s, p) { return s + p.pecas; }, 0);
 
     const kpisPlano = '<div class="kpi-row">' +
       '<div class="kpi"><div class="rot">D0 — ressuprido no dia</div>' +
-        '<div class="val forte" style="color:var(--olive)">' + fmtInt(d0.length) + '</div>' +
-        '<div class="sub">de ' + fmtInt(plano.length) + ' PFAs planejadas</div></div>' +
+        '<div class="val forte" style="color:var(--olive)">' + fmtInt(pecasD0) + ' Peças</div>' +
+        '<div class="sub">' + fmtInt(d0.length) + ' de ' + fmtInt(plano.length) + ' PFAs planejadas</div></div>' +
       '<div class="kpi"><div class="rot">D-1 — adiantado</div>' +
-        '<div class="val forte" style="color:var(--accent)">' + fmtInt(d1.length) + '</div>' +
-        '<div class="sub">ressuprido no dia anterior</div></div>' +
+        '<div class="val forte" style="color:var(--accent)">' + fmtInt(pecasD1) + ' Peças</div>' +
+        '<div class="sub">' + fmtInt(d1.length) + ' PFAs ressupridas no dia anterior</div></div>' +
       '<div class="kpi"><div class="rot">Planejado, não ressuprido</div>' +
         '<div class="val forte" style="color:var(--red)">' + fmtInt(naoRessup.length) + '</div>' +
         '<div class="sub">' + (aguardando.length ? '+ ' + fmtInt(aguardando.length) + ' aguardando o turno' : 'PFA sem nenhum movimento no Kardex') + '</div></div>' +
