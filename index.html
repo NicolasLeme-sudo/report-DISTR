@@ -3615,17 +3615,17 @@ function arvoreFiltradaRessuprimento(p) {
 
 function expandirTudoRessuprimento() {
   // Com busca de artigo ativa, expande a árvore da BUSCA (Marca›Família›
-  // Modelo›Cor›Endereço) em vez da árvore normal — chaves 'BS|...' nunca
-  // colidem com as 'M|...' da árvore normal, e as duas nunca renderizam juntas.
+  // Modelo›Cor — Cor é o último nível, não tem mais o que abrir dentro dele)
+  // em vez da árvore normal — chaves 'BS|...' nunca colidem com as 'M|...'
+  // da árvore normal, e as duas nunca renderizam juntas.
   if (resultadosArtigoRessuprimento !== null) {
     const mapaFamiliaInfo = mapaFamiliasRessuprimento(window._snapshotRessuprimento || {});
     resultadosArtigoRessuprimento.forEach(function (r) {
       const info = mapaFamiliaInfo.get(r.familia_codigo);
       const marcaCodigo = info ? info.marcaCodigo : 'NÃO MAPEADA';
       const chaveM = 'BS|M|' + marcaCodigo, chaveF = chaveM + '|F|' + r.familia_codigo,
-        chaveAr = chaveF + '|A|' + r.artigo_codigo, chaveCor = chaveAr + '|C|' + r.cor;
-      abertosRessuprimento.add(chaveM); abertosRessuprimento.add(chaveF);
-      abertosRessuprimento.add(chaveAr); abertosRessuprimento.add(chaveCor);
+        chaveAr = chaveF + '|A|' + r.artigo_codigo;
+      abertosRessuprimento.add(chaveM); abertosRessuprimento.add(chaveF); abertosRessuprimento.add(chaveAr);
     });
     renderizarEstoqueOperacao();
     return;
@@ -3751,32 +3751,22 @@ function renderizarArvoreBuscaSaldoEndereco(linhasBusca, p) {
                 if (!porCor.has(r.cor)) porCor.set(r.cor, []);
                 porCor.get(r.cor).push(r);
               });
+              // Cor é o último nível NA TELA (pedido do usuário, 15/09/2026:
+              // "não quero a quebra por endereço no visual, só na
+              // exportação, se não fica muita informação no gráfico") —
+              // o endereço de cada linha continua existindo nos dados e sai
+              // completo no CSV (exportarCSVBuscaSaldoEndereco), só não
+              // vira mais um nível expansível aqui.
               Array.from(porCor.entries())
                 .sort(function (a, b) { return somaQtd(b[1]) - somaQtd(a[1]); })
                 .forEach(function (parCor) {
                   const cor = parCor[0], linhasCor = parCor[1];
                   const qtdCor = somaQtd(linhasCor);
-                  const chaveCor = chaveAr + '|C|' + cor;
                   html += linhaArvoreRessuprimento({
-                    classe: 'n3', chave: chaveCor, temFilhos: true, indent: 'ind-4',
+                    classe: 'n3', chave: chaveAr + '|C|' + cor, temFilhos: false, indent: 'ind-4',
                     rotulo: escapar(cor || '—'),
                     qtd: qtdCor, pct: qtdAr ? qtdCor / qtdAr * 100 : 0, skus: linhasCor.length,
                   });
-                  if (!abertosRessuprimento.has(chaveCor)) return;
-
-                  linhasCor
-                    .slice()
-                    .sort(function (a, b) { return (Number(b.qtd) || 0) - (Number(a.qtd) || 0); })
-                    .forEach(function (r, i) {
-                      const classifRot = r.classificacao === 'PICKING' ? 'Picking' : r.classificacao === 'PULMAO' ? 'Pulmão' : (r.classificacao || '—');
-                      html += linhaArvoreRessuprimento({
-                        classe: 'n3', chave: chaveCor + '|E|' + i, temFilhos: false, indent: 'ind-5',
-                        rotulo: (r.tamanho ? escapar(r.tamanho) + ' · ' : '') +
-                                escapar(formatarEndereco(r.rua, r.nivel, r.box)) +
-                                ' <span class="seg">' + escapar(classifRot) + '</span>',
-                        qtd: r.qtd, pct: qtdCor ? Number(r.qtd) / qtdCor * 100 : 0, skus: 1,
-                      });
-                    });
                 });
             });
         });
