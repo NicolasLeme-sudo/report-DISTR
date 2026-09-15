@@ -248,7 +248,7 @@ function parsearPicking(textoArquivo) {
     const qtdCativado = window.numeroBR(p[9]);
 
     registros.push({
-      familia_codigo: String(p[1] || '').trim(),
+      familia_codigo: window.familiaCanonica(p[1]),
       artigo_codigo: (p[2] || '').trim(),
       descricao: (p[3] || '').trim(),
       cor: (p[4] || '').trim(),
@@ -299,7 +299,7 @@ function parsearPulmao(textoArquivo) {
     const box = (p[4] || '').trim();
 
     registros.push({
-      familia_codigo: String(p[10] || '').trim(),
+      familia_codigo: window.familiaCanonica(p[10]),
       artigo_codigo: (p[5] || '').trim(),
       cor: (p[6] || '').trim(),
       tamanho: (p[7] || '').trim(),

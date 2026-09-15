@@ -209,6 +209,63 @@ const somaFixo = fx.registros.reduce(function (s, r) { return s + r.qtd; }, 0);
 ok(Math.abs(somaFixo - fx.total_geral_sistema.qtd) < 0.001,
    'soma do parser bate com o total do sistema (' + somaFixo.toFixed(2) + ')');
 
+/* --------------------------------------------------------------------------
+   5) agrupamento de famílias por origem (15/09/2026)
+   --------------------------------------------------------------------------
+   O ERP separa a mesma linha de produto em duas famílias pela origem
+   (fabricado × comprado/importado), e as duas aparecem com rótulo IDÊNTICO na
+   tela — o que já fez a operação ler a família errada duas vezes. A regra é:
+   material fabricado/importado conta na família do COMPRADO, que é a
+   referência do time. Isto erra em SILÊNCIO se quebrar: os totais por família
+   mudam de lugar sem nenhum erro estourar, e a tela continua com cara de certa.
+   -------------------------------------------------------------------------- */
+secao('agrupamento de famílias');
+
+[
+  ['080', '081', 'tênis UA fabricado no Brasil conta como comprado'],
+  ['086', '087', 'chinelo UA fabricado no Brasil conta como comprado'],
+  ['101', '102', 'tênis Mizuno fabricado no Brasil conta como comprado'],
+  ['107', '108', 'chuteira Mizuno fabricada conta como importada'],
+].forEach(function (c) { eq(familiaCanonica(c[0]), c[1], c[2]); });
+
+// O destino nunca é remapeado de novo — senão a regra "andaria" a cada
+// chamada e o agrupamento mudaria a cada reprocessamento.
+['081', '087', '102', '108'].forEach(function (cod) {
+  eq(familiaCanonica(cod), cod, 'família de destino ' + cod + ' fica onde está');
+});
+
+// Famílias fora dos quatro pares não podem ser tocadas por esta regra.
+[['043', 'tênis Olympikus'], ['103', 'vestuário Mizuno'], ['MIP', 'insumo (código não numérico)']]
+  .forEach(function (c) { eq(familiaCanonica(c[0]), c[0], c[1] + ' passa intacta'); });
+
+// O padding só existe pro casamento: um arquivo que escreva "80" cai no mesmo
+// destino que "080". Mas quem NÃO é remapeado volta como entrou — esta regra
+// não pode virar, de carona, um normalizador de padding.
+eq(familiaCanonica('80'), '081', '"80" sem zero à esquerda cai no mesmo destino');
+eq(familiaCanonica('43'), '43', 'código não remapeado volta exatamente como entrou');
+eq(familiaCanonica('  101  '), '102', 'espaço em volta não atrapalha');
+eq(familiaCanonica(''), '', 'vazio continua vazio');
+eq(familiaCanonica(null), '', 'null vira string vazia, não "null"');
+eq(familiaCanonica(undefined), '', 'undefined vira string vazia');
+
+// Ponta a ponta: o agrupamento vale já no PARSE, senão cada tela precisaria
+// conhecer a regra — e alguma esqueceria.
+const pipeFam = parsearRelatorioPipe(arquivoPipe(CAB, [
+  'V|S|101|101102102|MIZUNO STREET WIND|PTOBCO|44|PAR|EXTRE-AC190||0|21,000|185,37|3.892,77',
+]));
+eq(pipeFam.registros[0].familia_codigo, '102',
+   'layout pipe: família 101 já sai do parser como 102');
+
+const fixoFam = parsearRelatorioEstoque([
+  '   POSICAO DO STOCK - LOCAIS STOCKAGEM        Ago.25,26',
+  '   Estabel....: EXTRE',
+  'Familia ....: 080 TENIS UA FABRICADO BRASIL',
+  linhaFixa({ st: 'VS', artigo: campoArtigo('6007004', 'BLKWBK', '44', 'UA SWISH 2'),
+              um: 'PAR', armazem: 'EXTRE/AC190', qtd: '17,000', precoMed: '268,86', valor: '4.570,55' }),
+].join('\n'));
+eq(fixoFam.registros[0].familia_codigo, '081',
+   'layout fixo: família 080 já sai do parser como 081');
+
 /* -------------------------------------------------------------------------- */
 console.log('\n' + (falhas === 0
   ? 'TODOS OS TESTES PASSARAM'

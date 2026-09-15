@@ -149,6 +149,46 @@ function fatia(linha, faixa) {
   return linha.substring(faixa[0], faixa[1]).trim();
 }
 
+/* ----------------------------------------------------------------------------
+   AGRUPAMENTO DE FAMÍLIAS (regra de negócio, 15/09/2026)
+   ----------------------------------------------------------------------------
+   O ERP separa a mesma linha de produto em duas famílias pela ORIGEM
+   (fabricado no Brasil × comprado/importado). A operação não trabalha assim:
+   ela se guia pela família do material COMPRADO, e material fabricado ou
+   importado que cai no pedido é tratado como se fosse dela.
+
+   Sem isso, os dois códigos apareciam como linhas separadas com RÓTULO
+   IDÊNTICO na tela ("TÊNIS MIZUNO" tanto em 101 quanto em 102), o que levou
+   a operação a ler a família errada mais de uma vez — a diferença só existia
+   no campo `nome` do cadastro, que a tela nunca mostra.
+
+   Chuteira Mizuno é o único par sem família "comprado": lá o destino é a
+   IMPORTADA (108), que concentra 97% do volume — mesma lógica, a família que
+   o time usa como referência.
+
+   Aplicado no PARSE de todo arquivo que traz família (Estoque, Picking/
+   Pulmão e PFAs), pra que nenhuma tela precise saber da regra: o que circula
+   no sistema já é a família canônica. O arquivo original continua guardado
+   em backup no Storage, então a classificação de origem nunca se perde.
+   ---------------------------------------------------------------------------- */
+const FAMILIA_AGRUPADA = {
+  '080': '081',   // Tênis UA fabricado no Brasil   -> Tênis UA comprado
+  '086': '087',   // Chinelo UA fabricado no Brasil -> Chinelo UA comprado
+  '101': '102',   // Tênis Mizuno fabricado Brasil  -> Tênis Mizuno comprado
+  '107': '108',   // Chuteira Mizuno fabricada      -> Chuteira Mizuno importada
+};
+
+/* Só REMAPEIA os quatro pares acima; qualquer outro código volta exatamente
+   como entrou (inclusive sem padding), pra esta regra não mudar de tabela
+   nenhuma além do que foi pedido. O padStart existe só pro casamento: um
+   arquivo que escreva "80" em vez de "080" cai no mesmo destino. */
+function familiaCanonica(codigo) {
+  const limpo = String(codigo === null || codigo === undefined ? '' : codigo).trim();
+  if (!limpo) return limpo;
+  const chave = /^\d+$/.test(limpo) ? limpo.padStart(3, '0') : limpo;
+  return FAMILIA_AGRUPADA[chave] || limpo;
+}
+
 /* Mês abreviado em português do cabeçalho ("Ago.25,26" = 25/ago/2026). */
 const MESES_ABREV = {
   jan: 0, fev: 1, mar: 2, abr: 3, mai: 4, jun: 5,
@@ -192,7 +232,7 @@ function parsearRelatorioEstoque(textoArquivo) {
     // --- cabeçalho: família corrente ---
     const mFam = linha.match(/^Familia\s*\.*:\s*(\S+)\s+(.*)$/);
     if (mFam) {
-      familiaAtual = { codigo: mFam[1].trim(), nome: mFam[2].trim() };
+      familiaAtual = { codigo: familiaCanonica(mFam[1].trim()), nome: mFam[2].trim() };
       familiasVistas.set(familiaAtual.codigo, familiaAtual.nome);
       continue;
     }
@@ -397,7 +437,7 @@ function parsearRelatorioPipe(textoArquivo) {
     // O relatório escreve a família sem zero à esquerda em alguns casos ("43").
     // O gabarito usa 3 dígitos. Normalizar aqui evita "43" e "043" virarem
     // duas famílias diferentes no agrupamento.
-    const fam = String((p[idx.fam] || '').trim()).padStart(3, '0');
+    const fam = familiaCanonica(String((p[idx.fam] || '').trim()).padStart(3, '0'));
     familiasVistas.set(fam, (p[idx.descricao] || '').trim());
 
     registros.push({
@@ -541,7 +581,18 @@ async function buscarPosicoesEstoque(supabaseClient, termoBruto) {
     .order('valor', { ascending: false })
     .limit(LIMITE_BUSCA_ARTIGO_ESTOQUE);
   if (error) throw error;
-  return data || [];
+  return canonizarFamiliaDasLinhas(data);
+}
+
+/* As linhas já gravadas em estoque_posicoes guardam a família como o arquivo
+   daquele dia trazia — inclusive as extrações anteriores à regra de
+   agrupamento. Canonizar na leitura faz a busca concordar com a árvore
+   agregada sem depender de reprocessar o histórico. */
+function canonizarFamiliaDasLinhas(linhas) {
+  return (linhas || []).map(function (r) {
+    const canon = familiaCanonica(r.familia_codigo);
+    return canon === r.familia_codigo ? r : Object.assign({}, r, { familia_codigo: canon });
+  });
 }
 window.buscarPosicoesEstoque = buscarPosicoesEstoque;
 window.LIMITE_BUSCA_ARTIGO_ESTOQUE = LIMITE_BUSCA_ARTIGO_ESTOQUE;
@@ -571,7 +622,7 @@ async function buscarPosicoesEstoqueCompleto(supabaseClient, termoBruto) {
     if (data.length < LOTE) break;
     offset += data.length;
   }
-  return tudo;
+  return canonizarFamiliaDasLinhas(tudo);
 }
 window.buscarPosicoesEstoqueCompleto = buscarPosicoesEstoqueCompleto;
 
@@ -990,6 +1041,10 @@ window.processarEstoque = processarEstoque;
 // conversão de número, dois relatórios diferentes) -- exposto aqui pra não
 // duplicar a lógica que acabou de ganhar 17 casos de teste em ingest.js.
 window.numeroBR = numeroBR;
+// Regra de agrupamento de famílias — usada também pelos ingests de
+// Ressuprimento e PFAs, que leem família dos seus próprios arquivos.
+window.familiaCanonica = familiaCanonica;
+window.FAMILIA_AGRUPADA = FAMILIA_AGRUPADA;
 window.lerTudoPaginado = lerTudoPaginado;
 window.buscarUltimoPayload = buscarUltimoPayload;
 window.parsearRelatorio = parsearRelatorio;
