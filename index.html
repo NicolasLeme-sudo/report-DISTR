@@ -1896,6 +1896,59 @@ const BADGE_CATEGORIA = {
    que trocar de tema ou mexer no filtro não feche o que o usuário
    já tinha aberto no meio da apresentação. */
 const abertos = new Set();
+// Busca por artigo/SKU no card "Detalhamento — Armazém › Marca › Família"
+// (pedido do usuário, 15/09/2026) — a árvore só tem totais agregados, então
+// a busca chama buscarPosicoesEstoque (ingest.js), que consulta a tabela
+// FATO estoque_posicoes direto. resultadosArtigoEstoque null = busca
+// inativa (mostra a árvore normal); array (mesmo vazio) = mostra os
+// resultados da busca no lugar da árvore.
+let buscaArtigoEstoque = '';
+let resultadosArtigoEstoque = null;
+let buscandoArtigoEstoque = false;
+let tokenBuscaArtigoEstoque = 0;
+let timeoutBuscaArtigoEstoque = null;
+function filtrarArtigoEstoque(texto) {
+  buscaArtigoEstoque = texto;
+  const scrollY = window.scrollY;
+  const cursor = texto.length;
+  clearTimeout(timeoutBuscaArtigoEstoque);
+  const termo = texto.trim();
+  const minhaVez = ++tokenBuscaArtigoEstoque;
+  if (termo.length < 2) {
+    resultadosArtigoEstoque = null;
+    buscandoArtigoEstoque = false;
+    renderizarEstoque(window._snapshot);
+    restaurarFocoBuscaArtigoEstoque(cursor, scrollY);
+    return;
+  }
+  buscandoArtigoEstoque = true;
+  renderizarEstoque(window._snapshot);
+  restaurarFocoBuscaArtigoEstoque(cursor, scrollY);
+  // Debounce: só dispara a consulta 350ms depois da última tecla, e um
+  // token descarta qualquer resposta que não seja mais a busca mais
+  // recente (evita a resposta de "MIZ" chegar depois da de "MIZUNO" e
+  // sobrescrever o resultado certo com um mais velho).
+  timeoutBuscaArtigoEstoque = setTimeout(function () {
+    window.buscarPosicoesEstoque(supabaseClient, termo).then(function (linhas) {
+      if (minhaVez !== tokenBuscaArtigoEstoque) return;
+      resultadosArtigoEstoque = linhas;
+      buscandoArtigoEstoque = false;
+      renderizarEstoque(window._snapshot);
+      restaurarFocoBuscaArtigoEstoque(texto.length, window.scrollY);
+    }).catch(function (err) {
+      if (minhaVez !== tokenBuscaArtigoEstoque) return;
+      console.error(err);
+      buscandoArtigoEstoque = false;
+      resultadosArtigoEstoque = [];
+      renderizarEstoque(window._snapshot);
+    });
+  }, 350);
+}
+function restaurarFocoBuscaArtigoEstoque(cursor, scrollY) {
+  const input = document.getElementById('buscaArtigoEstoque');
+  if (input) { input.focus(); input.setSelectionRange(cursor, cursor); }
+  window.scrollTo(0, scrollY);
+}
 function alternarNo(chave) {
   if (abertos.has(chave)) abertos.delete(chave); else abertos.add(chave);
   renderizarEstoque(window._snapshot);
@@ -2153,29 +2206,54 @@ function renderizarEstoque(p) {
       '</div>' +
     '</div>' +
     '<div class="card">' +
-      '<div class="section-title" style="display:flex;align-items:center;justify-content:space-between">' +
+      '<div class="section-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">' +
         '<span>Detalhamento — Armazém › Marca › Família</span>' +
         '<span>' +
+          '<input type="text" id="buscaArtigoEstoque" placeholder="Buscar artigo, descrição, cor, armazém…" ' +
+            'value="' + escapar(buscaArtigoEstoque) + '" oninput="filtrarArtigoEstoque(this.value)" ' +
+            'style="padding:6px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);' +
+            'border:1px solid var(--border);font-size:12px;width:240px;margin-right:8px">' +
           '<button class="btn-mini" onclick="expandirTudo()">Expandir tudo</button> ' +
           '<button class="btn-mini" onclick="recolherTudo()">Recolher tudo</button> ' +
           '<button class="btn-mini" onclick="exportarCSV()">⬇ CSV</button>' +
         '</span>' +
       '</div>' +
-      '<div style="overflow-x:auto">' +
-        '<table class="arvore">' +
-          '<thead>' +
-            '<tr>' +
-              '<th class="esq" rowspan="2">Descrição</th>' +
-              '<th rowspan="2">KPI</th>' +
-              '<th class="grupo" colspan="3">Quantidade</th>' +
-              '<th class="grupo" colspan="2">Valor de estoque</th>' +
-            '</tr>' +
-            '<tr><th>Qtd</th><th>% do nível</th><th>SKUs</th><th>R$</th><th>% do nível</th></tr>' +
-          '</thead>' +
-          '<tbody>' + linhas + '</tbody>' +
-        '</table>' +
-      '</div>' +
-      '<div style="font-size:11px;color:var(--text-muted);margin-top:12px">' + rodape + '</div>' +
+      (resultadosArtigoEstoque === null
+        ? '<div style="overflow-x:auto">' +
+            '<table class="arvore">' +
+              '<thead>' +
+                '<tr>' +
+                  '<th class="esq" rowspan="2">Descrição</th>' +
+                  '<th rowspan="2">KPI</th>' +
+                  '<th class="grupo" colspan="3">Quantidade</th>' +
+                  '<th class="grupo" colspan="2">Valor de estoque</th>' +
+                '</tr>' +
+                '<tr><th>Qtd</th><th>% do nível</th><th>SKUs</th><th>R$</th><th>% do nível</th></tr>' +
+              '</thead>' +
+              '<tbody>' + linhas + '</tbody>' +
+            '</table>' +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--text-muted);margin-top:12px">' + rodape + '</div>'
+        : '<div style="overflow-x:auto;margin-top:10px">' +
+            (buscandoArtigoEstoque ? '<div class="aviso">Buscando…</div>' :
+              !resultadosArtigoEstoque.length ? '<div class="aviso">Nenhum artigo bate com "' + escapar(buscaArtigoEstoque) + '".</div>' :
+              '<table class="arvore"><thead><tr>' +
+                '<th class="esq">Artigo</th><th class="esq">Descrição</th><th>Cor</th><th>Tam</th>' +
+                '<th class="esq">Armazém</th><th class="esq">Marca</th><th>Família</th><th>Qtd</th><th>R$</th>' +
+              '</tr></thead><tbody>' +
+                resultadosArtigoEstoque.map(function (r) {
+                  return '<tr class="n1"><th class="esq">' + escapar(r.artigo_codigo) + '</th>' +
+                    '<td class="esq">' + escapar(r.descricao) + '</td>' +
+                    '<td>' + escapar(r.cor) + '</td><td>' + escapar(r.tamanho) + '</td>' +
+                    '<td class="esq">' + escapar(r.armazem) + '</td><td class="esq">' + escapar(r.marca) + '</td>' +
+                    '<td>' + escapar(r.familia_codigo) + '</td>' +
+                    '<td>' + fmtInt(r.qtd) + '</td><td>' + fmtMoeda(r.valor) + '</td></tr>';
+                }).join('') +
+              '</tbody></table>' +
+              (resultadosArtigoEstoque.length === window.LIMITE_BUSCA_ARTIGO_ESTOQUE
+                ? '<p style="font-size:11px;color:var(--text-muted);margin-top:8px">Mostrando os ' +
+                  window.LIMITE_BUSCA_ARTIGO_ESTOQUE + ' de maior valor — refine a busca pra ver o resto.</p>' : '')) +
+          '</div>') +
     '</div>';
 }
 

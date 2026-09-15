@@ -503,6 +503,45 @@ function deduplicarPosicoes(registros) {
   return { registros: Array.from(porChave.values()), colisoes: colisoes };
 }
 
+/* Busca por artigo/SKU no Detalhamento de Estoque (pedido do usuário,
+   15/09/2026) — o snapshot agregado em dashboard_snapshots só guarda totais
+   por armazém/marca/família, nunca o SKU individual, então a busca vai
+   direto na tabela FATO (estoque_posicoes), que já grava uma linha por SKU
+   a cada upload. Sempre cruza contra a ÚLTIMA extração: misturar posições
+   de dias diferentes só confundiria (o estoque de ontem já mudou hoje). */
+async function buscarUltimaExtracaoIdEstoque(supabaseClient) {
+  const { data, error } = await supabaseClient
+    .from('estoque_extracoes')
+    .select('id')
+    .order('gerado_em', { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  return (data && data[0] && data[0].id) || null;
+}
+const LIMITE_BUSCA_ARTIGO_ESTOQUE = 200;
+async function buscarPosicoesEstoque(supabaseClient, termoBruto) {
+  const extracaoId = await buscarUltimaExtracaoIdEstoque(supabaseClient);
+  if (!extracaoId) return [];
+  // ',', '(' e ')' têm significado especial no filtro .or() do PostgREST;
+  // '%' e '_' são curinga do próprio ILIKE — todos viram espaço/escapados
+  // pra um termo digitado nunca quebrar a sintaxe da consulta.
+  const termo = termoBruto.trim().replace(/[,()]/g, ' ').replace(/[%_]/g, '\\$&');
+  if (!termo) return [];
+  const campos = ['artigo_codigo', 'descricao', 'cor', 'tamanho', 'armazem', 'marca', 'familia_codigo'];
+  const orFiltro = campos.map(function (c) { return c + '.ilike.%' + termo + '%'; }).join(',');
+  const { data, error } = await supabaseClient
+    .from('estoque_posicoes')
+    .select('armazem, marca, familia_codigo, artigo_codigo, cor, tamanho, descricao, qtd, valor')
+    .eq('extracao_id', extracaoId)
+    .or(orFiltro)
+    .order('valor', { ascending: false })
+    .limit(LIMITE_BUSCA_ARTIGO_ESTOQUE);
+  if (error) throw error;
+  return data || [];
+}
+window.buscarPosicoesEstoque = buscarPosicoesEstoque;
+window.LIMITE_BUSCA_ARTIGO_ESTOQUE = LIMITE_BUSCA_ARTIGO_ESTOQUE;
+
 /* Busca o `payload` mais recente de uma página em dashboard_snapshots, ou
    `null` se nunca houve upload. Usado por ingests que precisam saber "o que
    já está em tela" pra abastecer um pedaço sozinho sem apagar os outros
