@@ -2590,6 +2590,54 @@ function hojeISO() {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 const abertosRessuprimento = new Set();
+// Busca por artigo/SKU no card "Detalhamento — Marca › Grupo › Família"
+// (pedido do usuário, 15/09/2026, mesmo padrão da busca de Estoque) — troca
+// a árvore agregada por um detalhamento até o ENDEREÇO (rua-nível-box),
+// já que o objetivo aqui é achar onde fisicamente está o saldo daquele
+// artigo, não só o total. null = busca inativa (mostra a árvore normal).
+let buscaArtigoRessuprimento = '';
+let resultadosArtigoRessuprimento = null;
+let buscandoArtigoRessuprimento = false;
+let tokenBuscaArtigoRessuprimento = 0;
+let timeoutBuscaArtigoRessuprimento = null;
+function filtrarArtigoRessuprimento(texto) {
+  buscaArtigoRessuprimento = texto;
+  const scrollY = window.scrollY;
+  const cursor = texto.length;
+  clearTimeout(timeoutBuscaArtigoRessuprimento);
+  const termo = texto.trim();
+  const minhaVez = ++tokenBuscaArtigoRessuprimento;
+  if (termo.length < 2) {
+    resultadosArtigoRessuprimento = null;
+    buscandoArtigoRessuprimento = false;
+    renderizarEstoqueOperacao();
+    restaurarFocoBuscaArtigoRessuprimento(cursor, scrollY);
+    return;
+  }
+  buscandoArtigoRessuprimento = true;
+  renderizarEstoqueOperacao();
+  restaurarFocoBuscaArtigoRessuprimento(cursor, scrollY);
+  timeoutBuscaArtigoRessuprimento = setTimeout(function () {
+    window.buscarSaldoEnderecos(supabaseClient, termo).then(function (linhas) {
+      if (minhaVez !== tokenBuscaArtigoRessuprimento) return;
+      resultadosArtigoRessuprimento = linhas;
+      buscandoArtigoRessuprimento = false;
+      renderizarEstoqueOperacao();
+      restaurarFocoBuscaArtigoRessuprimento(texto.length, window.scrollY);
+    }).catch(function (err) {
+      if (minhaVez !== tokenBuscaArtigoRessuprimento) return;
+      console.error(err);
+      buscandoArtigoRessuprimento = false;
+      resultadosArtigoRessuprimento = [];
+      renderizarEstoqueOperacao();
+    });
+  }, 350);
+}
+function restaurarFocoBuscaArtigoRessuprimento(cursor, scrollY) {
+  const input = document.getElementById('buscaArtigoRessuprimento');
+  if (input) { input.focus(); input.setSelectionRange(cursor, cursor); }
+  window.scrollTo(0, scrollY);
+}
 const abertosPlanejamento = new Set();      // árvore Turno › Família › PFAs, mesmo padrão de abertosRessuprimento
 function alternarNoPlanejamento(chave) {
   if (abertosPlanejamento.has(chave)) abertosPlanejamento.delete(chave); else abertosPlanejamento.add(chave);
@@ -3566,6 +3614,22 @@ function arvoreFiltradaRessuprimento(p) {
 }
 
 function expandirTudoRessuprimento() {
+  // Com busca de artigo ativa, expande a árvore da BUSCA (Marca›Família›
+  // Modelo›Cor›Endereço) em vez da árvore normal — chaves 'BS|...' nunca
+  // colidem com as 'M|...' da árvore normal, e as duas nunca renderizam juntas.
+  if (resultadosArtigoRessuprimento !== null) {
+    const mapaFamiliaInfo = mapaFamiliasRessuprimento(window._snapshotRessuprimento || {});
+    resultadosArtigoRessuprimento.forEach(function (r) {
+      const info = mapaFamiliaInfo.get(r.familia_codigo);
+      const marcaCodigo = info ? info.marcaCodigo : 'NÃO MAPEADA';
+      const chaveM = 'BS|M|' + marcaCodigo, chaveF = chaveM + '|F|' + r.familia_codigo,
+        chaveAr = chaveF + '|A|' + r.artigo_codigo, chaveCor = chaveAr + '|C|' + r.cor;
+      abertosRessuprimento.add(chaveM); abertosRessuprimento.add(chaveF);
+      abertosRessuprimento.add(chaveAr); abertosRessuprimento.add(chaveCor);
+    });
+    renderizarEstoqueOperacao();
+    return;
+  }
   const arvore = arvoreFiltradaRessuprimento(window._snapshotRessuprimento);
   arvore.forEach(function (m) {
     const chaveM = 'M|' + m.codigo;
@@ -3589,6 +3653,138 @@ function linhaArvoreRessuprimento(opts) {
     '<td>' + fmtPct(opts.pct) + '</td>' +
     '<td>' + fmtInt(opts.skus) + '</td>' +
   '</tr>';
+}
+
+/* Mesma ideia da árvore de busca do Balanço de Estoque (renderizarArvoreBuscaArtigo),
+   adaptada pro que o Ressuprimento tem: nada de valor/custo (README, "cada
+   dado mora só num lugar"), e o nível mais fundo é o ENDEREÇO físico
+   (rua-nível-box + PICKING/PULMÃO), não uma variação de cor/tamanho —
+   é isso que a busca aqui serve pra achar (pedido do usuário, 15/09/2026:
+   "um detalhado dos endereços para poder consultar o saldo em estoque").
+   Marca/família são resolvidos a partir de familia_codigo via dim_familias,
+   já que ressuprimento_saldo_enderecos não guarda marca — reaproveita a
+   mesma árvore completa (`arvore_todos`) que a tela já carrega, então não
+   dispara nenhuma consulta nova só pra isso. */
+function mapaFamiliasRessuprimento(p) {
+  const mapa = new Map();
+  (p['arvore_todos'] || []).forEach(function (m) {
+    (m.segmentos || []).forEach(function (s) {
+      (s.familias || []).forEach(function (f) {
+        if (!mapa.has(f.codigo)) mapa.set(f.codigo, { nome: f.nome, marcaCodigo: m.codigo, marcaNome: m.nome });
+      });
+    });
+  });
+  return mapa;
+}
+function renderizarArvoreBuscaSaldoEndereco(linhasBusca, p) {
+  if (!linhasBusca.length) return '';
+  const mapaFamiliaInfo = mapaFamiliasRessuprimento(p);
+  const totalBusca = linhasBusca.reduce(function (s, r) { return s + (Number(r.qtd) || 0); }, 0);
+  const somaQtd = function (lista) { return lista.reduce(function (s, r) { return s + (Number(r.qtd) || 0); }, 0); };
+
+  function comMarca(r) {
+    const info = mapaFamiliaInfo.get(r.familia_codigo);
+    return { marcaCodigo: info ? info.marcaCodigo : 'NÃO MAPEADA', marcaNome: info ? info.marcaNome : 'NÃO MAPEADA', familiaNome: info ? info.nome : r.familia_codigo };
+  }
+  const porMarca = new Map();
+  linhasBusca.forEach(function (r) {
+    const info = comMarca(r);
+    if (!porMarca.has(info.marcaCodigo)) porMarca.set(info.marcaCodigo, { nome: info.marcaNome, linhas: [] });
+    porMarca.get(info.marcaCodigo).linhas.push(r);
+  });
+
+  let html = '';
+  Array.from(porMarca.entries())
+    .sort(function (a, b) { return somaQtd(b[1].linhas) - somaQtd(a[1].linhas); })
+    .forEach(function (parM) {
+      const marcaCodigo = parM[0], marca = parM[1];
+      const qtdM = somaQtd(marca.linhas);
+      const chaveM = 'BS|M|' + marcaCodigo;
+      const corM = 'var(' + (COR_MARCA[marcaCodigo] || '--gelo') + ')';
+      html += linhaArvoreRessuprimento({
+        classe: 'n1', chave: chaveM, temFilhos: true,
+        rotulo: '<i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' +
+                corM + ';margin-right:7px"></i><strong>' + escapar(marca.nome) + '</strong>',
+        qtd: qtdM, pct: totalBusca ? qtdM / totalBusca * 100 : 0, skus: marca.linhas.length,
+      });
+      if (!abertosRessuprimento.has(chaveM)) return;
+
+      const porFamilia = new Map();
+      marca.linhas.forEach(function (r) {
+        if (!porFamilia.has(r.familia_codigo)) porFamilia.set(r.familia_codigo, []);
+        porFamilia.get(r.familia_codigo).push(r);
+      });
+      Array.from(porFamilia.entries())
+        .sort(function (a, b) { return somaQtd(b[1]) - somaQtd(a[1]); })
+        .forEach(function (parF) {
+          const familiaCod = parF[0], linhasF = parF[1];
+          const qtdF = somaQtd(linhasF);
+          const infoF = mapaFamiliaInfo.get(familiaCod);
+          const chaveF = chaveM + '|F|' + familiaCod;
+          html += linhaArvoreRessuprimento({
+            classe: 'n2', chave: chaveF, temFilhos: true, indent: 'ind-2',
+            rotulo: '<span class="cod">' + escapar(familiaCod) + '</span>' + escapar(infoF ? infoF.nome : familiaCod),
+            qtd: qtdF, pct: qtdM ? qtdF / qtdM * 100 : 0, skus: linhasF.length,
+          });
+          if (!abertosRessuprimento.has(chaveF)) return;
+
+          const porArtigo = new Map();
+          linhasF.forEach(function (r) {
+            if (!porArtigo.has(r.artigo_codigo)) porArtigo.set(r.artigo_codigo, []);
+            porArtigo.get(r.artigo_codigo).push(r);
+          });
+          Array.from(porArtigo.entries())
+            .sort(function (a, b) { return somaQtd(b[1]) - somaQtd(a[1]); })
+            .forEach(function (parAr) {
+              const artigo = parAr[0], linhasAr = parAr[1];
+              const qtdAr = somaQtd(linhasAr);
+              const chaveAr = chaveF + '|A|' + artigo;
+              html += linhaArvoreRessuprimento({
+                classe: 'n3', chave: chaveAr, temFilhos: true, indent: 'ind-3',
+                rotulo: '<span class="cod">' + escapar(artigo) + '</span>' + escapar(linhasAr[0].descricao || ''),
+                qtd: qtdAr, pct: qtdF ? qtdAr / qtdF * 100 : 0, skus: linhasAr.length,
+              });
+              if (!abertosRessuprimento.has(chaveAr)) return;
+
+              const porCor = new Map();
+              linhasAr.forEach(function (r) {
+                if (!porCor.has(r.cor)) porCor.set(r.cor, []);
+                porCor.get(r.cor).push(r);
+              });
+              Array.from(porCor.entries())
+                .sort(function (a, b) { return somaQtd(b[1]) - somaQtd(a[1]); })
+                .forEach(function (parCor) {
+                  const cor = parCor[0], linhasCor = parCor[1];
+                  const qtdCor = somaQtd(linhasCor);
+                  const chaveCor = chaveAr + '|C|' + cor;
+                  html += linhaArvoreRessuprimento({
+                    classe: 'n3', chave: chaveCor, temFilhos: true, indent: 'ind-4',
+                    rotulo: escapar(cor || '—'),
+                    qtd: qtdCor, pct: qtdAr ? qtdCor / qtdAr * 100 : 0, skus: linhasCor.length,
+                  });
+                  if (!abertosRessuprimento.has(chaveCor)) return;
+
+                  linhasCor
+                    .slice()
+                    .sort(function (a, b) { return (Number(b.qtd) || 0) - (Number(a.qtd) || 0); })
+                    .forEach(function (r, i) {
+                      const classifRot = r.classificacao === 'PICKING' ? 'Picking' : r.classificacao === 'PULMAO' ? 'Pulmão' : (r.classificacao || '—');
+                      html += linhaArvoreRessuprimento({
+                        classe: 'n3', chave: chaveCor + '|E|' + i, temFilhos: false, indent: 'ind-5',
+                        rotulo: (r.tamanho ? escapar(r.tamanho) + ' · ' : '') +
+                                escapar(formatarEndereco(r.rua, r.nivel, r.box)) +
+                                ' <span class="seg">' + escapar(classifRot) + '</span>',
+                        qtd: r.qtd, pct: qtdCor ? Number(r.qtd) / qtdCor * 100 : 0, skus: 1,
+                      });
+                    });
+                });
+            });
+        });
+    });
+
+  html += '<tr class="total"><th><span class="desc"><span class="toggle vazio">·</span><span>TOTAL DA BUSCA</span></span></th>' +
+    '<td>' + fmtInt(totalBusca) + '</td><td>100,0%</td><td>' + fmtInt(linhasBusca.length) + '</td></tr>';
+  return html;
 }
 
 // Rótulos das 4 zonas de bucket, reaproveitados nas duas linhas (Picking e
@@ -4050,17 +4246,32 @@ function renderizarEstoqueOperacao(p) {
       '</div>' +
     '</div>' +
     '<div class="card">' +
-      '<div class="section-title" style="display:flex;align-items:center;justify-content:space-between">' +
+      '<div class="section-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">' +
         '<span>Detalhamento — Marca › Grupo › Família (' + ROT_FILTRO_RESSUP[filtroRessuprimento] + ')</span>' +
         '<span>' +
+          '<input type="text" id="buscaArtigoRessuprimento" placeholder="Buscar artigo, cor, tamanho, família…" ' +
+            'value="' + escapar(buscaArtigoRessuprimento) + '" oninput="filtrarArtigoRessuprimento(this.value)" ' +
+            'style="padding:6px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);' +
+            'border:1px solid var(--border);font-size:12px;width:240px;margin-right:8px">' +
           '<button class="btn-mini" onclick="expandirTudoRessuprimento()">Expandir tudo</button> ' +
           '<button class="btn-mini" onclick="recolherTudoRessuprimento()">Recolher tudo</button> ' +
           '<button class="btn-mini" onclick="exportarCSVRessuprimento()">⬇ CSV</button>' +
         '</span>' +
       '</div>' +
-      '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
-        '<th class="esq">Descrição</th><th>Qtd</th><th>% do nível</th><th>SKUs</th>' +
-      '</tr></thead><tbody>' + linhasArvore + '</tbody></table></div>' +
+      (resultadosArtigoRessuprimento === null
+        ? '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
+            '<th class="esq">Descrição</th><th>Qtd</th><th>% do nível</th><th>SKUs</th>' +
+          '</tr></thead><tbody>' + linhasArvore + '</tbody></table></div>'
+        : '<div style="overflow-x:auto;margin-top:10px">' +
+            (buscandoArtigoRessuprimento ? '<div class="aviso">Buscando…</div>' :
+              !resultadosArtigoRessuprimento.length ? '<div class="aviso">Nenhum artigo bate com "' + escapar(buscaArtigoRessuprimento) + '".</div>' :
+              '<table class="arvore"><thead><tr>' +
+                '<th class="esq">Marca › Família › Modelo › Cor › Endereço</th><th>Qtd</th><th>% do nível</th><th>SKUs</th>' +
+              '</tr></thead><tbody>' + renderizarArvoreBuscaSaldoEndereco(resultadosArtigoRessuprimento, p) + '</tbody></table>' +
+              (resultadosArtigoRessuprimento.length === window.LIMITE_BUSCA_SALDO_ENDERECO
+                ? '<p style="font-size:11px;color:var(--text-muted);margin-top:8px">Mostrando os ' +
+                  window.LIMITE_BUSCA_SALDO_ENDERECO + ' de maior quantidade — refine a busca pra ver o resto (o CSV não tem esse teto).</p>' : '')) +
+          '</div>') +
     '</div>' +
     blocoBO +
     '<div style="font-size:11px;color:var(--text-muted);margin-top:12px">' +
@@ -4697,7 +4908,11 @@ function exportarCSVMovimentacoes() {
   URL.revokeObjectURL(a.href);
 }
 
-function exportarCSVRessuprimento() {
+async function exportarCSVRessuprimento() {
+  if (resultadosArtigoRessuprimento !== null) {
+    await exportarCSVBuscaSaldoEndereco();
+    return;
+  }
   const p = window._snapshotRessuprimento;
   if (!p) return;
   const arvore = arvoreFiltradaRessuprimento(p);
@@ -4719,6 +4934,45 @@ function exportarCSVRessuprimento() {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'ressuprimento-' + filtroRessuprimento + '-distribuidora.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/* Com busca de artigo ativa, o CSV vira "detalhe por endereço" (pedido do
+   usuário, 15/09/2026: "quando eu pesquisar um artigo e exportar, quero um
+   detalhado dos endereços pra consultar o saldo") — refaz a busca SEM o
+   teto de 200 pra levar todo mundo que bateu, não só o que apareceu na tela. */
+async function exportarCSVBuscaSaldoEndereco() {
+  const termo = buscaArtigoRessuprimento.trim();
+  if (!termo) return;
+  let dados;
+  try {
+    dados = await window.buscarSaldoEnderecosCompleto(supabaseClient, termo);
+  } catch (err) {
+    console.error(err);
+    alert('Erro ao buscar os endereços pra exportar: ' + (err.message || err));
+    return;
+  }
+  const mapaFamiliaInfo = mapaFamiliasRessuprimento(window._snapshotRessuprimento || {});
+  const linhas = [['Marca', 'Familia_Codigo', 'Familia_Nome', 'Artigo', 'Descricao', 'Cor', 'Tamanho',
+    'Endereco', 'Rua', 'Nivel', 'Box', 'Classificacao', 'Qtd']];
+  dados.forEach(function (r) {
+    const info = mapaFamiliaInfo.get(r.familia_codigo);
+    linhas.push([
+      info ? info.marcaNome : 'NÃO MAPEADA', r.familia_codigo, info ? info.nome : '',
+      r.artigo_codigo, r.descricao || '', r.cor, r.tamanho,
+      formatarEndereco(r.rua, r.nivel, r.box), r.rua, r.nivel, r.box,
+      r.classificacao === 'PICKING' ? 'Picking' : r.classificacao === 'PULMAO' ? 'Pulmão' : r.classificacao,
+      r.qtd,
+    ]);
+  });
+  const csv = linhas.map(function (l) {
+    return l.map(function (c) { return '"' + String(c === null || c === undefined ? '' : c).replace(/"/g, '""') + '"'; }).join(';');
+  }).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ressuprimento-enderecos-' + termo.replace(/[^a-zA-Z0-9]+/g, '_') + '.csv';
   a.click();
   URL.revokeObjectURL(a.href);
 }

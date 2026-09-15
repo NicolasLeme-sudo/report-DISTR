@@ -956,6 +956,64 @@ async function substituirSaldoEnderecos(supabaseClient, saldos, onProgresso) {
   }
 }
 
+/* Busca por artigo/SKU no Detalhamento de Ressuprimento (pedido do usuário,
+   15/09/2026, mesmo padrão da busca de Estoque em ingest.js) — vai direto na
+   FATO ressuprimento_saldo_enderecos, que guarda uma linha por artigo+cor+
+   tamanho+endereço+classificação (PICKING/PULMÃO) a cada upload de Picking/
+   Pulmão. Essa tabela nunca acumula histórico (sempre reflete o ÚLTIMO
+   upload, ver substituirSaldoEnderecos acima), então não precisa filtrar por
+   extração como a de Estoque precisa. Não tem `descricao` nem `marca` — só
+   artigo/cor/tamanho/família — por isso o resultado passa por
+   enriquecerDescricaoPorArtigo (ingest.js) antes de voltar; marca é resolvida
+   na TELA a partir da família (mesmo dicionário dim_familias que a árvore
+   principal já usa). */
+const CAMPOS_BUSCA_SALDO_ENDERECO = ['artigo_codigo', 'cor', 'tamanho', 'familia_codigo'];
+function filtroOrSaldoEndereco(termoBruto) {
+  const termo = String(termoBruto || '').trim().replace(/[,()]/g, ' ').replace(/[%_]/g, '\\$&');
+  if (!termo) return null;
+  return CAMPOS_BUSCA_SALDO_ENDERECO.map(function (c) { return c + '.ilike.%' + termo + '%'; }).join(',');
+}
+const LIMITE_BUSCA_SALDO_ENDERECO = 200;
+async function buscarSaldoEnderecos(supabaseClient, termoBruto) {
+  const orFiltro = filtroOrSaldoEndereco(termoBruto);
+  if (!orFiltro) return [];
+  const { data, error } = await supabaseClient
+    .from('ressuprimento_saldo_enderecos')
+    .select('artigo_codigo, cor, tamanho, familia_codigo, rua, nivel, box, classificacao, qtd')
+    .or(orFiltro)
+    .order('qtd', { ascending: false })
+    .limit(LIMITE_BUSCA_SALDO_ENDERECO);
+  if (error) throw error;
+  return window.enriquecerDescricaoPorArtigo(supabaseClient, data || []);
+}
+window.buscarSaldoEnderecos = buscarSaldoEnderecos;
+window.LIMITE_BUSCA_SALDO_ENDERECO = LIMITE_BUSCA_SALDO_ENDERECO;
+
+/* Mesma busca, sem o teto de 200 — pro CSV levar TODOS os endereços que
+   baterem, não só os de maior quantidade mostrados na tela. */
+async function buscarSaldoEnderecosCompleto(supabaseClient, termoBruto) {
+  const orFiltro = filtroOrSaldoEndereco(termoBruto);
+  if (!orFiltro) return [];
+  const LOTE = 1000;
+  let offset = 0;
+  const tudo = [];
+  while (true) {
+    const { data, error } = await supabaseClient
+      .from('ressuprimento_saldo_enderecos')
+      .select('artigo_codigo, cor, tamanho, familia_codigo, rua, nivel, box, classificacao, qtd')
+      .or(orFiltro)
+      .order('qtd', { ascending: false })
+      .range(offset, offset + LOTE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    tudo.push.apply(tudo, data);
+    if (data.length < LOTE) break;
+    offset += data.length;
+  }
+  return window.enriquecerDescricaoPorArtigo(supabaseClient, tudo);
+}
+window.buscarSaldoEnderecosCompleto = buscarSaldoEnderecosCompleto;
+
 window.processarRessuprimento = processarRessuprimento;
 window.upsertArtigoFamilia = upsertArtigoFamilia;
 window.parsearPicking = parsearPicking;

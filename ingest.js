@@ -626,6 +626,37 @@ async function buscarPosicoesEstoqueCompleto(supabaseClient, termoBruto) {
 }
 window.buscarPosicoesEstoqueCompleto = buscarPosicoesEstoqueCompleto;
 
+/* Empresta a descrição do produto (só existe em estoque_posicoes) pra quem
+   busca por artigo em OUTRA tabela que não guarda esse campo — caso do
+   saldo por endereço do Ressuprimento (ressuprimento_saldo_enderecos, que só
+   tem artigo/cor/tamanho/família, nunca o nome do produto). Casa só por
+   artigo_codigo (um artigo pode ter descrição diferente por cor — ver
+   ingest.js linha ~509 — então isto é uma identificação "suficiente pra
+   achar", não a descrição exata daquela cor específica). Nunca falha o
+   chamador: sem extração de Estoque ainda, ou erro na consulta, devolve as
+   linhas exatamente como vieram, sem descrição. */
+async function enriquecerDescricaoPorArtigo(supabaseClient, linhas) {
+  const artigos = Array.from(new Set((linhas || []).map(function (r) { return r.artigo_codigo; }).filter(Boolean)));
+  if (!artigos.length) return linhas || [];
+  try {
+    const extracaoId = await buscarUltimaExtracaoIdEstoque(supabaseClient);
+    if (!extracaoId) return linhas;
+    const { data, error } = await supabaseClient
+      .from('estoque_posicoes')
+      .select('artigo_codigo, descricao')
+      .eq('extracao_id', extracaoId)
+      .in('artigo_codigo', artigos);
+    if (error || !data) return linhas;
+    const mapa = new Map();
+    data.forEach(function (r) { if (!mapa.has(r.artigo_codigo)) mapa.set(r.artigo_codigo, r.descricao); });
+    return linhas.map(function (r) { return Object.assign({ descricao: mapa.get(r.artigo_codigo) || '' }, r); });
+  } catch (e) {
+    console.warn('Não deu pra buscar a descrição do produto:', e);
+    return linhas;
+  }
+}
+window.enriquecerDescricaoPorArtigo = enriquecerDescricaoPorArtigo;
+
 /* Busca o `payload` mais recente de uma página em dashboard_snapshots, ou
    `null` se nunca houve upload. Usado por ingests que precisam saber "o que
    já está em tela" pra abastecer um pedaço sozinho sem apagar os outros
