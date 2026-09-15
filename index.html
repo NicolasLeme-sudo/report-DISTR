@@ -2896,21 +2896,12 @@ function renderizarPfas() {
           '<div class="val forte" style="color:var(--red)">' + fmtInt(perdasTotal) + ' pares</div>' +
           '<div class="sub">' + fmtInt(eventosTotal) + ' evento(s) · ' + rotuloPeriodo + '</div></div>' +
       '</div>' +
-      '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Ajuste conta como perda a ' +
-        '<strong>quantidade faltante</strong> — se o corte foi coberto por um artigo ' +
-        'substituto (DE-PARA), a perda sai zero sozinha. Cancelamento sem reposição entra 100% na soma acima, ' +
-        'sem card próprio: já é perda inteira por definição. Marca/Segmento do topo recortam este card também.' +
-        (fifoOuEtapaAtivos ? ' <strong style="color:var(--amber)">FIFO e Etapa não se aplicam aqui</strong> — ' +
-          'a PFA antiga de um ajuste já saiu de Pendentes, então não tem dias em aberto nem etapa atual pra filtrar.' : '') +
+      '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Perda = quantidade faltante (DE-PARA zera sozinho; cancelamento sem reposição conta 100%).' +
+        (fifoOuEtapaAtivos ? ' <strong style="color:var(--amber)">FIFO e Etapa não se aplicam aqui.</strong>' : '') +
         '</p>' +
       '<p style="font-size:11px;color:var(--text-muted);margin-top:4px">' +
-        '<strong>Gap de estoque (.xlsx)</strong>: exporta AJUSTE e B.O. pós-NF com perda (DE-PARA sai zerado ' +
-        'sozinho, sem linha) cruzados com o saldo físico por endereço do <strong>último</strong> Picking/Pulmão ' +
-        'abastecido — pra achar onde o material perdido ainda tem saldo físico e corrigir o estoque. Cancelamento ' +
-        'e AD ficam de fora: dependem de decisão do comercial, não são erro operacional pra validar no armazém. ' +
-        '<strong style="color:var(--amber)">Precisa reprocessar Picking/Pulmão pelo menos 1x</strong> em Admin › ' +
-        'Atualizar dados depois de ligar este relatório — sem isso toda linha sai "sem saldo", mesmo com estoque ' +
-        'real no armazém, porque o saldo por endereço ainda não existe pra cruzar.' +
+        '<strong>Gap de estoque (.xlsx)</strong>: cruza os ajustes com o saldo físico do último Picking/Pulmão. ' +
+        '<strong style="color:var(--amber)">Precisa reprocessar Picking/Pulmão pelo menos 1x</strong> em Admin antes de usar.' +
         '</p>' +
     '</div>';
   })();
@@ -3122,8 +3113,7 @@ function renderizarPfas() {
           (coletaSep.qtdeNaoConf ? ', incluindo ' + fmtInt(coletaSep.qtdeNaoConf) + ' pç não confirmadas em tela' : '') +
           '.</p>' +
         '<div class="bar-list">' + (barrasSegColeta || '<div class="aviso">Nada aguardando coleta neste recorte.</div>') + '</div>' +
-        '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">O Analítico não tem campo de etapa — ' +
-          'o filtro Etapa (no topo da tela) cruza pela PFA com a situação em Pendentes.</p>' +
+        '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Etapa vem do cruzamento com Pendentes (Analítico não tem esse campo).</p>' +
       '</div>' +
     '</div>' +
     '<div class="card">' +
@@ -3160,12 +3150,8 @@ function renderizarPfas() {
         thPfa('conferencia', 'Conferência', 'centro') + '<th class="centro">Situação</th>' +
         thPfa('pares', 'Pares') + thPfa('dias', 'Data') +
       '</tr></thead><tbody>' + linhasHtml + linhaTotal + '</tbody></table></div>' +
-      '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Conferência compara os volumes já ' +
-        'lidos no Analítico com o total de volumes da PFA: <strong>Não iniciada</strong> nenhum lido · ' +
-        '<strong>Parcial</strong> alguns · <strong>Completa</strong> todos. Parcial parada há 3 dias ou mais ' +
-        'na mesma etapa vira <strong style="color:var(--red)">Parcial (rastreio)</strong> — provável corte ' +
-        'sinalizado na coleta, esperando análise. O filtro <strong>Parcial</strong> acima traz as duas, ' +
-        'já que rastreio é a mesma parcial com o relógio estourado.</p>' +
+      '<p style="font-size:11px;color:var(--text-muted);margin-top:10px"><strong>Conferência</strong>: Não iniciada · Parcial · Completa ' +
+        '(volumes lidos × total da PFA). Parcial parada 3+ dias vira <strong style="color:var(--red)">Parcial (rastreio)</strong>.</p>' +
     '</div>';
 }
 
@@ -3737,10 +3723,7 @@ function renderizarEstoqueOperacao(p) {
       '<div class="card">' +
         '<div class="section-title">B.O. em endereço transitório/validação — saldo fora da capacidade</div>' +
         '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
-          'Ruas de passagem e sinalização do Pulmão (corredor de ressuprimento, transitório de ' +
-          'recebimento, sujeira e perca) mais a sujeira reclassificada do Picking. <strong>Não entram na ' +
-          'ocupação × capacidade</strong> — não são porta-pallet — mas o material ainda é vendável ' +
-          '(decisão da operação) e precisa virar tarefa: cada linha abaixo é um endereço + SKU esperando decisão.</p>' +
+          'Ruas de passagem/sinalização (fora da ocupação × capacidade) — cada linha é um endereço + SKU esperando decisão.</p>' +
         '<div class="kpi-row">' +
           '<div class="kpi"><div class="rot">Peças paradas em trânsito/validação</div>' +
             '<div class="val forte" style="color:var(--amber)">' + fmtInt(totalQtd) + '</div>' +
@@ -4370,13 +4353,8 @@ function blocoMovimentacoes() {
     blocoPlanejamento = '<div class="card">' +
       '<div class="section-title">Ressuprimento planejado × realizado — ' + escapar(periodo) + '</div>' +
       '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
-        'Cruza as PFAs lançadas em <strong>Admin › Planejamento</strong> com o que o Kardex mostra ' +
-        'chegando no Picking — D0 no próprio dia, D-1 quando o turno da noite adianta, e <span style="color:var(--amber)">sem planejamento</span> ' +
-        'quando a família ressupriu sem nenhuma PFA cobrindo aquele dia. Turno/data sem nenhum ' +
-        'movimento aparece com "—" (não é falha, é ausência de lançamento). A coluna Peças só existe ' +
-        'por família, data e turno: o Kardex não identifica o que cada PFA ressupriu individualmente, ' +
-        'então a PFA sozinha não mostra um número.' +
-        (usaHistoricoPlano ? '' : ' Sem histórico gravado neste intervalo ainda — mostrando o último Kardex processado.') +
+        'Cruza as PFAs do <strong>Admin › Planejamento</strong> com o Kardex: D0, D-1 (adiantado) e <span style="color:var(--amber)">sem planejamento</span>.' +
+        (usaHistoricoPlano ? '' : ' Sem histórico neste intervalo — mostrando o último Kardex processado.') +
       '</p>' +
       kpisPlano +
       ((plano.length || semPlano.length) ? '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
@@ -4390,10 +4368,7 @@ function blocoMovimentacoes() {
       '<span>Ressuprimento por dia — ' + escapar(periodo) + '</span>' +
       '<button class="btn-mini" onclick="exportarCSVMovimentacoes()">⬇ CSV</button>' +
     '</div>' +
-    '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
-      'Conta o movimento que <strong>chega no Picking</strong> — direto do Pulmão ou pelo corredor de ' +
-      'ressuprimento (ruas 500/600). É assim que cada peça é contada uma vez só: o ressuprimento ' +
-      'costuma acontecer em dois saltos, e somar as duas pernas contaria a mesma peça duas vezes.</p>' +
+    '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Conta o movimento que <strong>chega no Picking</strong> (Pulmão ou corredor de ressuprimento), uma peça só uma vez.</p>' +
     seletorIntervalo +
     chipsTurno +
     chipsSegmentoDia +

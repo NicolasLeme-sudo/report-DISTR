@@ -1337,9 +1337,7 @@ function montarShell(root) {
     '<div class="df-hd"><div>' +
     '<p class="df-kick">Distribuidora · Fluxograma</p>' +
     "<h1>" + esc(DADOS.titulo_pagina || "Fluxo de Processos — DISTR") + "</h1>" +
-    '<p class="df-sub">Retângulo é etapa, losango é decisão, pílula é início/fim. Tracejado vermelho é ' +
-    "desvio, linha dourada é bifurcação legítima, linha verde é o caminho sem B.O. Clique em qualquer " +
-    "etapa para o detalhe completo.</p>" +
+    '<p class="df-sub">Retângulo = etapa · Losango = decisão · Pílula = início/fim · Vermelho = desvio · Dourado = bifurcação · Verde = sem B.O.</p>' +
     '<div class="df-rule"></div></div>' +
     (isAdmin() ? '<button type="button" class="df-editbtn" id="df-editbtn">✏️ Editar fluxo</button>' : "") +
     "</div>" +
