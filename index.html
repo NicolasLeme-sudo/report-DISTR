@@ -2877,24 +2877,24 @@ function renderizarPfas() {
         '</div>' +
       '</div>' +
       '<p style="font-size:12px;color:var(--text-muted);margin:4px 0 12px">' + rotuloPeriodo + ' · ' +
-        fmtInt(eventosTotal) + ' evento(s) lançado(s) manualmente pela assistente, a partir do e-mail do comercial.</p>' +
+        fmtInt(eventosTotal) + ' solicitação(ões) de ajuste de saldo, lançada(s) manualmente pela assistente a partir do e-mail do comercial.</p>' +
       '<div class="kpi-row">' +
         '<div class="kpi" style="border-color:var(--red)">' +
           '<div class="rot" style="color:var(--red)">Ajustes (líquido)</div>' +
           '<div class="val forte" style="color:var(--red)">' + fmtInt(ajusteLiq.perda) + ' pares</div>' +
-          '<div class="sub">' + fmtInt(ajusteLiq.eventos) + ' evento(s) · já descontado o que saiu por DE-PARA</div></div>' +
+          '<div class="sub">' + fmtInt(ajusteLiq.eventos) + ' ajuste(s) · já descontado o que saiu por DE-PARA</div></div>' +
         '<div class="kpi" style="border-color:var(--red)">' +
-          '<div class="rot" style="color:var(--red)">B.O. sinalizado (pós-NF)</div>' +
+          '<div class="rot" style="color:var(--red)">B.O. por envio com falta (pós-NF)</div>' +
           '<div class="val forte" style="color:var(--red)">' + fmtInt(boPosNf.perda) + ' pares</div>' +
-          '<div class="sub">' + fmtInt(boPosNf.pfas) + ' PFA(s) · nota já emitida, sem correção possível</div></div>' +
+          '<div class="sub">' + fmtInt(boPosNf.pfas) + ' envio(s) com falta · nota já emitida, sem correção possível</div></div>' +
         '<div class="kpi" style="border-color:var(--red)">' +
           '<div class="rot" style="color:var(--red)">Devolução por AD (100%)</div>' +
           '<div class="val forte" style="color:var(--red)">' + fmtInt(adDevol.perda) + ' pares</div>' +
-          '<div class="sub">' + fmtInt(adDevol.pfas) + ' PFA(s) · comercial recusou envio parcial</div></div>' +
+          '<div class="sub">' + fmtInt(adDevol.pfas) + ' cancelamento(s) · comercial recusou envio parcial</div></div>' +
         '<div class="kpi" style="border-width:2px;border-color:var(--red)">' +
           '<div class="rot" style="color:var(--red)">Perdas no período</div>' +
           '<div class="val forte" style="color:var(--red)">' + fmtInt(perdasTotal) + ' pares</div>' +
-          '<div class="sub">' + fmtInt(eventosTotal) + ' evento(s) · ' + rotuloPeriodo + '</div></div>' +
+          '<div class="sub">' + fmtInt(eventosTotal) + ' solicitação(ões) de ajuste de saldo · ' + rotuloPeriodo + '</div></div>' +
       '</div>' +
       '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Perda = quantidade faltante (DE-PARA zera sozinho; cancelamento sem reposição conta 100%).' +
         (fifoOuEtapaAtivos ? ' <strong style="color:var(--amber)">FIFO e Etapa não se aplicam aqui.</strong>' : '') +
