@@ -3615,17 +3615,18 @@ function arvoreFiltradaRessuprimento(p) {
 
 function expandirTudoRessuprimento() {
   // Com busca de artigo ativa, expande a árvore da BUSCA (Marca›Família›
-  // Modelo›Cor — Cor é o último nível, não tem mais o que abrir dentro dele)
-  // em vez da árvore normal — chaves 'BS|...' nunca colidem com as 'M|...'
-  // da árvore normal, e as duas nunca renderizam juntas.
+  // Modelo›Cor›Tamanho — Tamanho é o último nível, endereço só existe no
+  // CSV) em vez da árvore normal — chaves 'BS|...' nunca colidem com as
+  // 'M|...' da árvore normal, e as duas nunca renderizam juntas.
   if (resultadosArtigoRessuprimento !== null) {
     const mapaFamiliaInfo = mapaFamiliasRessuprimento(window._snapshotRessuprimento || {});
     resultadosArtigoRessuprimento.forEach(function (r) {
       const info = mapaFamiliaInfo.get(r.familia_codigo);
       const marcaCodigo = info ? info.marcaCodigo : 'NÃO MAPEADA';
       const chaveM = 'BS|M|' + marcaCodigo, chaveF = chaveM + '|F|' + r.familia_codigo,
-        chaveAr = chaveF + '|A|' + r.artigo_codigo;
-      abertosRessuprimento.add(chaveM); abertosRessuprimento.add(chaveF); abertosRessuprimento.add(chaveAr);
+        chaveAr = chaveF + '|A|' + r.artigo_codigo, chaveCor = chaveAr + '|C|' + r.cor;
+      abertosRessuprimento.add(chaveM); abertosRessuprimento.add(chaveF);
+      abertosRessuprimento.add(chaveAr); abertosRessuprimento.add(chaveCor);
     });
     renderizarEstoqueOperacao();
     return;
@@ -3751,22 +3752,43 @@ function renderizarArvoreBuscaSaldoEndereco(linhasBusca, p) {
                 if (!porCor.has(r.cor)) porCor.set(r.cor, []);
                 porCor.get(r.cor).push(r);
               });
-              // Cor é o último nível NA TELA (pedido do usuário, 15/09/2026:
-              // "não quero a quebra por endereço no visual, só na
-              // exportação, se não fica muita informação no gráfico") —
-              // o endereço de cada linha continua existindo nos dados e sai
-              // completo no CSV (exportarCSVBuscaSaldoEndereco), só não
-              // vira mais um nível expansível aqui.
+              // Tamanho é o último nível NA TELA (pedido do usuário,
+              // 15/09/2026) — o endereço de cada linha (rua-nível-box +
+              // Picking/Pulmão) continua existindo nos dados e sai completo
+              // no CSV (exportarCSVBuscaSaldoEndereco), só não vira mais um
+              // nível expansível aqui: "a única quebra que eu não quero no
+              // visual é a de endereço". Um tamanho pode somar mais de um
+              // endereço (mesma cor+tamanho em Picking E Pulmão, por
+              // exemplo), por isso agrupa em vez de listar direto.
               Array.from(porCor.entries())
                 .sort(function (a, b) { return somaQtd(b[1]) - somaQtd(a[1]); })
                 .forEach(function (parCor) {
                   const cor = parCor[0], linhasCor = parCor[1];
                   const qtdCor = somaQtd(linhasCor);
+                  const chaveCor = chaveAr + '|C|' + cor;
                   html += linhaArvoreRessuprimento({
-                    classe: 'n3', chave: chaveAr + '|C|' + cor, temFilhos: false, indent: 'ind-4',
+                    classe: 'n3', chave: chaveCor, temFilhos: true, indent: 'ind-4',
                     rotulo: escapar(cor || '—'),
                     qtd: qtdCor, pct: qtdAr ? qtdCor / qtdAr * 100 : 0, skus: linhasCor.length,
                   });
+                  if (!abertosRessuprimento.has(chaveCor)) return;
+
+                  const porTamanho = new Map();
+                  linhasCor.forEach(function (r) {
+                    if (!porTamanho.has(r.tamanho)) porTamanho.set(r.tamanho, []);
+                    porTamanho.get(r.tamanho).push(r);
+                  });
+                  Array.from(porTamanho.entries())
+                    .sort(function (a, b) { return somaQtd(b[1]) - somaQtd(a[1]); })
+                    .forEach(function (parTam) {
+                      const tamanho = parTam[0], linhasTam = parTam[1];
+                      const qtdTam = somaQtd(linhasTam);
+                      html += linhaArvoreRessuprimento({
+                        classe: 'n3', chave: chaveCor + '|T|' + tamanho, temFilhos: false, indent: 'ind-5',
+                        rotulo: escapar(tamanho || '—'),
+                        qtd: qtdTam, pct: qtdCor ? qtdTam / qtdCor * 100 : 0, skus: linhasTam.length,
+                      });
+                    });
                 });
             });
         });
@@ -4256,7 +4278,7 @@ function renderizarEstoqueOperacao(p) {
             (buscandoArtigoRessuprimento ? '<div class="aviso">Buscando…</div>' :
               !resultadosArtigoRessuprimento.length ? '<div class="aviso">Nenhum artigo bate com "' + escapar(buscaArtigoRessuprimento) + '".</div>' :
               '<table class="arvore"><thead><tr>' +
-                '<th class="esq">Marca › Família › Modelo › Cor › Endereço</th><th>Qtd</th><th>% do nível</th><th>SKUs</th>' +
+                '<th class="esq">Marca › Família › Modelo › Cor › Tamanho</th><th>Qtd</th><th>% do nível</th><th>SKUs</th>' +
               '</tr></thead><tbody>' + renderizarArvoreBuscaSaldoEndereco(resultadosArtigoRessuprimento, p) + '</tbody></table>' +
               (resultadosArtigoRessuprimento.length === window.LIMITE_BUSCA_SALDO_ENDERECO
                 ? '<p style="font-size:11px;color:var(--text-muted);margin-top:8px">Mostrando os ' +
