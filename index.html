@@ -506,6 +506,7 @@ tr.total > th, tr.total > td {
 .desc { display: flex; align-items: center; }
 .ind-2 { padding-left: 22px; }
 .ind-3 { padding-left: 44px; }
+.ind-4 { padding-left: 66px; }
 
 .badge {
   display: inline-block; padding: 1px 7px; border-radius: 9px;
@@ -1954,6 +1955,18 @@ function alternarNo(chave) {
   renderizarEstoque(window._snapshot);
 }
 function expandirTudo() {
+  // Com busca de artigo ativa, expande a árvore da BUSCA (Armazém›Marca›
+  // Família›Artigo›Variação) em vez da árvore normal — são universos
+  // diferentes de chaves ('B|...' vs 'A|...'), nunca os dois ao mesmo tempo.
+  if (resultadosArtigoEstoque !== null) {
+    resultadosArtigoEstoque.forEach(function (r) {
+      const chaveA = 'B|' + r.armazem, chaveM = chaveA + '|M|' + r.marca,
+        chaveF = chaveM + '|F|' + r.familia_codigo, chaveAr = chaveF + '|A|' + r.artigo_codigo;
+      abertos.add(chaveA); abertos.add(chaveM); abertos.add(chaveF); abertos.add(chaveAr);
+    });
+    renderizarEstoque(window._snapshot);
+    return;
+  }
   (window._snapshot.armazens || []).forEach(function (a) {
     abertos.add('A|' + a.codigo);
     (a.marcas || []).forEach(function (m) { abertos.add('A|' + a.codigo + '|M|' + m.codigo); });
@@ -1977,6 +1990,132 @@ function linhaArvore(opts) {
     '<td>' + fmtMoeda(opts.valor) + '</td>' +
     '<td>' + fmtPct(opts.pctValor) + '</td>' +
   '</tr>';
+}
+
+/* Mesma quebra Armazém › Marca › Família da árvore acima, só que calculada
+   NA HORA sobre o resultado de uma busca de artigo, com dois níveis a mais:
+   Artigo (soma as variações) e a variação Cor/Tamanho em si (pedido do
+   usuário, 15/09/2026). Nunca roda sobre o arquivo inteiro — só existe
+   enquanto resultadosArtigoEstoque não é null, então o custo é sempre do
+   tamanho da busca (no máximo LIMITE_BUSCA_ARTIGO_ESTOQUE linhas), nunca
+   dos 27 mil SKUs do Estoque completo. As % daqui são relativas ao total
+   da BUSCA (não ao Estoque inteiro) — cada nível soma 100% dentro do
+   nível de cima, igual à árvore principal, só que num universo menor.
+   Reaproveita linhaArvore/abertos/alternarNo da árvore principal — as
+   chaves usam o prefixo "B|" pra nunca colidir com as da árvore normal. */
+function valoresLinhas(lista) {
+  return lista.reduce(function (acc, r) {
+    acc.qtd += Number(r.qtd) || 0;
+    acc.valor += Number(r.valor) || 0;
+    return acc;
+  }, { qtd: 0, valor: 0 });
+}
+function agruparPor(lista, campo) {
+  const mapa = new Map();
+  lista.forEach(function (r) {
+    const chave = r[campo];
+    if (!mapa.has(chave)) mapa.set(chave, []);
+    mapa.get(chave).push(r);
+  });
+  return Array.from(mapa.entries()).sort(function (a, b) {
+    return valoresLinhas(b[1]).valor - valoresLinhas(a[1]).valor;
+  });
+}
+function renderizarArvoreBuscaArtigo(linhasBusca, p) {
+  if (!linhasBusca.length) return '';
+  const mapaArmazemInfo = new Map();
+  const mapaFamiliaInfo = new Map();
+  (p.armazens || []).forEach(function (a) {
+    mapaArmazemInfo.set(a.codigo, { nome: a.nome, categoria: a.categoria });
+    (a.marcas || []).forEach(function (m) {
+      (m.familias || []).forEach(function (f) {
+        if (!mapaFamiliaInfo.has(f.codigo)) mapaFamiliaInfo.set(f.codigo, { nome: f.nome, segmento: f.segmento });
+      });
+    });
+  });
+
+  const totalBusca = valoresLinhas(linhasBusca);
+  let html = '';
+
+  agruparPor(linhasBusca, 'armazem').forEach(function (parA) {
+    const armazem = parA[0], linhasA = parA[1];
+    const vA = valoresLinhas(linhasA);
+    const infoA = mapaArmazemInfo.get(armazem) || {};
+    const bc = BADGE_CATEGORIA[infoA.categoria] || BADGE_CATEGORIA['NAO_MAPEADO'];
+    const chaveA = 'B|' + armazem;
+    html += linhaArvore({
+      classe: 'n1', chave: chaveA, temFilhos: true,
+      rotulo: '<strong>' + escapar(armazem) + '</strong>' +
+              '<span class="badge ' + bc[0] + '">' + bc[1] + '</span>' +
+              '<span class="cod" style="margin-left:10px">' + escapar(infoA.nome || '') + '</span>',
+      qtd: vA.qtd, pctQtd: totalBusca.qtd ? vA.qtd / totalBusca.qtd * 100 : 0,
+      skus: linhasA.length, valor: vA.valor, pctValor: totalBusca.valor ? vA.valor / totalBusca.valor * 100 : 0,
+    });
+    if (!abertos.has(chaveA)) return;
+
+    agruparPor(linhasA, 'marca').forEach(function (parM) {
+      const marca = parM[0], linhasM = parM[1];
+      const vM = valoresLinhas(linhasM);
+      const chaveM = chaveA + '|M|' + marca;
+      const corM = 'var(' + (COR_MARCA[marca] || '--gelo') + ')';
+      html += linhaArvore({
+        classe: 'n2', chave: chaveM, temFilhos: true, indent: 'ind-2',
+        rotulo: '<i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' +
+                corM + ';margin-right:7px"></i>' + escapar(marca),
+        qtd: vM.qtd, pctQtd: vA.qtd ? vM.qtd / vA.qtd * 100 : 0,
+        skus: linhasM.length, valor: vM.valor, pctValor: vA.valor ? vM.valor / vA.valor * 100 : 0,
+      });
+      if (!abertos.has(chaveM)) return;
+
+      agruparPor(linhasM, 'familia_codigo').forEach(function (parF) {
+        const familia = parF[0], linhasF = parF[1];
+        const vF = valoresLinhas(linhasF);
+        const infoF = mapaFamiliaInfo.get(familia) || {};
+        const chaveF = chaveM + '|F|' + familia;
+        html += linhaArvore({
+          classe: 'n3', chave: chaveF, temFilhos: true, indent: 'ind-3',
+          rotulo: '<span class="cod">' + escapar(familia) + '</span>' + escapar(infoF.nome || familia) +
+                  (infoF.segmento && infoF.segmento !== '—' ? '<span class="seg">' + escapar(infoF.segmento) + '</span>' : ''),
+          qtd: vF.qtd, pctQtd: vM.qtd ? vF.qtd / vM.qtd * 100 : 0,
+          skus: linhasF.length, valor: vF.valor, pctValor: vM.valor ? vF.valor / vM.valor * 100 : 0,
+        });
+        if (!abertos.has(chaveF)) return;
+
+        agruparPor(linhasF, 'artigo_codigo').forEach(function (parAr) {
+          const artigo = parAr[0], linhasAr = parAr[1];
+          const vAr = valoresLinhas(linhasAr);
+          const chaveAr = chaveF + '|A|' + artigo;
+          const temVariacoes = linhasAr.length > 1;
+          html += linhaArvore({
+            classe: 'n4', chave: chaveAr, temFilhos: temVariacoes, indent: 'ind-3',
+            rotulo: '<span class="cod">' + escapar(artigo) + '</span>' + escapar(linhasAr[0].descricao || ''),
+            qtd: vAr.qtd, pctQtd: vF.qtd ? vAr.qtd / vF.qtd * 100 : 0,
+            skus: linhasAr.length, valor: vAr.valor, pctValor: vF.valor ? vAr.valor / vF.valor * 100 : 0,
+          });
+          if (!temVariacoes || !abertos.has(chaveAr)) return;
+
+          linhasAr
+            .slice()
+            .sort(function (a, b) { return (Number(b.valor) || 0) - (Number(a.valor) || 0); })
+            .forEach(function (r, i) {
+              html += linhaArvore({
+                classe: 'n4', chave: chaveAr + '|V|' + i, temFilhos: false, indent: 'ind-4',
+                rotulo: escapar(r.cor || '—') + (r.tamanho ? ' · ' + escapar(r.tamanho) : ''),
+                qtd: r.qtd, pctQtd: vAr.qtd ? Number(r.qtd) / vAr.qtd * 100 : 0,
+                skus: 1, valor: r.valor, pctValor: vAr.valor ? Number(r.valor) / vAr.valor * 100 : 0,
+              });
+            });
+        });
+      });
+    });
+  });
+
+  html += '<tr class="total"><th><span class="desc"><span class="toggle vazio">·</span><span>TOTAL DA BUSCA</span></span></th>' +
+    '<td></td>' +
+    '<td>' + fmtInt(totalBusca.qtd) + '</td><td>100,0%</td>' +
+    '<td>' + fmtInt(linhasBusca.length) + '</td>' +
+    '<td>' + fmtMoeda(totalBusca.valor) + '</td><td>100,0%</td></tr>';
+  return html;
 }
 
 function renderizarEstoque(p) {
@@ -2237,22 +2376,21 @@ function renderizarEstoque(p) {
         : '<div style="overflow-x:auto;margin-top:10px">' +
             (buscandoArtigoEstoque ? '<div class="aviso">Buscando…</div>' :
               !resultadosArtigoEstoque.length ? '<div class="aviso">Nenhum artigo bate com "' + escapar(buscaArtigoEstoque) + '".</div>' :
-              '<table class="arvore"><thead><tr>' +
-                '<th class="esq">Artigo</th><th class="esq">Descrição</th><th>Cor</th><th>Tam</th>' +
-                '<th class="esq">Armazém</th><th class="esq">Marca</th><th>Família</th><th>Qtd</th><th>R$</th>' +
-              '</tr></thead><tbody>' +
-                resultadosArtigoEstoque.map(function (r) {
-                  return '<tr class="n1"><th class="esq">' + escapar(r.artigo_codigo) + '</th>' +
-                    '<td class="esq">' + escapar(r.descricao) + '</td>' +
-                    '<td>' + escapar(r.cor) + '</td><td>' + escapar(r.tamanho) + '</td>' +
-                    '<td class="esq">' + escapar(r.armazem) + '</td><td class="esq">' + escapar(r.marca) + '</td>' +
-                    '<td>' + escapar(r.familia_codigo) + '</td>' +
-                    '<td>' + fmtInt(r.qtd) + '</td><td>' + fmtMoeda(r.valor) + '</td></tr>';
-                }).join('') +
-              '</tbody></table>' +
+              '<table class="arvore">' +
+                '<thead>' +
+                  '<tr>' +
+                    '<th class="esq" rowspan="2">Descrição</th>' +
+                    '<th rowspan="2">KPI</th>' +
+                    '<th class="grupo" colspan="3">Quantidade</th>' +
+                    '<th class="grupo" colspan="2">Valor de estoque</th>' +
+                  '</tr>' +
+                  '<tr><th>Qtd</th><th>% do nível</th><th>SKUs</th><th>R$</th><th>% do nível</th></tr>' +
+                '</thead>' +
+                '<tbody>' + renderizarArvoreBuscaArtigo(resultadosArtigoEstoque, p) + '</tbody>' +
+              '</table>' +
               (resultadosArtigoEstoque.length === window.LIMITE_BUSCA_ARTIGO_ESTOQUE
                 ? '<p style="font-size:11px;color:var(--text-muted);margin-top:8px">Mostrando os ' +
-                  window.LIMITE_BUSCA_ARTIGO_ESTOQUE + ' de maior valor — refine a busca pra ver o resto.</p>' : '')) +
+                  window.LIMITE_BUSCA_ARTIGO_ESTOQUE + ' de maior valor — refine a busca pra ver o resto (a busca do CSV não tem esse teto).</p>' : '')) +
           '</div>') +
     '</div>';
 }
