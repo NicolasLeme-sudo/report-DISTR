@@ -507,6 +507,7 @@ tr.total > th, tr.total > td {
 .ind-2 { padding-left: 22px; }
 .ind-3 { padding-left: 44px; }
 .ind-4 { padding-left: 66px; }
+.ind-5 { padding-left: 88px; }
 
 .badge {
   display: inline-block; padding: 1px 7px; border-radius: 9px;
@@ -1961,8 +1962,9 @@ function expandirTudo() {
   if (resultadosArtigoEstoque !== null) {
     resultadosArtigoEstoque.forEach(function (r) {
       const chaveA = 'B|' + r.armazem, chaveM = chaveA + '|M|' + r.marca,
-        chaveF = chaveM + '|F|' + r.familia_codigo, chaveAr = chaveF + '|A|' + r.artigo_codigo;
-      abertos.add(chaveA); abertos.add(chaveM); abertos.add(chaveF); abertos.add(chaveAr);
+        chaveF = chaveM + '|F|' + r.familia_codigo, chaveAr = chaveF + '|A|' + r.artigo_codigo,
+        chaveCor = chaveAr + '|C|' + r.cor;
+      abertos.add(chaveA); abertos.add(chaveM); abertos.add(chaveF); abertos.add(chaveAr); abertos.add(chaveCor);
     });
     renderizarEstoque(window._snapshot);
     return;
@@ -2085,26 +2087,43 @@ function renderizarArvoreBuscaArtigo(linhasBusca, p) {
           const artigo = parAr[0], linhasAr = parAr[1];
           const vAr = valoresLinhas(linhasAr);
           const chaveAr = chaveF + '|A|' + artigo;
-          const temVariacoes = linhasAr.length > 1;
           html += linhaArvore({
-            classe: 'n4', chave: chaveAr, temFilhos: temVariacoes, indent: 'ind-3',
+            classe: 'n4', chave: chaveAr, temFilhos: true, indent: 'ind-3',
             rotulo: '<span class="cod">' + escapar(artigo) + '</span>' + escapar(linhasAr[0].descricao || ''),
             qtd: vAr.qtd, pctQtd: vF.qtd ? vAr.qtd / vF.qtd * 100 : 0,
             skus: linhasAr.length, valor: vAr.valor, pctValor: vF.valor ? vAr.valor / vF.valor * 100 : 0,
           });
-          if (!temVariacoes || !abertos.has(chaveAr)) return;
+          if (!abertos.has(chaveAr)) return;
 
-          linhasAr
-            .slice()
-            .sort(function (a, b) { return (Number(b.valor) || 0) - (Number(a.valor) || 0); })
-            .forEach(function (r, i) {
-              html += linhaArvore({
-                classe: 'n4', chave: chaveAr + '|V|' + i, temFilhos: false, indent: 'ind-4',
-                rotulo: escapar(r.cor || '—') + (r.tamanho ? ' · ' + escapar(r.tamanho) : ''),
-                qtd: r.qtd, pctQtd: vAr.qtd ? Number(r.qtd) / vAr.qtd * 100 : 0,
-                skus: 1, valor: r.valor, pctValor: vAr.valor ? Number(r.valor) / vAr.valor * 100 : 0,
-              });
+          // Modelo (artigo) abre em Cor, e Cor abre em Tamanho — pedido do
+          // usuário, 15/09/2026 (antes as duas vinham juntas numa linha só
+          // "COR · TAM"). Armazém continua no topo da árvore (não descpassa
+          // pra dentro do tamanho): dentro de um armazém+artigo+cor já não
+          // repete tamanho, então a folha de Tamanho não precisa somar nada.
+          agruparPor(linhasAr, 'cor').forEach(function (parCor) {
+            const cor = parCor[0], linhasCor = parCor[1];
+            const vCor = valoresLinhas(linhasCor);
+            const chaveCor = chaveAr + '|C|' + cor;
+            html += linhaArvore({
+              classe: 'n4', chave: chaveCor, temFilhos: true, indent: 'ind-4',
+              rotulo: escapar(cor || '—'),
+              qtd: vCor.qtd, pctQtd: vAr.qtd ? vCor.qtd / vAr.qtd * 100 : 0,
+              skus: linhasCor.length, valor: vCor.valor, pctValor: vAr.valor ? vCor.valor / vAr.valor * 100 : 0,
             });
+            if (!abertos.has(chaveCor)) return;
+
+            linhasCor
+              .slice()
+              .sort(function (a, b) { return (Number(b.valor) || 0) - (Number(a.valor) || 0); })
+              .forEach(function (r, i) {
+                html += linhaArvore({
+                  classe: 'n4', chave: chaveCor + '|T|' + i, temFilhos: false, indent: 'ind-5',
+                  rotulo: escapar(r.tamanho || '—'),
+                  qtd: r.qtd, pctQtd: vCor.qtd ? Number(r.qtd) / vCor.qtd * 100 : 0,
+                  skus: 1, valor: r.valor, pctValor: vCor.valor ? Number(r.valor) / vCor.valor * 100 : 0,
+                });
+              });
+          });
         });
       });
     });
