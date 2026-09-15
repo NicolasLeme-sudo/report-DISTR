@@ -518,17 +518,21 @@ async function buscarUltimaExtracaoIdEstoque(supabaseClient) {
   if (error) throw error;
   return (data && data[0] && data[0].id) || null;
 }
+// ',', '(' e ')' têm significado especial no filtro .or() do PostgREST; '%'
+// e '_' são curinga do próprio ILIKE — todos viram espaço/escapados pra um
+// termo digitado nunca quebrar a sintaxe da consulta. Retorna null quando
+// não sobra nada pra buscar (ex.: termo só com esses caracteres).
+const CAMPOS_BUSCA_ARTIGO_ESTOQUE = ['artigo_codigo', 'descricao', 'cor', 'tamanho', 'armazem', 'marca', 'familia_codigo'];
+function filtroOrArtigoEstoque(termoBruto) {
+  const termo = String(termoBruto || '').trim().replace(/[,()]/g, ' ').replace(/[%_]/g, '\\$&');
+  if (!termo) return null;
+  return CAMPOS_BUSCA_ARTIGO_ESTOQUE.map(function (c) { return c + '.ilike.%' + termo + '%'; }).join(',');
+}
 const LIMITE_BUSCA_ARTIGO_ESTOQUE = 200;
 async function buscarPosicoesEstoque(supabaseClient, termoBruto) {
   const extracaoId = await buscarUltimaExtracaoIdEstoque(supabaseClient);
-  if (!extracaoId) return [];
-  // ',', '(' e ')' têm significado especial no filtro .or() do PostgREST;
-  // '%' e '_' são curinga do próprio ILIKE — todos viram espaço/escapados
-  // pra um termo digitado nunca quebrar a sintaxe da consulta.
-  const termo = termoBruto.trim().replace(/[,()]/g, ' ').replace(/[%_]/g, '\\$&');
-  if (!termo) return [];
-  const campos = ['artigo_codigo', 'descricao', 'cor', 'tamanho', 'armazem', 'marca', 'familia_codigo'];
-  const orFiltro = campos.map(function (c) { return c + '.ilike.%' + termo + '%'; }).join(',');
+  const orFiltro = filtroOrArtigoEstoque(termoBruto);
+  if (!extracaoId || !orFiltro) return [];
   const { data, error } = await supabaseClient
     .from('estoque_posicoes')
     .select('armazem, marca, familia_codigo, artigo_codigo, cor, tamanho, descricao, qtd, valor')
@@ -541,6 +545,35 @@ async function buscarPosicoesEstoque(supabaseClient, termoBruto) {
 }
 window.buscarPosicoesEstoque = buscarPosicoesEstoque;
 window.LIMITE_BUSCA_ARTIGO_ESTOQUE = LIMITE_BUSCA_ARTIGO_ESTOQUE;
+
+/* Mesma busca, mas SEM teto — pro CSV exportar tudo que bateu, não só os
+   200 de maior valor mostrados na tela (pedido do usuário, 15/09/2026).
+   Pagina com o mesmo padrão de segurança do lerTudoPaginado (só para
+   quando a página vier vazia, nunca por "voltou menos que pedi"). */
+async function buscarPosicoesEstoqueCompleto(supabaseClient, termoBruto) {
+  const extracaoId = await buscarUltimaExtracaoIdEstoque(supabaseClient);
+  const orFiltro = filtroOrArtigoEstoque(termoBruto);
+  if (!extracaoId || !orFiltro) return [];
+  const LOTE = 1000;
+  let offset = 0;
+  const tudo = [];
+  while (true) {
+    const { data, error } = await supabaseClient
+      .from('estoque_posicoes')
+      .select('armazem, marca, familia_codigo, artigo_codigo, cor, tamanho, descricao, qtd, valor')
+      .eq('extracao_id', extracaoId)
+      .or(orFiltro)
+      .order('valor', { ascending: false })
+      .range(offset, offset + LOTE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    tudo.push.apply(tudo, data);
+    if (data.length < LOTE) break;
+    offset += data.length;
+  }
+  return tudo;
+}
+window.buscarPosicoesEstoqueCompleto = buscarPosicoesEstoqueCompleto;
 
 /* Busca o `payload` mais recente de uma página em dashboard_snapshots, ou
    `null` se nunca houve upload. Usado por ingests que precisam saber "o que

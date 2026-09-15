@@ -2261,9 +2261,16 @@ function renderizarEstoque(p) {
    EXPORTAÇÃO
    ------------------------------------------------------------
    Exporta a árvore inteira (não só o que está aberto na tela),
-   respeitando o filtro de status ativo.
+   respeitando o filtro de status ativo. Com uma busca de artigo ativa
+   (pedido do usuário, 15/09/2026), exporta os SKUs encontrados em vez da
+   árvore agregada — e SEM o teto de 200 da tela, busca de novo sem limite
+   pra não deixar a exportação incompleta feito nem uma nem outra coisa.
    ============================================================ */
-function exportarCSV() {
+async function exportarCSV() {
+  if (resultadosArtigoEstoque !== null) {
+    await exportarCSVBuscaArtigo();
+    return;
+  }
   const p = window._snapshot;
   if (!p) return;
   const linhas = [['Nivel', 'Armazem', 'Armazem_Descricao', 'Categoria_Armazem', 'Marca',
@@ -2289,6 +2296,32 @@ function exportarCSV() {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'estoque-distribuidora-' + (p.data_extracao || 'export') + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+async function exportarCSVBuscaArtigo() {
+  const termo = buscaArtigoEstoque.trim();
+  if (!termo) return;
+  let dados;
+  try {
+    dados = await window.buscarPosicoesEstoqueCompleto(supabaseClient, termo);
+  } catch (err) {
+    console.error(err);
+    alert('Erro ao buscar os artigos pra exportar: ' + (err.message || err));
+    return;
+  }
+  const linhas = [['Artigo', 'Descricao', 'Cor', 'Tamanho', 'Armazem', 'Marca', 'Familia_Codigo', 'Qtd', 'Valor']];
+  dados.forEach(function (r) {
+    linhas.push([r.artigo_codigo, r.descricao, r.cor, r.tamanho, r.armazem, r.marca, r.familia_codigo, r.qtd, r.valor]);
+  });
+  const csv = linhas.map(function (l) {
+    return l.map(function (c) { return '"' + String(c === null || c === undefined ? '' : c).replace(/"/g, '""') + '"'; }).join(';');
+  }).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'estoque-busca-' + termo.replace(/[^a-zA-Z0-9]+/g, '_') + '.csv';
   a.click();
   URL.revokeObjectURL(a.href);
 }
