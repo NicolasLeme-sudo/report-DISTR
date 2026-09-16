@@ -596,17 +596,26 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
      MIZUNO" + selo "TÊXTIL/ACESSÓRIOS"). */
   function construirArvore(lista) {
     const porMarca = new Map();
-    const totalQtd = lista.reduce(function (s, r) { return s + r.qtd; }, 0);
+    // Peças = disponível + cativado, mesma convenção já usada em
+    // pecasOcupadas/saldo_picking/construirSaldoEnderecos (cativado é saldo
+    // FÍSICO real, só reservado — não some do endereço). Esta árvore somava
+    // só r.qtd (disponível) e ficava contando 349 mil peças a menos que o
+    // resto do sistema — achado pelo usuário, 16/09/2026, comparando com a
+    // busca por artigo nova (que já seguia a convenção certa). Pulmão não
+    // tem qtd_cativado, então o `|| 0` não muda nada do lado dele.
+    const qtdReal = function (r) { return r.qtd + (r.qtd_cativado || 0); };
+    const totalQtd = lista.reduce(function (s, r) { return s + qtdReal(r); }, 0);
     lista.forEach(function (r) {
+      const qr = qtdReal(r);
       if (!porMarca.has(r.marca)) porMarca.set(r.marca, { codigo: r.marca, nome: r.marca, qtd: 0, skus: new Set(), segmentos: new Map() });
       const nMarca = porMarca.get(r.marca);
       const skuKey = chaveSku(r.artigo_codigo, r.cor, r.tamanho);
-      nMarca.qtd += r.qtd;
+      nMarca.qtd += qr;
       nMarca.skus.add(skuKey);
       const grupo = grupoDetalhamento(r.segmento_macro);
       if (!nMarca.segmentos.has(grupo)) nMarca.segmentos.set(grupo, { codigo: grupo, nome: grupo, qtd: 0, skus: new Set(), familias: new Map() });
       const nSeg = nMarca.segmentos.get(grupo);
-      nSeg.qtd += r.qtd;
+      nSeg.qtd += qr;
       nSeg.skus.add(skuKey);
       if (!nSeg.familias.has(r.familia_codigo)) {
         nSeg.familias.set(r.familia_codigo, {
@@ -615,7 +624,7 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
         });
       }
       const nFam = nSeg.familias.get(r.familia_codigo);
-      nFam.qtd += r.qtd;
+      nFam.qtd += qr;
       nFam.skus.add(skuKey);
     });
     return Array.from(porMarca.values())
@@ -649,12 +658,16 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
      é o "geral do negócio" pedido, sem misturar com a composição por marca. */
   function construirPorSegmentoMacro(lista) {
     const porSeg = new Map();
-    const totalQtd = lista.reduce(function (s, r) { return s + r.qtd; }, 0);
+    // Mesma convenção disponível+cativado de construirArvore acima — as
+    // duas árvores (por marca e por segmento macro) precisam concordar
+    // entre si e com o resto do sistema.
+    const qtdRealSeg = function (r) { return r.qtd + (r.qtd_cativado || 0); };
+    const totalQtd = lista.reduce(function (s, r) { return s + qtdRealSeg(r); }, 0);
     lista.forEach(function (r) {
       const chave = r.segmento_macro;
       if (!porSeg.has(chave)) porSeg.set(chave, { codigo: chave, nome: chave, qtd: 0, skus: new Set() });
       const n = porSeg.get(chave);
-      n.qtd += r.qtd;
+      n.qtd += qtdRealSeg(r);
       n.skus.add(chaveSku(r.artigo_codigo, r.cor, r.tamanho));
     });
     return Array.from(porSeg.values())

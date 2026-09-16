@@ -138,8 +138,11 @@ const payload = construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, {}
 
 // árvore de picking: só deve contar A1 (rua 1, picking de verdade). A2/A3/A4 foram
 // reclassificadas pro pulmão; A5 (rua 81 nível 1) continua sendo picking.
+// A1 soma disponível+cativado (50+15=65) — mesma convenção de saldo físico
+// real usada em todo o resto do sistema (16/09/2026: a árvore somava só o
+// disponível e ficava 349 mil peças abaixo do saldo por endereço).
 const totalArvorePicking = payload.arvore_picking.reduce(function (s, m) { return s + m.qtd; }, 0);
-eq(totalArvorePicking, 50 + 4, 'árvore de picking soma só A1(50)+A5(4) — A2/A3/A4 saíram pro pulmão');
+eq(totalArvorePicking, 50 + 15 + 4, 'árvore de picking soma A1(50+15 cativado)+A5(4) — A2/A3/A4 saíram pro pulmão');
 
 // árvore de pulmão: A1(200, rua 1) + A2(10, reclass rua20) + A3(7, reclass rua70) +
 // A4(3, reclass rua81-02) + A3-sujeira(999, rua24) = 1219
@@ -160,7 +163,13 @@ eq(payload.ressuprimento_por_segmento.calcado.saldo_picking, 65, 'saldo_picking 
 
 // mas a rua 81 nível 1 (A5) continua contando NORMALMENTE na árvore/ocupação
 // do Picking-Calçado — a exclusão é só nesse cruzamento de ressuprimento.
-eq(totalArvorePicking, 54, 'árvore de picking continua com A1(50)+A5(4) — rua 81 nível 1 não sai da ocupação');
+eq(totalArvorePicking, 69, 'árvore de picking continua com A1(50+15)+A5(4) — rua 81 nível 1 não sai da ocupação');
+
+// "Composição por segmento" precisa concordar com a árvore por marca — as
+// duas leem os mesmos pickingReal/pulmaoTudo, então a mesma convenção
+// disponível+cativado vale aqui também.
+const totalSegmentoPicking = payload.por_segmento_macro_picking.reduce(function (s, x) { return s + x.qtd; }, 0);
+eq(totalSegmentoPicking, 69, 'composição por segmento (picking) também soma disponível+cativado — bate com a árvore por marca');
 
 // validação: a linha de sujeira (rua 24) e a reclassificada não-confiável (rua 70, A3)
 // devem aparecer marcadas em_validacao
