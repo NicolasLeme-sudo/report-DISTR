@@ -1,5 +1,9 @@
 # Report Distribuidora — Balanço e Detalhamento de Estoque
 
+> **Padrão visual da empresa:** cores, logos, componentes HTML, estrutura de
+> projeto e padrão de apresentações estão em [`PADRAO-VULCABRAS.md`](PADRAO-VULCABRAS.md)
+> — documento único, idêntico nos três repositórios do time.
+
 Dashboard executivo de estoque da distribuidora, com a hierarquia
 **Armazém › Marca › Família** em listagem que abre e fecha, no modelo do dash
 financeiro usado como referência.
