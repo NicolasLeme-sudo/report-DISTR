@@ -364,6 +364,15 @@ function segmentoMacroSeDisponivel(fam) {
    coberto pelo Kardex quando a fonte é um snapshot único, ou o dia mais
    recente presente no histórico acumulado quando a fonte é o histórico.
    ============================================================================ */
+// dim_familias.codigo vem sempre com 3 dígitos, mas família colada à mão em
+// Admin › Planejamento de Ressuprimento podia ser gravada sem o zero à
+// esquerda ("82" em vez de "082") — a busca no mapa falhava e a tela caía no
+// fallback "código — código" (achado pelo usuário, 17/09/2026: famílias
+// 60/61/82/83 sem nome). O padding na gravação (index.html) resolve daqui pra
+// frente; isto aqui só faz o mesmo casamento pras linhas já salvas erradas.
+function familiaPadded(codigo) {
+  return /^\d+$/.test(codigo) ? codigo.padStart(3, '0') : codigo;
+}
 function classificarPlanejamento(planejamento, pecasPorFamiliaDia, ultimoDia, mapaFamilias) {
   mapaFamilias = mapaFamilias || new Map();
   return planejamento.map(function (p) {
@@ -379,7 +388,7 @@ function classificarPlanejamento(planejamento, pecasPorFamiliaDia, ultimoDia, ma
       // dia que já temos movimento (não "hoje" — a fonte pode ser de ontem).
       if (ultimoDia) diasPendente = Math.max(0, diferencaDias(p.data, ultimoDia));
     }
-    const famPlano = mapaFamilias.get(p.familia_codigo);
+    const famPlano = mapaFamilias.get(familiaPadded(p.familia_codigo));
     return {
       pfa: p.pfa, familia_codigo: p.familia_codigo, familia_nome: famPlano ? famPlano.categoria : p.familia_codigo,
       turno: p.turno, data: p.data, status: status, pecas: pecas, dias_pendente: diasPendente,
@@ -414,7 +423,7 @@ function calcularSemPlanejamento(pecasPorFamiliaDia, planejamento, mapaFamilias,
     const diaSeguinte = diaISO(1, dia);
     const planejadoAmanha = familiasPlanejadasPorDia.has(diaSeguinte) && familiasPlanejadasPorDia.get(diaSeguinte).has(familiaCod);
     if (!planejadoHoje && !planejadoAmanha) {
-      const fam = mapaFamilias.get(familiaCod);
+      const fam = mapaFamilias.get(familiaPadded(familiaCod));
       const porTurno = {};
       if (porFamiliaDiaTurno) {
         TURNOS.forEach(function (t) {

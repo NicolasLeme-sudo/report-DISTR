@@ -5595,7 +5595,13 @@ document.getElementById('btnSalvarPlanejamentoPfa').addEventListener('click', as
     const partes = l.split(/[\t;,]+/).map(function (p) { return p.trim(); }).filter(Boolean);
     if (partes.length < 2) { linhasInvalidas++; motivos.add('faltou a família'); return; }
 
-    const pfa = partes[0], familia = partes[1];
+    // Família sempre com 3 dígitos: colar "82" em vez de "082" gravava um
+    // código que não bate com dim_familias.codigo (que é sempre padded),
+    // e a tela caía no fallback "código — código" por não achar o nome
+    // (achado pelo usuário, 17/09/2026: famílias 60/61/82/83 sem nome).
+    const familiaBruta = partes[1];
+    const familia = /^\d+$/.test(familiaBruta) ? familiaBruta.padStart(3, '0') : familiaBruta;
+    const pfa = partes[0];
     let turno, data;
     if (partes.length >= 4) {
       turno = normalizarTurnoColado(partes[2]);
