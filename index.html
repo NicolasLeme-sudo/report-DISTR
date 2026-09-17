@@ -4830,10 +4830,10 @@ function blocoMovimentacoes() {
           if (!porFamilia.has(chaveFam)) porFamilia.set(chaveFam, { nome: r.familia_nome, itens: [], semPlano: 0 });
           porFamilia.get(chaveFam).semPlano += r.pecas;
         });
+        // Ordem padrão ao abrir a data: código da família, do maior pro menor
+        // (pedido do usuário, 17/09/2026) — não mais por peças.
         Array.from(porFamilia.entries())
-          .sort(function (a, b) {
-            return (pecasUnicasPorFamiliaData(b[1].itens) + b[1].semPlano) - (pecasUnicasPorFamiliaData(a[1].itens) + a[1].semPlano);
-          })
+          .sort(function (a, b) { return b[0] > a[0] ? 1 : (b[0] < a[0] ? -1 : 0); })
           .forEach(function (par) {
             const familiaCod = par[0], grupo = par[1];
             const nomeFamilia = escapar(familiaCod) + ' — ' + escapar(grupo.nome);
