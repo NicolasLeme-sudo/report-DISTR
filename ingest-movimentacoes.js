@@ -851,3 +851,4 @@ window.TURNOS = TURNOS;
 window.diaISO = diaISO;
 window.classificarPlanejamento = classificarPlanejamento;
 window.calcularSemPlanejamento = calcularSemPlanejamento;
+window.familiaPadded = familiaPadded;

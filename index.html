@@ -4815,14 +4815,20 @@ function blocoMovimentacoes() {
         });
         if (!abertosPlanejamento.has(chaveD)) return;
 
+        // Chave sempre com 3 dígitos: família colada sem zero à esquerda em
+        // Admin › Planejamento ("83") e a mesma família vinda do histórico já
+        // padded ("083") são a MESMA família — sem isso viravam duas linhas
+        // separadas na árvore (achado pelo usuário, 17/09/2026).
         const porFamilia = new Map();
         planoDoDia.forEach(function (p) {
-          if (!porFamilia.has(p.familia_codigo)) porFamilia.set(p.familia_codigo, { nome: p.familia_nome, itens: [], semPlano: 0 });
-          porFamilia.get(p.familia_codigo).itens.push(p);
+          const chaveFam = window.familiaPadded(p.familia_codigo);
+          if (!porFamilia.has(chaveFam)) porFamilia.set(chaveFam, { nome: p.familia_nome, itens: [], semPlano: 0 });
+          porFamilia.get(chaveFam).itens.push(p);
         });
         semPlanoDoDia.forEach(function (r) {
-          if (!porFamilia.has(r.familia_codigo)) porFamilia.set(r.familia_codigo, { nome: r.familia_nome, itens: [], semPlano: 0 });
-          porFamilia.get(r.familia_codigo).semPlano += r.pecas;
+          const chaveFam = window.familiaPadded(r.familia_codigo);
+          if (!porFamilia.has(chaveFam)) porFamilia.set(chaveFam, { nome: r.familia_nome, itens: [], semPlano: 0 });
+          porFamilia.get(chaveFam).semPlano += r.pecas;
         });
         Array.from(porFamilia.entries())
           .sort(function (a, b) {
