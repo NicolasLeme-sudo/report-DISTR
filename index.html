@@ -165,7 +165,7 @@ html { overflow-x: hidden; }
 }
 .sidebar-brand .mark {
   width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
-  background: #132043; display: flex; align-items: center; justify-content: center;
+  background: var(--bg-sidebar); display: flex; align-items: center; justify-content: center;
   font-weight: 700; font-size: 14px; color: #132043;
 }
 .sidebar-brand .nome { font-size: 13px; font-weight: 700; color: #fff; line-height: 1.3; }
@@ -1059,11 +1059,11 @@ tr.total > th, tr.total > td {
 <!-- ======================= LOGIN ======================= -->
 <div id="telaLogin">
   <div class="login-box">
-    <img src="favicon.png" alt="Logo" class="login-logo">
+    <img src="logo-mark.png" alt="Logo" class="login-logo">
     <h1>Report Distribuidora</h1>
     <p class="login-sub">Vulcabras · Extrema</p>
     <form id="formLogin">
-      <input id="inEmail" type="email" placeholder="E-mail" autocomplete="username" required>
+      <input id="inEmail" type="text" placeholder="Usuário" autocomplete="username" required>
       <input id="inSenha" type="password" placeholder="Senha" autocomplete="current-password" required>
       <button class="btn" id="btnEntrar" type="submit">Entrar</button>
       <div class="erro" id="loginErro"></div>
@@ -1688,17 +1688,23 @@ async function aplicarSessao(session) {
   mostrarSecao('start');
 }
 
+// O Supabase Auth exige um "e-mail" como identificador internamente, mas quem usa
+// o sistema só digita um usuário (ex: "admin") — completamos o domínio fixo aqui,
+// sem a pessoa nunca precisar saber que por trás disso existe um e-mail.
+const DOMINIO_LOGIN = '@vulcabras.com';
 document.getElementById('formLogin').addEventListener('submit', async function (ev) {
   ev.preventDefault();
   const btn = document.getElementById('btnEntrar');
   const err = document.getElementById('loginErro');
   btn.disabled = true; err.textContent = '';
+  const usuario = document.getElementById('inEmail').value.trim().toLowerCase();
+  const email = usuario.includes('@') ? usuario : usuario + DOMINIO_LOGIN;
   const { data, error } = await supabaseClient.auth.signInWithPassword({
-    email: document.getElementById('inEmail').value.trim(),
+    email,
     password: document.getElementById('inSenha').value,
   });
   btn.disabled = false;
-  if (error) { err.textContent = 'E-mail ou senha inválidos.'; return; }
+  if (error) { err.textContent = 'Usuário ou senha inválidos.'; return; }
   await aplicarSessao(data.session);
 });
 
