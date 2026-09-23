@@ -4408,33 +4408,6 @@ function renderizarEstoqueOperacao(p) {
   const kpisOcupacao = linhaOcupacao('Picking', 'picking', modoOcupacaoPicking) +
     linhaOcupacao('Pulmão', 'pulmao', 'endereco');
 
-  /* ---------- material por rua — primeira quebra da tela (23/09/2026) ----------
-     Pedido do usuário: rua primeiro, ocupação Picking×Pulmão logo abaixo,
-     segmento e endereços vazios por último. Picking e Pulmão lado a lado,
-     mesma rua na mesma linha quando os dois têm saldo nela. */
-  let blocoMaterialPorRua = '';
-  const mpr = p.material_por_rua;
-  if (mpr) {
-    const todasRuas = Array.from(new Set(mpr.picking.map(function (r) { return r.rua; })
-      .concat(mpr.pulmao.map(function (r) { return r.rua; })))).sort(function (a, b) { return Number(a) - Number(b); });
-    const porRuaPick = new Map(mpr.picking.map(function (r) { return [r.rua, r]; }));
-    const porRuaPulm = new Map(mpr.pulmao.map(function (r) { return [r.rua, r]; }));
-    const totPick = mpr.picking.reduce(function (s, r) { return s + r.qtd; }, 0);
-    const totPulm = mpr.pulmao.reduce(function (s, r) { return s + r.qtd; }, 0);
-    const cel = function (r) { return r ? fmtInt(r.qtd) + ' <span style="color:var(--text-muted)">· ' + fmtInt(r.enderecos) + ' end.</span>' : '<span style="color:var(--text-muted)">—</span>'; };
-    blocoMaterialPorRua = '<div class="card">' +
-      '<div class="section-title">Material por rua</div>' +
-      '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Saldo físico (disponível + cativado) por rua, Picking e Pulmão lado a lado.</p>' +
-      '<div class="tabela-rolavel" style="max-height:360px"><table class="arvore"><thead><tr>' +
-        '<th class="centro">Rua</th><th>Picking</th><th>Pulmão</th></tr></thead><tbody>' +
-        todasRuas.map(function (rua) {
-          return '<tr><th class="centro">' + escapar(rua) + '</th><td>' + cel(porRuaPick.get(rua)) + '</td><td>' + cel(porRuaPulm.get(rua)) + '</td></tr>';
-        }).join('') +
-        '<tr class="total"><th class="centro">TOTAL</th><td>' + fmtInt(totPick) + '</td><td>' + fmtInt(totPulm) + '</td></tr>' +
-      '</tbody></table></div>' +
-    '</div>';
-  }
-
   /* ---------- endereços vazios e picados (< 10 pç) — 23/09/2026 ----------
      Base pra avaliar compactar volume "picado" em poucos endereços. Sempre
      global (zona física), como a ocupação acima. */
@@ -4854,9 +4827,6 @@ function renderizarEstoqueOperacao(p) {
     chips +
     chipsSegmento +
     kpisSku +
-    // Ordem pedida pelo usuário, 23/09/2026: rua primeiro, depois a quebra
-    // Picking×Pulmão, depois segmento e endereços vazios.
-    blocoMaterialPorRua +
     kpisOcupacao +
     '<div class="grid2">' +
       '<div class="card">' +

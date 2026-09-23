@@ -809,7 +809,7 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     };
   });
 
-  /* Endereços vazios e material_por_rua são visões POR RUA — só fazem
+  /* Endereços vazios é visão POR RUA — só faz
      sentido pra rua física de verdade. O prédio do Pulmão vai até a rua 15
      (confirmado pela operação, 23/09/2026): tudo acima disso, incluindo o
      que volta reclassificado do Picking (20/70/80/81-02, apoio confiável),
@@ -866,34 +866,7 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     // (20/70/80/81-02, apoio confiável) — continuam sendo posição de picking.
     // Rua > 15 (físico ou reclassificado) fica de fora — ver dentroDaRuaFisica.
     enderecos_ociosos: mapearEnderecosOciosos(pickingComApoio, pulmaoFisicoAteRua15),
-    // Material dividido por rua — visão pedida antes da quebra Picking/Pulmão
-    // (pedido do usuário, 23/09/2026: rua primeiro, depois picking×pulmão).
-    material_por_rua: materialPorRua(pickingComApoio, pulmaoFisicoAteRua15),
   };
-}
-
-/* ============================================================================
-   MATERIAL POR RUA — soma TODO o saldo (não só vazio/picado) por rua, Picking
-   e Pulmão lado a lado. Mesma entrada de mapearEnderecosOciosos (Picking já
-   inclui 20/70/80/81-02, apoio confiável; Pulmão é só o físico). Pedido do
-   usuário, 23/09/2026: "material dividido inicialmente por rua" — a primeira
-   pergunta antes de entrar na quebra por zona ou por segmento.
-   ============================================================================ */
-function materialPorRua(pickingReal, pulmaoFisico) {
-  function porRua(lista) {
-    const m = new Map();
-    lista.forEach(function (r) {
-      if (!m.has(r.rua)) m.set(r.rua, { rua: r.rua, qtd: 0, skus: new Set(), enderecos: new Set() });
-      const e = m.get(r.rua);
-      e.qtd += (r.qtd || 0) + (r.qtd_cativado || 0);
-      e.skus.add(r.artigo_codigo + '|' + r.cor + '|' + r.tamanho);
-      e.enderecos.add(r.rua + '|' + r.nivel + '|' + r.box);
-    });
-    return Array.from(m.values())
-      .map(function (e) { return { rua: e.rua, qtd: e.qtd, skus: e.skus.size, enderecos: e.enderecos.size }; })
-      .sort(function (a, b) { return Number(a.rua) - Number(b.rua); });
-  }
-  return { picking: porRua(pickingReal), pulmao: porRua(pulmaoFisico) };
 }
 
 /* ============================================================================
