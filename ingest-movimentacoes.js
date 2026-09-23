@@ -63,7 +63,8 @@ function classificarZona(rua, nivel) {
    inflava a "Fila em andamento" com 5.191 peças (12% do total) que não estão
    esperando subir pro Picking. As demais ruas de trânsito continuam contando,
    inclusive sujeira/perca (26/27) — decisão da operação na mesma conversa. */
-const RUAS_FORA_DA_FILA = { 98: 1 };
+// 100 (23/09/2026): recebimento armazenado no chão, não é corredor de ressuprimento.
+const RUAS_FORA_DA_FILA = { 98: 1, 100: 1 };
 
 /* ============================================================================
    TURNOS — gabarito da operação
@@ -230,12 +231,12 @@ function parsearKardex(textoArquivo) {
 
 /* Ruas de sinalização/passagem cujo material aparece no card "B.O. em
    endereço transitório" do Ressuprimento (mesmo gabarito de
-   CLASSIF_RUA_PULMAO em ingest-ressuprimento.js, mais 70/80/99). O Pulmão só
+   CLASSIF_RUA_PULMAO em ingest-ressuprimento.js, mais a 99). O Pulmão só
    traz DT. CRI. (criação do volume — a 1ª alocação no CD, às vezes anos
    atrás), então a data de ENTRADA no endereço vem daqui: o último TL+ do
    volume. Pedido do usuário, 23/09/2026: item na rua 500 aparecia como de
    2023 (DT. CRI.) quando tinha sido movido pra lá em 15/09/2026. */
-const RUAS_ENTRADA_RASTREADA = { 10: 1, 21: 1, 24: 1, 26: 1, 27: 1, 70: 1, 80: 1, 98: 1, 99: 1, 100: 1, 500: 1, 600: 1 };
+const RUAS_ENTRADA_RASTREADA = { 10: 1, 21: 1, 24: 1, 26: 1, 27: 1, 98: 1, 99: 1, 500: 1, 600: 1 };
 
 /* volume -> [rua, nivel, box, diaISO, minutos, login, nome] do TL+ MAIS
    RECENTE desse volume no Kardex — só guardado quando esse último destino é

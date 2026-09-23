@@ -85,7 +85,7 @@ eq(dup.colisoes_volume, 1, 'colisão de volume duplicado é reportada');
 /* -------------------------------------------------------------------------- */
 secao('classificarRuaPulmao — gabarito de ruas fornecido pela operação');
 [['1', 'PULMAO'], ['14', 'PULMAO'], ['21', 'VALIDACAO'], ['24', 'VALIDACAO'], ['26', 'VALIDACAO'],
- ['27', 'VALIDACAO'], ['98', 'VALIDACAO'], ['100', 'VALIDACAO'], ['500', 'VALIDACAO'], ['600', 'VALIDACAO'],
+ ['27', 'VALIDACAO'], ['98', 'VALIDACAO'], ['100', 'ARMAZENAGEM_CHAO'], ['500', 'VALIDACAO'], ['600', 'VALIDACAO'],
  ['999', 'NAO_MAPEADA']].forEach(function (c) {
   eq(classificarRuaPulmao(c[0]).grupo, c[1], 'rua ' + c[0] + ' -> ' + c[1]);
 });
@@ -171,18 +171,15 @@ eq(totalArvorePicking, 69, 'árvore de picking continua com A1(50+15)+A5(4) — 
 const totalSegmentoPicking = payload.por_segmento_macro_picking.reduce(function (s, x) { return s + x.qtd; }, 0);
 eq(totalSegmentoPicking, 69, 'composição por segmento (picking) também soma disponível+cativado — bate com a árvore por marca');
 
-// validação: a linha de sujeira (rua 24) e a reclassificada não-confiável (rua 70, A3)
-// devem aparecer marcadas em_validacao
+// validação: só a sujeira real (rua 24). A rua 70 deixou de ser pendência em
+// 23/09/2026 (operação: excedente do picking alocado no Pulmão, estoque bom).
 const emValidacao = payload.validacao.map(function (v) { return v.artigo_codigo; }).sort();
-ok(emValidacao.indexOf('A3') !== -1, 'A3 (sujeira, rua 24 real + reclassificado rua 70) aparece em validação');
+ok(emValidacao.indexOf('A3') !== -1, 'A3 (sujeira, rua 24) aparece em validação');
 
-// A3 está em DOIS endereços físicos diferentes (rua 24 real + rua 70 reclassificada) —
-// tem que virar DUAS linhas com o endereço de cada uma, não uma só somada (05/09/2026,
-// agrupamento passou a ser por endereço+SKU, não só por SKU).
+// A3 também está na rua 70 — que agora é Pulmão de verdade, então só a
+// linha da rua 24 fica no card de material parado.
 const linhasA3 = payload.validacao.filter(function (v) { return v.artigo_codigo === 'A3'; });
-eq(linhasA3.length, 2, 'A3 vira 2 linhas — uma por endereço físico, não uma soma');
-const ruasA3 = linhasA3.map(function (v) { return v.rua; }).sort();
-eq(ruasA3.join(','), '24,70', 'as 2 linhas carregam o endereço certo (rua 24 e rua 70)');
+eq(linhasA3.map(function (v) { return v.rua; }).join(','), '24', 'rua 70 (excedente do picking) não aparece como material parado');
 const a3Rua24 = linhasA3.filter(function (v) { return v.rua === '24'; })[0];
 eq(a3Rua24.qtd, 999, 'a linha da rua 24 mantém a própria quantidade, sem somar com a da rua 70');
 eq(a3Rua24.nivel, '1', 'linha de validação carrega nível');
@@ -369,7 +366,7 @@ eq(linhaVol.volumes.map(function (x) { return x.v; }).join(','), 'VOL1,VOL2', 'l
 eq(linhaVol.volumes[0].cri, '2023-05-10', 'guarda a criação do volume à parte (não é a entrada no endereço)');
 
 /* -------------------------------------------------------------------------- */
-secao('ocupação — Rua 10 do Pulmão é sujeira de movimentação antiga, não acessório de verdade');
+secao('ocupação — Rua 10 do Pulmão é erro de movimentação, não acessório de verdade');
 // Confirmado pela operação (09/09/2026): a Rua 10 tem saldo endereçado de uma
 // movimentação antiga (136 endereços / 24.584 pç no arquivo real, 100%
 // Acessório) que não é estoque de verdade. Contá-la inflava a % de Acessório
@@ -395,7 +392,20 @@ eq(payloadRua10.ocupacao.pulmao.acessorio.ocupado, 1,
 eq(payloadRua10.transito_pulmao.total_enderecos, 1, 'a Rua 10 vira B.O. em trânsito/validação, não some sem explicação');
 const endRua10 = payloadRua10.transito_pulmao.enderecos.find(function (e) { return e.rua === '10'; });
 eq(endRua10.qtd, 50, 'peça da Rua 10 continua visível no card de trânsito');
-ok(/Sujeira/.test(endRua10.classif_rotulo), 'rótulo identifica como sujeira de movimentação antiga');
+eq(endRua10.classif_rotulo, 'Erro de Movimentação', 'rótulo da rua 10 é "Erro de Movimentação" (nome da operação)');
+
+// Rua 100: recebimento armazenado no chão — fora do card de material parado
+// E fora da capacidade do Pulmão, mas é estoque bom (apoio confiável).
+const payloadRua100 = construirSnapshotRessuprimento(
+  { registros: [], negativas_excluidas: 0, negativas_unidades: 0 },
+  { registros: [
+    { familia_codigo: '101', artigo_codigo: 'C1', cor: 'PT', tamanho: '40', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '100', nivel: '1', box: '1', dt_cri: null, qtd: 30, codbar: 'EANC1' },
+  ], colisoes_volume: 0 },
+  mapaFamilias, { pulmao: 100 }, { arquivo_picking: 'x.txt', arquivo_pulmao: 'p.txt' }
+);
+eq(payloadRua100.validacao.length, 0, 'rua 100 não aparece no card de material parado');
+eq(payloadRua100.transito_pulmao.total_enderecos, 0, 'nem no resumo de trânsito');
+eq(payloadRua100.ocupacao.pulmao.total.ocupado, 0, 'e não ocupa posição de porta-pallet do Pulmão');
 
 
 /* -------------------------------------------------------------------------- */

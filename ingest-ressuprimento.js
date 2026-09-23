@@ -50,13 +50,17 @@ const RUAS_PULMAO_BOAS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '11', '12
 const CLASSIF_RUA_PULMAO = {};
 RUAS_PULMAO_BOAS.forEach(function (r) { CLASSIF_RUA_PULMAO[r] = { grupo: 'PULMAO', rotulo: 'Pulmão' }; });
 Object.assign(CLASSIF_RUA_PULMAO, {
-  '10':  { grupo: 'VALIDACAO', rotulo: 'Sujeira - Movimentação Antiga' }, // confirmado pela operação, 09/09/2026: 136 endereços / 24.584 pç de acessório que não é estoque de verdade, some da capacidade de Acessório mas não do total de Pulmão.
+  '10':  { grupo: 'VALIDACAO', rotulo: 'Erro de Movimentação' }, // nome da operação (23/09/2026); 09/09/2026: 136 end. / 24.584 pç de acessório que não é estoque de verdade, fora da capacidade de Acessório mas no total de Pulmão.
   '21':  { grupo: 'VALIDACAO', rotulo: 'Transitório - Ressuprimento (Antigo)' },
   '24':  { grupo: 'VALIDACAO', rotulo: 'Sujeira' },
   '26':  { grupo: 'VALIDACAO', rotulo: 'Sujeira' },
   '27':  { grupo: 'VALIDACAO', rotulo: 'Perca' },
   '98':  { grupo: 'VALIDACAO', rotulo: 'Transitório - Armazenagem/Ressuprimento' },
-  '100': { grupo: 'VALIDACAO', rotulo: 'Baixa/Subida - Ressuprimento (Antigo)' },
+  // Rua 100 (23/09/2026, operação): material do RECEBIMENTO armazenado no
+  // chão, endereços criados porque faltou espaço no Pulmão. É estoque bom,
+  // não pendência — sai do card de material parado, mas também não é
+  // porta-pallet, então não entra na capacidade do Pulmão.
+  '100': { grupo: 'ARMAZENAGEM_CHAO', rotulo: 'Recebimento armazenado no chão' },
   '500': { grupo: 'VALIDACAO', rotulo: 'Baixar Ressuprimento' },
   '600': { grupo: 'VALIDACAO', rotulo: 'Subir Ressuprimento' },
 });
@@ -75,8 +79,11 @@ function classificarRuaPulmao(rua) {
    ============================================================================ */
 const RECLASSIFICA_PICKING_PARA_PULMAO = {
   '20': { motivo: 'Camisas de time Mizuno — visadas, risco de furto no picking', apoioConfiavel: true },
-  '70': { motivo: 'Material não localizado Mizuno — sujeira de sistema', apoioConfiavel: false },
-  '80': { motivo: 'Material não localizado Under Armour — sujeira de sistema', apoioConfiavel: false },
+  // 70/80 (corrigido pela operação, 23/09/2026): endereço de Picking que fica
+  // DENTRO do Pulmão — item que não coube 100% no picking e foi alocado lá.
+  // Estoque bom, não é pendência.
+  '70': { motivo: 'Excedente do picking Mizuno alocado no Pulmão', apoioConfiavel: true },
+  '80': { motivo: 'Excedente do picking Under Armour alocado no Pulmão', apoioConfiavel: true },
   // rua 81 é tratada à parte (abaixo): só o nível 02 reclassifica.
 };
 const MOTIVO_81_02 = 'Capacidade de calçados Under Armour esgotada no picking';
@@ -382,8 +389,8 @@ function classificarPickingEPulmao(picking, pulmao, mapaFamilias) {
       segmento_macro: segmentoMacro(fam.segmento, fam.categoria),
       bucket: classificarBucket(fam.segmento, fam.categoria),
       origem: 'pulmao', motivo: null,
-      apoio_confiavel: classif.grupo === 'PULMAO',
-      em_validacao: classif.grupo !== 'PULMAO',
+      apoio_confiavel: classif.grupo === 'PULMAO' || classif.grupo === 'ARMAZENAGEM_CHAO',
+      em_validacao: classif.grupo !== 'PULMAO' && classif.grupo !== 'ARMAZENAGEM_CHAO',
       classif_grupo: classif.grupo, classif_rotulo: classif.rotulo,
     });
   }).concat(pulmaoViaPicking.map(function (r) {
@@ -572,7 +579,7 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
      do Pulmão, por ENDEREÇO — pra gestão enxergar onde o material está
      "sumido" da ocupação (excluído da capacidade acima) mas ainda tem saldo
      físico esperando decisão/baixa. ---------- */
-  const transitoPulmao = pulmaoTudo.filter(function (r) { return r.origem === 'pulmao' && r.classif_grupo !== 'PULMAO'; });
+  const transitoPulmao = pulmaoTudo.filter(function (r) { return r.origem === 'pulmao' && r.classif_grupo !== 'PULMAO' && r.classif_grupo !== 'ARMAZENAGEM_CHAO'; });
   const transitoPorEndereco = new Map();
   transitoPulmao.forEach(function (r) {
     const chave = r.rua + '|' + r.nivel + '|' + r.box;
