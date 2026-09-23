@@ -888,10 +888,11 @@ function mapearEnderecosOciosos(pickingReal, pulmaoFisico) {
     const m = new Map();
     lista.forEach(function (r) {
       const k = r.rua + '|' + r.nivel + '|' + r.box;
-      if (!m.has(k)) m.set(k, { rua: r.rua, nivel: r.nivel, box: r.box, qtd: 0, skus: new Set(), buckets: {} });
+      if (!m.has(k)) m.set(k, { rua: r.rua, nivel: r.nivel, box: r.box, qtd: 0, gap: 0, skus: new Set(), buckets: {} });
       const e = m.get(k);
       const q = (r.qtd || 0) + (r.qtd_cativado || 0);
       e.qtd += q;
+      e.gap += r.qtd_gap_reservado || 0;
       e.skus.add(r.artigo_codigo + '|' + r.cor + '|' + r.tamanho);
       // Reclassificado do Picking (20/70/80/81-02) não carrega bucket pronto.
       const b = r.bucket || classificarBucket(r.segmento, r.categoria);
@@ -922,6 +923,11 @@ function mapearEnderecosOciosos(pickingReal, pulmaoFisico) {
   const endPick = agruparPorEndereco(pickingReal);
   endPick.forEach(function (e) {
     const linha = [e.rua, e.nivel, e.box, e.qtd, e.skus.size, predominante(e.buckets)];
+    // Saldo negativo no Picking é zerado no parse (reserva de separação /
+    // faturamento sumido — ver parsearPicking), mas o endereço NÃO está
+    // vazio: tem material comprometido nele. Contava como vazio por engano
+    // (usuário, 23/09/2026: "não tenho tudo isso de endereços vazios").
+    if (e.gap > 0) return;
     if (e.qtd <= 0) saida.picking.vazios.push(linha);
     else if (e.qtd < LIMITE_PICADO) saida.picking.picados.push(linha);
   });

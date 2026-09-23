@@ -282,8 +282,12 @@ html { overflow-x: hidden; }
 .kpi .val.forte { font-weight: 700; font-size: 20px; }
 /* Ressuprimento por dia: valor principal maior (pedido do usuário,
    23/09/2026) — peças ressupridas, movimentos, média e fila. */
-.kpi-row-destaque .kpi .val { font-size: 30px; }
+.kpi-row-destaque .kpi .val { font-size: 30px; line-height: 1.15; }
 .kpi-row-destaque .kpi .val.forte { font-size: 28px; }
+/* Mais compacto na altura: o conteúdo é pouco (pedido do usuário, 23/09). */
+.kpi-row-destaque .kpi { padding: 10px 14px; justify-content: flex-start; gap: 4px; }
+.kpi-row-destaque .kpi .rot { min-height: 0; margin-bottom: 0; }
+.kpi-row-destaque .kpi .sub { margin-top: 0; font-size: 12px; }
 .kpi .sub { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; }
 
 /* Card de ocupação com rosca — Ressuprimento (Picking × Pulmão). Sobrescreve
@@ -3450,8 +3454,9 @@ function renderizarPfas() {
       '<div class="val forte">' + fmtInt(pares) + ' Peças</div>' +
       '<div class="sub">' + fmtInt(filtrados.length) + ' PFAs</div></div>' +
     '<div class="kpi"><div class="rot">PFA Mais antiga em tela (NF emitida)</div>' +
-      '<div class="val forte" style="color:var(--amber)">' + (pfaNotaMaisAntiga
-        ? fmtInt(diasNotaMaisAntiga) + ' Dias - ' + fmtInt(itensPorPfaNota.get(pfaNotaMaisAntiga.pfa)) + ' Itens'
+      // Uma linha só (nowrap) — quebrar em duas desalinhava o card da fileira.
+      '<div class="val forte" style="color:var(--amber);white-space:nowrap">' + (pfaNotaMaisAntiga
+        ? fmtInt(diasNotaMaisAntiga) + (diasNotaMaisAntiga === 1 ? ' Dia' : ' Dias') + ' - ' + fmtInt(itensPorPfaNota.get(pfaNotaMaisAntiga.pfa)) + ' Pçs'
         : '—') + '</div>' +
       '<div class="sub">' + (pfaNotaMaisAntiga
         ? 'PFA ' + escapar(pfaNotaMaisAntiga.pfa) + ' · NF emitida ' + formatarDataSimples(pfaNotaMaisAntiga.data_nota)
@@ -4672,17 +4677,23 @@ function renderizarEstoqueOperacao(p) {
       if (!ruasPorClassif.has(v.classificacao)) ruasPorClassif.set(v.classificacao, new Set());
       ruasPorClassif.get(v.classificacao).add(v.rua);
     });
-    const classificacoes = Array.from(ruasPorClassif.keys()).sort();
+    // Ordem pela menor rua da classificação, pra seguir o "Rua N —" do rótulo.
+    const menorRua = function (c) { return Math.min.apply(null, Array.from(ruasPorClassif.get(c)).map(Number)); };
+    const classificacoes = Array.from(ruasPorClassif.keys()).sort(function (a, b) {
+      return (menorRua(a) - menorRua(b)) || a.localeCompare(b);
+    });
     let chipsClassif = '<div class="filtros">' +
       '<span class="rot-filtro">Classificação</span>' +
       '<span class="chip' + (!filtroClassifValidacao.size ? ' on' : '') +
         '" onclick="alternarFiltroClassifValidacao(null)">Todas</span>';
     classificacoes.forEach(function (c) {
       const ruasDoChip = Array.from(ruasPorClassif.get(c)).sort(function (a, b) { return Number(a) - Number(b); });
-      // Rótulos que já começam com "Rua N —" (rua 98) não repetem o número.
-      const rotuloRua = /^Rua\s+\d/i.test(c) ? '' : ' (rua ' + ruasDoChip.join(', ') + ')';
+      // Padrão único "Rua N — definição", igual às barras acima (pedido do
+      // usuário, 23/09/2026). Rótulos que já começam com "Rua N —" (rua 98)
+      // não repetem o número.
+      const rotuloChip = /^Rua\s+\d/i.test(c) ? c : 'Rua ' + ruasDoChip.join(', ') + ' — ' + c;
       chipsClassif += '<span class="chip' + (filtroClassifValidacao.has(c) ? ' on' : '') +
-        '" onclick="alternarFiltroClassifValidacao(\'' + escaparJs(c) + '\')">' + escapar(c) + escapar(rotuloRua) + '</span>';
+        '" onclick="alternarFiltroClassifValidacao(\'' + escaparJs(c) + '\')">' + escapar(rotuloChip) + '</span>';
     });
     if (filtroClassifValidacao.size) {
       chipsClassif += '<span class="chip" style="color:var(--red)" onclick="alternarFiltroClassifValidacao(null)">✕ Limpar filtro</span>';
@@ -4706,10 +4717,9 @@ function renderizarEstoqueOperacao(p) {
         case 'classificacao': return v.classificacao || '';
         case 'sku': return v.artigo_codigo + '/' + v.cor + '/' + v.tamanho;
         case 'nome': return v.descricao || '';
-        case 'data': return v.entrada || '9999'; // sem registro no Kardex vai pro fim (asc)
-        case 'login': return v.entrada_login || '';
+        case 'data': return v.ultima_mov || '0000'; // sem registro no Kardex vai pro fim (desc)
+        case 'login': return v.ultima_login || '';
         case 'volume': return (v.volumes_det[0] && v.volumes_det[0].v) || '';
-        case 'criacao': return v.mais_antigo || '9999';
         default: return v.qtd;
       }
     }
@@ -4731,23 +4741,20 @@ function renderizarEstoqueOperacao(p) {
     }
 
     const linhasBO = linhasCarregadas.map(function (v) {
+      // Volume: sempre o número completo (é com ele que se pesquisa no GCI),
+      // um por linha quando a linha tem mais de um — nunca "N volumes".
       return '<tr><th class="centro">' + escapar(formatarEndereco(v.rua, v.nivel, v.box)) + '</th>' +
-        '<td class="centro">' + escapar(v.classificacao) + '</td>' +
         '<td class="centro">' + escapar(v.artigo_codigo) + '/' + escapar(v.cor) + '/' + escapar(v.tamanho) + '</td>' +
         '<td class="centro">' + escapar(v.descricao) + '</td>' +
         '<td>' + fmtInt(v.qtd) + '</td>' +
-        '<td title="' + escapar(v.entrada_login ? 'Movimentado por ' + v.entrada_login + (v.entrada_nome ? ' — ' + v.entrada_nome : '') : '') + '">' +
-          (v.entrada ? formatarDataSimples(v.entrada) + ' <span style="color:var(--text-muted)">(' + fmtInt(v.dias_parado) + 'd)</span>'
-            : '<span style="color:var(--text-muted)" title="Nenhum TL+ deste volume para este endereço nos Kardex já processados">sem registro</span>') +
+        '<td class="centro" style="font-size:11px" title="' + escapar(v.ultima_nome || '') + '">' + escapar(v.ultima_login || '—') + '</td>' +
+        '<td class="centro" style="font-size:11px;font-family:monospace;line-height:1.5">' +
+          (v.volumes_det.length === 0 ? '—' : v.volumes_det.map(function (x) { return escapar(x.v); }).join('<br>')) +
         '</td>' +
-        '<td class="centro" style="font-size:11px">' + escapar(v.entrada_login || '—') + '</td>' +
-        '<td class="centro" style="font-size:11px;font-family:monospace" title="' +
-          escapar(v.volumes_det.map(function (x) { return x.v; }).join(', ')) + '">' +
-          (v.volumes_det.length === 0 ? '—'
-            : v.volumes_det.length === 1 ? escapar(v.volumes_det[0].v)
-            : fmtInt(v.volumes_det.length) + ' volumes') +
-        '</td>' +
-        '<td style="color:var(--text-muted)">' + (v.mais_antigo ? formatarDataSimples(v.mais_antigo) : '—') + '</td></tr>';
+        '<td class="centro">' +
+          (v.ultima_mov ? formatarDataSimples(v.ultima_mov) + ' <span style="color:var(--text-muted)">(' + fmtInt(v.dias_ultima) + 'd)</span>'
+            : '<span style="color:var(--text-muted)" title="Nenhuma movimentação deste volume para este endereço nos Kardex já processados">sem registro no Kardex</span>') +
+        '</td></tr>';
     }).join('');
 
     /* ---------- linha de TOTAL ----------
@@ -4765,15 +4772,14 @@ function renderizarEstoqueOperacao(p) {
       : 'TOTAL GERAL';
     const linhaTotalBO = '<tr class="total"><th class="centro">' + escapar(rotuloTotalBO) + '</th>' +
       '<td class="centro" colspan="2">' + fmtInt(enderecosFiltrados.size) + ' endereço(s) · ' + fmtInt(filtradasBO.length) + ' linha(s)</td>' +
-      '<td class="centro">—</td>' +
       '<td>' + fmtInt(totalFiltradoQtd) + '</td>' +
-      '<td>—</td><td>—</td><td>—</td><td>—</td></tr>';
+      '<td class="centro">—</td><td class="centro">—</td><td class="centro">—</td></tr>';
 
     blocoBO =
       '<div class="card">' +
         '<div class="section-title">Material parado em endereço transitório/validação — fora da capacidade</div>' +
         '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
-          'Cada linha é um endereço + SKU aguardando tratativa. "Entrou no endereço" vem do Kardex (último TL+ do volume).</p>' +
+          'Cada linha é um endereço + SKU aguardando tratativa. "Última movimentação" vem do Kardex (último TL+ do volume para este endereço).</p>' +
         (snapshotSemVolumes
           ? '<div class="aviso" style="margin-bottom:10px">Reprocesse <strong>Picking + Pulmão</strong> para trazer o nº do volume de cada linha — sem ele não dá pra cruzar a data real de entrada no endereço.</div>'
           : '') +
@@ -4812,11 +4818,11 @@ function renderizarEstoqueOperacao(p) {
           'Exibindo ' + fmtInt(linhasCarregadas.length) + ' de ' + fmtInt(filtradasBO.length) + ' linha(s)' +
           (filtradasBO.length !== validacaoTudo.length ? ' (filtrado de ' + fmtInt(validacaoTudo.length) + ')' : '') + '.</p>' +
         '<div class="tabela-rolavel"><table class="arvore"><thead><tr>' +
-          thOrdenavelBO('endereco', 'Endereço', 'centro') + thOrdenavelBO('classificacao', 'Classificação', 'centro') +
+          thOrdenavelBO('endereco', 'Endereço', 'centro') +
           thOrdenavelBO('sku', 'SKU', 'centro') + thOrdenavelBO('nome', 'Nome do produto', 'centro') +
-          thOrdenavelBO('qtd', 'QTDE') + thOrdenavelBO('data', 'Entrou no endereço') +
+          thOrdenavelBO('qtd', 'QTDE') +
           thOrdenavelBO('login', 'Movimentado por', 'centro') + thOrdenavelBO('volume', 'Volume', 'centro') +
-          thOrdenavelBO('criacao', 'Última movimentação registrada') +
+          thOrdenavelBO('data', 'Última movimentação', 'centro') +
         '</tr></thead><tbody>' + linhasBO + linhaTotalBO + '</tbody></table></div>' +
       '</div>';
   }
@@ -5087,12 +5093,6 @@ function blocoMovimentacoes() {
     : '';
   const filaItens = filaItensVisiveis();
   const pecasFila = filaItens ? filaItens.reduce(function (s, f) { return s + f.qtd; }, 0) : null;
-  // Dias do item mais antigo ainda parado — o que realmente importa
-  // operacionalmente não é só "quantos", é "há quanto tempo o mais velho
-  // está preso" (pedido do usuário, 23/09/2026, junto com o ajuste da Fila).
-  const diaMaisAntigoFila = (filaItens && filaItens.length)
-    ? filaItens.reduce(function (min, f) { return f.dia < min ? f.dia : min; }, filaItens[0].dia)
-    : null;
   const chipsFila = '<div style="display:flex;gap:4px;flex-wrap:wrap;margin:6px 0 2px">' +
     '<span class="chip' + (modoFilaRessuprimento === 'geral' ? ' on' : '') + '" style="font-size:10px;padding:2px 8px" onclick="alternarModoFila(\'geral\')">Fila geral</span>' +
     '<span class="chip' + (modoFilaRessuprimento === 'periodo' ? ' on' : '') + '" style="font-size:10px;padding:2px 8px" onclick="alternarModoFila(\'periodo\')">Período filtrado</span>' +
@@ -5158,17 +5158,12 @@ function blocoMovimentacoes() {
       '<div class="sub">' + (movimentos > 0 ? fmtDec1(pecas / movimentos) + ' peças por movimento' : '—') + '</div></div>' +
     '<div class="kpi"><div class="rot">Média por dia</div>' +
       '<div class="val forte">' + fmtInt(mediaDia) + '</div>' +
-      '<div class="sub">peças/dia sobre ' + fmtInt(avaliacaoDias.fechados.length) + ' dia(s) fechado(s) e trabalhado(s)</div></div>' +
+      '<div class="sub">peças/dia · ' + fmtInt(avaliacaoDias.fechados.length) + ' dia(s) fechado(s)</div></div>' +
     '<div class="kpi"><div class="rot">Fila em andamento</div>' +
       '<div class="val forte" style="color:var(--amber)">' + (pecasFila !== null ? fmtInt(pecasFila) : '—') + '</div>' +
       chipsFila +
       '<div class="sub">' + (pecasFila !== null
-        ? fmtInt(filaItens.length) + ' baixa(s) de material sem retorno ao Pulmão' +
-          (diaMaisAntigoFila ? ' · mais antiga há ' + fmtInt(diasDesdeIso(diaMaisAntigoFila)) + ' dia(s)' : '') +
-          (filtroTurnoRessuprimento.size ? ' · ' + rotuloTurnosSelecionados(filtroTurnoRessuprimento) : '') +
-          (modoFilaRessuprimento === 'periodo'
-            ? ' · baixadas entre ' + (filtroHistDe ? formatarDataSimples(filtroHistDe) : '—') + ' e ' + (filtroHistAte ? formatarDataSimples(filtroHistAte) : '—')
-            : ' (todo o último Kardex processado, sem recorte de período)')
+        ? fmtInt(filaItens.length) + ' baixa(s) de material sem retorno ao Pulmão'
         : 'reprocesse o Kardex para listar a fila por item') + '</div></div>' +
   '</div>';
 
@@ -5655,12 +5650,18 @@ function enriquecerValidacaoComKardex(lista) {
   const n = function (x) { return String(Number(x) || 0); };
   return lista.map(function (v) {
     let entrada = null, login = '', nome = '', semKardex = 0;
+    // Última movimentação da linha = o TL+ MAIS RECENTE entre os volumes dela
+    // (cada volume parado aqui teve como último movimento a chegada neste
+    // endereço). NÃO é a DT. CRI. do Pulmão — essa é a criação do volume, às
+    // vezes anos atrás, e aparecia como "última movimentação" por engano.
+    let ultimaMov = null, ultimaLogin = '', ultimaNome = '';
     const volumes = (v.volumes || []).map(function (vol) {
       const e = entradas[vol.v];
       const bate = e && e[0] === n(v.rua) && e[1] === n(v.nivel) && e[2] === n(v.box);
       if (!bate) semKardex++;
       const dt = bate ? e[3] : null;
       if (dt && (!entrada || dt < entrada)) { entrada = dt; login = e[5] || ''; nome = e[6] || ''; }
+      if (dt && (!ultimaMov || dt > ultimaMov)) { ultimaMov = dt; ultimaLogin = e[5] || ''; ultimaNome = e[6] || ''; }
       return { v: vol.v, q: vol.q, cri: vol.cri, entrada: dt, hora: bate ? e[4] : null, login: bate ? (e[5] || '') : '', nome: bate ? (e[6] || '') : '' };
     });
     const dias = entrada ? Math.max(0, Math.round((Date.now() - new Date(entrada + 'T12:00:00').getTime()) / 86400000)) : null;
@@ -5673,9 +5674,11 @@ function enriquecerValidacaoComKardex(lista) {
       if (!entrada) classificacao = 'Rua 98 — sem data de entrada';
       else classificacao = diasUteisDesde(entrada) <= 2 ? 'Rua 98 — em fluxo de armazenagem (até 2 dias úteis)' : 'Rua 98 — parado há mais de 2 dias úteis';
     }
+    const diasUltima = ultimaMov ? Math.max(0, Math.round((Date.now() - new Date(ultimaMov + 'T12:00:00').getTime()) / 86400000)) : null;
     return Object.assign({}, v, {
       classificacao: classificacao,
       entrada: entrada, entrada_login: login, entrada_nome: nome, dias_parado: dias,
+      ultima_mov: ultimaMov, ultima_login: ultimaLogin, ultima_nome: ultimaNome, dias_ultima: diasUltima,
       volumes_det: volumes, volumes_sem_kardex: semKardex,
     });
   });
@@ -5684,8 +5687,8 @@ function alvoBuscaValidacao(v) {
   return [
     v.rua, v.nivel, v.box, formatarEndereco(v.rua, v.nivel, v.box), v.classificacao,
     v.artigo_codigo, v.cor, v.tamanho, v.artigo_codigo + '/' + v.cor + '/' + v.tamanho,
-    v.descricao, v.qtd, fmtInt(v.qtd), v.entrada ? formatarDataSimples(v.entrada) : '',
-    v.entrada_login, v.entrada_nome, (v.volumes_det || []).map(function (x) { return x.v; }).join(' '),
+    v.descricao, v.qtd, fmtInt(v.qtd), v.ultima_mov ? formatarDataSimples(v.ultima_mov) : '',
+    v.ultima_login, v.ultima_nome, (v.volumes_det || []).map(function (x) { return x.v; }).join(' '),
   ].join(' ').toLowerCase();
 }
 
@@ -5708,21 +5711,22 @@ function exportarCSVValidacao() {
   // Uma linha por VOLUME: é com o nº do volume que o time consulta e trata o
   // material no sistema (pedido do usuário, 23/09/2026).
   const linhas = [['Endereco', 'Classificacao', 'SKU', 'Nome do produto', 'Volume', 'QTDE do volume',
-    'Entrou no endereco', 'Hora', 'Dias parado', 'Login que movimentou', 'Nome de quem movimentou', 'Criacao do volume (1a alocacao)']];
+    'Ultima movimentacao', 'Hora', 'Dias desde a ultima movimentacao', 'Login que movimentou', 'Nome de quem movimentou']];
   const hoje = Date.now();
   linhasFiltro.forEach(function (v) {
     const base = [formatarEndereco(v.rua, v.nivel, v.box), v.classificacao,
       v.artigo_codigo + '/' + v.cor + '/' + v.tamanho, v.descricao];
     if (!v.volumes_det.length) {
-      linhas.push(base.concat(['', v.qtd, '', '', '', '', '', v.mais_antigo || '']));
+      linhas.push(base.concat(['', v.qtd, 'sem registro no Kardex', '', '', '', '']));
       return;
     }
     v.volumes_det.forEach(function (vol) {
       const dias = vol.entrada ? Math.max(0, Math.round((hoje - new Date(vol.entrada + 'T12:00:00').getTime()) / 86400000)) : '';
       const hora = vol.hora != null ? String(Math.floor(vol.hora / 60)).padStart(2, '0') + ':' + String(vol.hora % 60).padStart(2, '0') : '';
+      // ="..." = Excel lê o volume como texto e não vira 1,79E+17.
       linhas.push(base.concat([
-        '="' + vol.v + '"', vol.q, // ="..." = Excel lê como texto e não vira 1,79E+17 vol.entrada || 'sem registro no Kardex', hora, dias,
-        vol.login, vol.nome, vol.cri || '',
+        '="' + vol.v + '"', vol.q, vol.entrada || 'sem registro no Kardex', hora, dias,
+        vol.login, vol.nome,
       ]));
     });
   });

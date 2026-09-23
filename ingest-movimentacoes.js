@@ -236,7 +236,7 @@ function parsearKardex(textoArquivo) {
    atrás), então a data de ENTRADA no endereço vem daqui: o último TL+ do
    volume. Pedido do usuário, 23/09/2026: item na rua 500 aparecia como de
    2023 (DT. CRI.) quando tinha sido movido pra lá em 15/09/2026. */
-const RUAS_ENTRADA_RASTREADA = { 10: 1, 21: 1, 24: 1, 26: 1, 27: 1, 98: 1, 99: 1, 500: 1, 600: 1 };
+const RUAS_ENTRADA_RASTREADA = { 10: 1, 21: 1, 24: 1, 26: 1, 27: 1, 98: 1, 99: 1, 100: 1, 500: 1, 600: 1 };
 
 /* volume -> [rua, nivel, box, diaISO, minutos, login, nome] do TL+ MAIS
    RECENTE desse volume no Kardex — só guardado quando esse último destino é
