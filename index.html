@@ -5178,7 +5178,7 @@ function blocoMovimentacoes() {
       '<div class="val forte" style="color:var(--amber)">' + (pecasFila !== null ? fmtInt(pecasFila) : '—') + '</div>' +
       chipsFila +
       '<div class="sub">' + (pecasFila !== null
-        ? fmtInt(filaItens.length) + ' baixa(s) do Pulmão ainda paradas no corredor' +
+        ? fmtInt(filaItens.length) + ' baixa(s) de material sem retorno ao Pulmão' +
           (diaMaisAntigoFila ? ' · mais antiga há ' + fmtInt(diasDesdeIso(diaMaisAntigoFila)) + ' dia(s)' : '') +
           (filtroTurnoRessuprimento.size ? ' · ' + rotuloTurnosSelecionados(filtroTurnoRessuprimento) : '') +
           (modoFilaRessuprimento === 'periodo'
