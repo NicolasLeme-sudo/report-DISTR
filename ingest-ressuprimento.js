@@ -307,6 +307,7 @@ function parsearPulmao(textoArquivo) {
       unidade: (p[9] || '').trim(),
       em_linha: (p[11] || '').trim().toUpperCase() === 'S',
       rua: rua, nivel: nivel, box: box,
+      volume: volumeId,
       dt_cri: parsearDataDDMMAA(p[17]),
       qtd: window.numeroBR(p[19]), // QTD.VOLUME — nunca QTD.STOCK (col. 13), ver cabeçalho do arquivo
       codbar: (p[20] || '').trim(),
@@ -726,12 +727,16 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
         rua: r.rua, nivel: r.nivel, box: r.box,
         artigo_codigo: r.artigo_codigo, cor: r.cor, tamanho: r.tamanho, descricao: r.descricao,
         marca: r.marca, segmento: r.segmento, classificacao: r.classif_rotulo,
-        qtd: 0, mais_antigo: null,
+        qtd: 0, mais_antigo: null, volumes: [],
       });
     }
     const g = validacaoPorGrupo.get(chave);
     g.qtd += r.qtd;
+    // mais_antigo = DT. CRI. (criação do volume/1ª alocação no CD), NÃO a
+    // entrada neste endereço — essa vem do Kardex, cruzada por volume na tela
+    // (entradas_volume do snapshot ressuprimento_mov).
     if (r.dt_cri && (!g.mais_antigo || r.dt_cri < new Date(g.mais_antigo))) g.mais_antigo = r.dt_cri.toISOString().slice(0, 10);
+    if (r.volume) g.volumes.push({ v: r.volume, q: r.qtd, cri: r.dt_cri ? r.dt_cri.toISOString().slice(0, 10) : null });
   });
 
   /* ---------- cruzamento de ressuprimento: Picking × apoio disponível no Pulmão, por EAN/CODBAR ---------- */

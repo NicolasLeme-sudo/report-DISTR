@@ -351,6 +351,23 @@ eq(endTransito500.qtd, 10, 'endereço 500|1|1 soma A2(7)+A3(3) = 10, mesmo ender
 eq(endTransito500.skus, 2, 'e conta os 2 SKUs distintos que dividem esse endereço');
 ok(/Baixar Ressuprimento/.test(endTransito500.classif_rotulo), 'carrega o rótulo da classificação da rua (500 = Baixar Ressuprimento)');
 
+// Nº do volume chega até a lista do card (é com ele que a tela cruza a data
+// real de entrada no endereço via Kardex, e que o time trata o material).
+const pulmaoComVolume = {
+  registros: [
+    { familia_codigo: '101', artigo_codigo: 'A2', cor: 'PT', tamanho: '41', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '500', nivel: '3', box: '3', volume: 'VOL1', dt_cri: new Date('2023-05-10T12:00:00Z'), qtd: 7, codbar: '' },
+    { familia_codigo: '101', artigo_codigo: 'A2', cor: 'PT', tamanho: '41', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '500', nivel: '3', box: '3', volume: 'VOL2', dt_cri: null, qtd: 2, codbar: '' },
+  ],
+  colisoes_volume: 0,
+};
+const payloadVol = construirSnapshotRessuprimento(
+  { registros: [], negativas_excluidas: 0, negativas_unidades: 0 }, pulmaoComVolume, mapaFamilias, { pulmao: 100 },
+  { arquivo_picking: 'x.txt', arquivo_pulmao: 'p.txt' }
+);
+const linhaVol = payloadVol.validacao.find(function (v) { return v.rua === '500'; });
+eq(linhaVol.volumes.map(function (x) { return x.v; }).join(','), 'VOL1,VOL2', 'lista os 2 volumes do mesmo endereço+SKU');
+eq(linhaVol.volumes[0].cri, '2023-05-10', 'guarda a criação do volume à parte (não é a entrada no endereço)');
+
 /* -------------------------------------------------------------------------- */
 secao('ocupação — Rua 10 do Pulmão é sujeira de movimentação antiga, não acessório de verdade');
 // Confirmado pela operação (09/09/2026): a Rua 10 tem saldo endereçado de uma

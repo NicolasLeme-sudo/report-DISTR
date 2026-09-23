@@ -228,6 +228,47 @@ function parsearKardex(textoArquivo) {
   };
 }
 
+/* Ruas de sinalização/passagem cujo material aparece no card "B.O. em
+   endereço transitório" do Ressuprimento (mesmo gabarito de
+   CLASSIF_RUA_PULMAO em ingest-ressuprimento.js, mais 70/80/99). O Pulmão só
+   traz DT. CRI. (criação do volume — a 1ª alocação no CD, às vezes anos
+   atrás), então a data de ENTRADA no endereço vem daqui: o último TL+ do
+   volume. Pedido do usuário, 23/09/2026: item na rua 500 aparecia como de
+   2023 (DT. CRI.) quando tinha sido movido pra lá em 15/09/2026. */
+const RUAS_ENTRADA_RASTREADA = { 10: 1, 21: 1, 24: 1, 26: 1, 27: 1, 70: 1, 80: 1, 98: 1, 99: 1, 100: 1, 500: 1, 600: 1 };
+
+/* volume -> [rua, nivel, box, diaISO, minutos, login, nome] do TL+ MAIS
+   RECENTE desse volume no Kardex — só guardado quando esse último destino é
+   uma rua rastreada (se o volume saiu dela depois, o último TL+ aponta pra
+   outro lugar e ele não entra). Array em vez de objeto pra caber no payload. */
+function construirEntradasPorVolume(pernas) {
+  const ultimo = new Map();
+  pernas.forEach(function (p) {
+    if (p.tipo !== 'TL+' || !p.volume) return;
+    const atual = ultimo.get(p.volume);
+    if (!atual || p.dia > atual.dia || (p.dia === atual.dia && p.minutos > atual.minutos)) ultimo.set(p.volume, p);
+  });
+  const saida = {};
+  ultimo.forEach(function (p, volume) {
+    if (!RUAS_ENTRADA_RASTREADA[Number(p.rua) || 0]) return;
+    saida[volume] = [String(Number(p.rua)), String(Number(p.nivel)), String(Number(p.box)), p.dia, p.minutos, p.login, p.nome];
+  });
+  return saida;
+}
+
+/* Junta o mapa do Kardex anterior com o novo: o novo manda (é mais recente),
+   mas volumes que não aparecem nele continuam valendo — o Kardex é por
+   período, então um volume que entrou na rua 500 no mês passado e não mexeu
+   mais não some do cruzamento só porque o arquivo novo não o cobre. Volume
+   que o arquivo novo mostra saindo pra rua não rastreada é removido. */
+function mesclarEntradasPorVolume(anterior, pernas, novo) {
+  const resultado = Object.assign({}, anterior || {});
+  const movidos = new Set();
+  pernas.forEach(function (p) { if (p.tipo === 'TL+' && p.volume) movidos.add(p.volume); });
+  movidos.forEach(function (v) { delete resultado[v]; });
+  return Object.assign(resultado, novo);
+}
+
 /* ============================================================================
    CASAMENTO DAS PERNAS EM MOVIMENTOS
    ============================================================================
@@ -660,6 +701,7 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
     // Nada é descartado em silêncio: a tela mostra estes números pra que a
     // operação consiga bater o total do relatório com o que aparece aqui.
     descartados: casado.descartados,
+    entradas_volume: construirEntradasPorVolume(parsed.pernas),
     ignoradas_outro_tipo: parsed.ignoradas_outro_tipo,
     ignoradas_data_invalida: parsed.ignoradas_data_invalida,
   };
@@ -732,6 +774,22 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
     payload.resolucao_turno.por_cadastro.toLocaleString('pt-BR') + ' movimento(s), ' +
     payload.resolucao_turno.por_horario.toLocaleString('pt-BR') + ' presumido(s) pelo horário.'
   );
+
+  // Acumula entradas por volume com o snapshot anterior (ver
+  // mesclarEntradasPorVolume) — falha de leitura só perde o acúmulo, nunca
+  // derruba o processamento.
+  try {
+    const anterior = await supabaseClient.from('dashboard_snapshots')
+      .select('payload').eq('pagina', 'ressuprimento_mov')
+      .order('gerado_em', { ascending: false }).limit(1);
+    const mapaAnterior = anterior && anterior.data && anterior.data[0] && anterior.data[0].payload
+      ? anterior.data[0].payload.entradas_volume : null;
+    payload.entradas_volume = mesclarEntradasPorVolume(mapaAnterior, parsed.pernas, payload.entradas_volume);
+  } catch (e) {
+    avisar('Aviso: não deu pra acumular as entradas por volume do Kardex anterior (' + (e && e.message) + ').');
+  }
+  avisar(Object.keys(payload.entradas_volume).length.toLocaleString('pt-BR') +
+    ' volume(s) com data de entrada em endereço transitório/sinalização.');
 
   avisar('Publicando o snapshot…');
   const { error } = await supabaseClient.from('dashboard_snapshots').insert({
@@ -852,3 +910,5 @@ window.diaISO = diaISO;
 window.classificarPlanejamento = classificarPlanejamento;
 window.calcularSemPlanejamento = calcularSemPlanejamento;
 window.familiaPadded = familiaPadded;
+window.construirEntradasPorVolume = construirEntradasPorVolume;
+window.mesclarEntradasPorVolume = mesclarEntradasPorVolume;

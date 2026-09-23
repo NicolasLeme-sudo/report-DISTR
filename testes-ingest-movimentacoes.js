@@ -27,6 +27,32 @@ function eq(a, b, nome) {
 }
 
 /* ------------------------------------------------------------------ */
+console.log('\n=== entradas por volume — data de ENTRADA no endereço transitório, não a criação do volume ===');
+(function () {
+  const pernas = [
+    // V1: entrou na 99 em 01/09; depois foi pra 500 em 15/09 — vale a 500
+    { tipo: 'TL+', volume: 'V1', rua: '99', nivel: '01', box: '001', dia: '2026-09-01', minutos: 600, login: 'A', nome: 'Ana' },
+    { tipo: 'TL-', volume: 'V1', rua: '99', nivel: '01', box: '001', dia: '2026-09-15', minutos: 480, login: 'B', nome: 'Bia' },
+    { tipo: 'TL+', volume: 'V1', rua: '500', nivel: '03', box: '003', dia: '2026-09-15', minutos: 480, login: 'B', nome: 'Bia' },
+    // V2: último destino é Pulmão físico (rua 2 nível 8) — não é rastreado
+    { tipo: 'TL+', volume: 'V2', rua: '500', nivel: '01', box: '001', dia: '2026-09-10', minutos: 60, login: 'C', nome: '' },
+    { tipo: 'TL+', volume: 'V2', rua: '02', nivel: '08', box: '010', dia: '2026-09-12', minutos: 60, login: 'C', nome: '' },
+    // sem volume: ignorado
+    { tipo: 'TL+', volume: '', rua: '500', nivel: '01', box: '001', dia: '2026-09-12', minutos: 60, login: 'C', nome: '' },
+  ];
+  const m = ctx.construirEntradasPorVolume(pernas);
+  eq(m.V1, ['500', '3', '3', '2026-09-15', 480, 'B', 'Bia'], 'V1 vale o ÚLTIMO TL+ (rua 500 em 15/09), com endereço normalizado e quem movimentou');
+  ok(!('V2' in m), 'V2 saiu pra Pulmão físico depois — não fica no mapa');
+  eq(Object.keys(m).length, 1, 'linha sem volume não entra');
+
+  const anterior = { V2: ['500', '1', '1', '2026-08-01', 0, 'X', ''], V9: ['98', '1', '1', '2026-08-20', 0, 'Y', ''] };
+  const mesclado = ctx.mesclarEntradasPorVolume(anterior, pernas, m);
+  ok(!('V2' in mesclado), 'V2 do Kardex anterior é removido: o novo mostra ele saindo pra rua não rastreada');
+  eq(mesclado.V9, anterior.V9, 'V9 (sem movimento no Kardex novo) continua valendo do anterior');
+  eq(mesclado.V1[3], '2026-09-15', 'V1 vem do Kardex novo');
+})();
+
+/* ------------------------------------------------------------------ */
 console.log('\n=== classificarZona — nível manda, não a rua ===');
 eq(ctx.classificarZona('02', '01'), 'PICKING', 'rua 02 nível 01 -> Picking (estanteria)');
 eq(ctx.classificarZona('02', '07'), 'PICKING', 'rua 02 nível 07 -> Picking (último nível de estanteria)');

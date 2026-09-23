@@ -4064,7 +4064,9 @@ function renderizarEstoqueOperacao(p) {
      por ENDEREÇO + SKU, com filtro de classificação, busca livre, exportação
      e altura fixa (rola por dentro, não estica a página). */
   let blocoBO = '';
-  const validacaoTudo = p.validacao || [];
+  const validacaoTudo = enriquecerValidacaoComKardex(p.validacao || []);
+  const snapshotSemVolumes = validacaoTudo.length > 0 && validacaoTudo.every(function (v) { return !v.volumes; });
+  const semKardexEntradas = !(dadosMovimentacoes && dadosMovimentacoes.entradas_volume);
   if (filtroRessuprimento !== 'picking' && validacaoTudo.length) {
     const enderecosDistintos = new Set();
     const porRua = new Map();
@@ -4131,19 +4133,9 @@ function renderizarEstoqueOperacao(p) {
       ? validacaoTudo.filter(function (v) { return filtroClassifValidacao.has(v.classificacao); })
       : validacaoTudo;
     if (buscaBO) {
-      filtradasBO = filtradasBO.filter(function (v) {
-        // Inclui o SKU e o endereço já MONTADOS com o mesmo separador da
-        // coluna na tela ("art/cor/tam", "rua · nível · box") — sem isso,
-        // buscar exatamente o que aparece na tabela (copiado/colado) não
-        // encontrava nada, porque o texto buscado só batia campo a campo
-        // separado por espaço (bug real, achado testando a busca).
-        const alvo = [
-          v.rua, v.nivel, v.box, formatarEndereco(v.rua, v.nivel, v.box), v.classificacao,
-          v.artigo_codigo, v.cor, v.tamanho, v.artigo_codigo + '/' + v.cor + '/' + v.tamanho,
-          v.descricao, v.qtd, fmtInt(v.qtd), v.mais_antigo ? formatarDataSimples(v.mais_antigo) : '',
-        ].join(' ').toLowerCase();
-        return alvo.indexOf(buscaBO) !== -1;
-      });
+      // SKU e endereço entram já montados com o separador da coluna, pra
+      // busca copiada/colada da tabela achar a linha; volume também entra.
+      filtradasBO = filtradasBO.filter(function (v) { return alvoBuscaValidacao(v).indexOf(buscaBO) !== -1; });
     }
     const sinalBO = ordemValidacao.direcao === 'asc' ? 1 : -1;
     function chaveOrdemBO(v, campo) {
@@ -4152,7 +4144,7 @@ function renderizarEstoqueOperacao(p) {
         case 'classificacao': return v.classificacao || '';
         case 'sku': return v.artigo_codigo + '/' + v.cor + '/' + v.tamanho;
         case 'nome': return v.descricao || '';
-        case 'data': return v.mais_antigo || '';
+        case 'data': return v.entrada || '9999'; // sem registro no Kardex vai pro fim (asc)
         default: return v.qtd;
       }
     }
@@ -4179,7 +4171,17 @@ function renderizarEstoqueOperacao(p) {
         '<td class="centro">' + escapar(v.artigo_codigo) + '/' + escapar(v.cor) + '/' + escapar(v.tamanho) + '</td>' +
         '<td class="centro">' + escapar(v.descricao) + '</td>' +
         '<td>' + fmtInt(v.qtd) + '</td>' +
-        '<td>' + (v.mais_antigo ? formatarDataSimples(v.mais_antigo) : '—') + '</td></tr>';
+        '<td title="' + escapar(v.entrada_login ? 'Movimentado por ' + v.entrada_login + (v.entrada_nome ? ' — ' + v.entrada_nome : '') : '') + '">' +
+          (v.entrada ? formatarDataSimples(v.entrada) + ' <span style="color:var(--text-muted)">(' + fmtInt(v.dias_parado) + 'd)</span>'
+            : '<span style="color:var(--text-muted)" title="Nenhum TL+ deste volume para este endereço nos Kardex já processados">sem registro</span>') +
+        '</td>' +
+        '<td class="centro" style="font-size:11px">' + escapar(v.entrada_login || '—') + '</td>' +
+        '<td class="centro" style="font-size:11px;font-family:monospace">' +
+          (v.volumes_det.length
+            ? escapar(v.volumes_det[0].v) + (v.volumes_det.length > 1 ? ' <span style="color:var(--text-muted)">+' + (v.volumes_det.length - 1) + '</span>' : '')
+            : '—') +
+        '</td>' +
+        '<td style="color:var(--text-muted)">' + (v.mais_antigo ? formatarDataSimples(v.mais_antigo) : '—') + '</td></tr>';
     }).join('');
 
     /* ---------- linha de TOTAL ----------
@@ -4199,18 +4201,24 @@ function renderizarEstoqueOperacao(p) {
       '<td class="centro" colspan="2">' + fmtInt(enderecosFiltrados.size) + ' endereço(s) · ' + fmtInt(filtradasBO.length) + ' linha(s)</td>' +
       '<td class="centro">—</td>' +
       '<td>' + fmtInt(totalFiltradoQtd) + '</td>' +
-      '<td>—</td></tr>';
+      '<td>—</td><td>—</td><td>—</td><td>—</td></tr>';
 
     blocoBO =
       '<div class="card">' +
-        '<div class="section-title">B.O. em endereço transitório/validação — saldo fora da capacidade</div>' +
+        '<div class="section-title">Material parado em endereço transitório/validação — fora da capacidade</div>' +
         '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
-          'Ruas de passagem/sinalização (fora da ocupação × capacidade) — cada linha é um endereço + SKU esperando decisão.</p>' +
+          'Cada linha é um endereço + SKU aguardando tratativa. "Entrou no endereço" vem do Kardex (último TL+ do volume).</p>' +
+        (snapshotSemVolumes
+          ? '<div class="aviso" style="margin-bottom:10px">Reprocesse <strong>Picking + Pulmão</strong> para trazer o nº do volume de cada linha — sem ele não dá pra cruzar a data real de entrada no endereço.</div>'
+          : '') +
+        (semKardexEntradas
+          ? '<div class="aviso" style="margin-bottom:10px">Reprocesse o <strong>Kardex</strong> (Movimentações) para calcular a data em que cada volume entrou no endereço.</div>'
+          : '') +
         '<div class="kpi-row">' +
           '<div class="kpi"><div class="rot">Peças paradas em trânsito/validação</div>' +
             '<div class="val forte" style="color:var(--amber)">' + fmtInt(totalQtd) + '</div>' +
             '<div class="sub">fora da ocupação de ' + fmtInt((p.ocupacao && p.ocupacao.pulmao && p.ocupacao.pulmao.total ? p.ocupacao.pulmao.total.ocupado : 0)) + ' posições do Pulmão</div></div>' +
-          '<div class="kpi"><div class="rot">Endereços com B.O.</div>' +
+          '<div class="kpi"><div class="rot">Endereços com material parado</div>' +
             '<div class="val forte">' + fmtInt(enderecosDistintos.size) + '</div>' +
             '<div class="sub">em ' + fmtInt(ruas.length) + ' rua(s)</div></div>' +
         '</div>' +
@@ -4240,7 +4248,9 @@ function renderizarEstoqueOperacao(p) {
         '<div class="tabela-rolavel"><table class="arvore"><thead><tr>' +
           thOrdenavelBO('endereco', 'Endereço', 'centro') + thOrdenavelBO('classificacao', 'Classificação', 'centro') +
           thOrdenavelBO('sku', 'SKU', 'centro') + thOrdenavelBO('nome', 'Nome do produto', 'centro') +
-          thOrdenavelBO('qtd', 'QTDE') + thOrdenavelBO('data', 'Data do lote') +
+          thOrdenavelBO('qtd', 'QTDE') + thOrdenavelBO('data', 'Entrou no endereço') +
+          '<th class="centro">Movimentado por</th><th class="centro">Volume</th>' +
+          '<th title="DT. CRI. do Pulmão — criação do volume / 1ª alocação no CD, não a entrada neste endereço">Criação do volume</th>' +
         '</tr></thead><tbody>' + linhasBO + linhaTotalBO + '</tbody></table></div>' +
       '</div>';
   }
@@ -5001,6 +5011,42 @@ async function exportarCSVBuscaSaldoEndereco() {
   URL.revokeObjectURL(a.href);
 }
 
+/* Data em que cada volume ENTROU no endereço transitório, vinda do Kardex
+   (último TL+ do volume — entradas_volume do snapshot ressuprimento_mov). O
+   Pulmão só tem DT. CRI., a criação do volume/1ª alocação no CD: usar ela
+   como "desde quando está parado" mostrava itens movidos pra rua 500 em
+   15/09/2026 como se estivessem lá desde 2023 (achado pelo usuário,
+   23/09/2026). Volume sem TL+ conhecido pra ESTE endereço fica sem data de
+   entrada (null) — nunca cai de volta pra DT. CRI. */
+function enriquecerValidacaoComKardex(lista) {
+  const entradas = (dadosMovimentacoes && dadosMovimentacoes.entradas_volume) || {};
+  const n = function (x) { return String(Number(x) || 0); };
+  return lista.map(function (v) {
+    let entrada = null, login = '', nome = '', semKardex = 0;
+    const volumes = (v.volumes || []).map(function (vol) {
+      const e = entradas[vol.v];
+      const bate = e && e[0] === n(v.rua) && e[1] === n(v.nivel) && e[2] === n(v.box);
+      if (!bate) semKardex++;
+      const dt = bate ? e[3] : null;
+      if (dt && (!entrada || dt < entrada)) { entrada = dt; login = e[5] || ''; nome = e[6] || ''; }
+      return { v: vol.v, q: vol.q, cri: vol.cri, entrada: dt, hora: bate ? e[4] : null, login: bate ? (e[5] || '') : '', nome: bate ? (e[6] || '') : '' };
+    });
+    const dias = entrada ? Math.max(0, Math.round((Date.now() - new Date(entrada + 'T12:00:00').getTime()) / 86400000)) : null;
+    return Object.assign({}, v, {
+      entrada: entrada, entrada_login: login, entrada_nome: nome, dias_parado: dias,
+      volumes_det: volumes, volumes_sem_kardex: semKardex,
+    });
+  });
+}
+function alvoBuscaValidacao(v) {
+  return [
+    v.rua, v.nivel, v.box, formatarEndereco(v.rua, v.nivel, v.box), v.classificacao,
+    v.artigo_codigo, v.cor, v.tamanho, v.artigo_codigo + '/' + v.cor + '/' + v.tamanho,
+    v.descricao, v.qtd, fmtInt(v.qtd), v.entrada ? formatarDataSimples(v.entrada) : '',
+    v.entrada_login, v.entrada_nome, (v.volumes_det || []).map(function (x) { return x.v; }).join(' '),
+  ].join(' ').toLowerCase();
+}
+
 /* Exporta a listagem de "B.O. em endereço transitório/validação" — ignora o
    limite de linhas CARREGADAS na tela (limiteValidacao), mas respeita o
    filtro de classificação e a busca: o CSV é sempre "tudo que bate com o
@@ -5008,30 +5054,35 @@ async function exportarCSVBuscaSaldoEndereco() {
 function exportarCSVValidacao() {
   const p = window._snapshotRessuprimento;
   if (!p || !(p.validacao || []).length) return;
+  const enriquecidas = enriquecerValidacaoComKardex(p.validacao);
   let linhasFiltro = filtroClassifValidacao.size
-    ? p.validacao.filter(function (v) { return filtroClassifValidacao.has(v.classificacao); })
-    : p.validacao;
+    ? enriquecidas.filter(function (v) { return filtroClassifValidacao.has(v.classificacao); })
+    : enriquecidas;
   const busca = filtroTextoValidacao.trim().toLowerCase();
   if (busca) {
-    // Mesma montagem de `alvo` da busca na tela (rua·nível·box e SKU já
-    // juntados com o separador da coluna) — pra exportar exatamente o que
-    // a busca visível encontrou, nem mais nem menos linhas.
-    linhasFiltro = linhasFiltro.filter(function (v) {
-      const alvo = [
-        v.rua, v.nivel, v.box, formatarEndereco(v.rua, v.nivel, v.box), v.classificacao,
-        v.artigo_codigo, v.cor, v.tamanho, v.artigo_codigo + '/' + v.cor + '/' + v.tamanho,
-        v.descricao, v.qtd, v.mais_antigo,
-      ].join(' ').toLowerCase();
-      return alvo.indexOf(busca) !== -1;
-    });
+    // Mesmo alvo da busca na tela — exporta exatamente o que ela encontrou.
+    linhasFiltro = linhasFiltro.filter(function (v) { return alvoBuscaValidacao(v).indexOf(busca) !== -1; });
   }
-  const linhas = [['Endereco', 'Classificacao', 'SKU', 'Nome do produto', 'QTDE', 'Data do lote']];
+  // Uma linha por VOLUME: é com o nº do volume que o time consulta e trata o
+  // material no sistema (pedido do usuário, 23/09/2026).
+  const linhas = [['Endereco', 'Classificacao', 'SKU', 'Nome do produto', 'Volume', 'QTDE do volume',
+    'Entrou no endereco', 'Hora', 'Dias parado', 'Login que movimentou', 'Nome de quem movimentou', 'Criacao do volume (1a alocacao)']];
+  const hoje = Date.now();
   linhasFiltro.forEach(function (v) {
-    linhas.push([
-      formatarEndereco(v.rua, v.nivel, v.box), v.classificacao,
-      v.artigo_codigo + '/' + v.cor + '/' + v.tamanho, v.descricao,
-      v.qtd, v.mais_antigo || '',
-    ]);
+    const base = [formatarEndereco(v.rua, v.nivel, v.box), v.classificacao,
+      v.artigo_codigo + '/' + v.cor + '/' + v.tamanho, v.descricao];
+    if (!v.volumes_det.length) {
+      linhas.push(base.concat(['', v.qtd, '', '', '', '', '', v.mais_antigo || '']));
+      return;
+    }
+    v.volumes_det.forEach(function (vol) {
+      const dias = vol.entrada ? Math.max(0, Math.round((hoje - new Date(vol.entrada + 'T12:00:00').getTime()) / 86400000)) : '';
+      const hora = vol.hora != null ? String(Math.floor(vol.hora / 60)).padStart(2, '0') + ':' + String(vol.hora % 60).padStart(2, '0') : '';
+      linhas.push(base.concat([
+        '="' + vol.v + '"', vol.q, // ="..." = Excel lê como texto e não vira 1,79E+17 vol.entrada || 'sem registro no Kardex', hora, dias,
+        vol.login, vol.nome, vol.cri || '',
+      ]));
+    });
   });
   const csv = linhas.map(function (l) {
     return l.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(';');
@@ -5039,7 +5090,7 @@ function exportarCSVValidacao() {
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'bo-transito-validacao-distribuidora.csv';
+  a.download = 'material-parado-transitorio-por-volume.csv';
   a.click();
   URL.revokeObjectURL(a.href);
 }
