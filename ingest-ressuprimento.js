@@ -60,7 +60,7 @@ Object.assign(CLASSIF_RUA_PULMAO, {
   // chão, endereços criados porque faltou espaço no Pulmão. É estoque bom,
   // não pendência — sai do card de material parado, mas também não é
   // porta-pallet, então não entra na capacidade do Pulmão.
-  '100': { grupo: 'ARMAZENAGEM_CHAO', rotulo: 'Recebimento armazenado no chão' },
+  '100': { grupo: 'ARMAZENAGEM_CHAO', rotulo: 'Recebimento armazenado no chão (provisório)' },
   '500': { grupo: 'VALIDACAO', rotulo: 'Baixar Ressuprimento' },
   '600': { grupo: 'VALIDACAO', rotulo: 'Subir Ressuprimento' },
 });
@@ -390,7 +390,12 @@ function classificarPickingEPulmao(picking, pulmao, mapaFamilias) {
       bucket: classificarBucket(fam.segmento, fam.categoria),
       origem: 'pulmao', motivo: null,
       apoio_confiavel: classif.grupo === 'PULMAO' || classif.grupo === 'ARMAZENAGEM_CHAO',
-      em_validacao: classif.grupo !== 'PULMAO' && classif.grupo !== 'ARMAZENAGEM_CHAO',
+      // ARMAZENAGEM_CHAO (rua 100) voltou a aparecer no card de material
+      // parado pra acompanhamento (pedido do usuário, 23/09/2026: é
+      // provisório, "só está sendo utilizado por agora") — mas continua
+      // fora da capacidade do Pulmão (pulmaoFisico) e conta como apoio
+      // confiável, porque é estoque real, só não é porta-pallet.
+      em_validacao: classif.grupo !== 'PULMAO',
       classif_grupo: classif.grupo, classif_rotulo: classif.rotulo,
     });
   }).concat(pulmaoViaPicking.map(function (r) {

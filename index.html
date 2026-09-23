@@ -4557,15 +4557,26 @@ function renderizarEstoqueOperacao(p) {
         'title="Ordenar pelo número da rua">Endereço' + setaOrdemBarrasBO('rua') + '</span>' +
     '</div>';
 
-    /* ---------- chips de classificação (dinâmico, direto do que existe no arquivo) ---------- */
-    const classificacoes = Array.from(new Set(validacaoTudo.map(function (v) { return v.classificacao; }))).sort();
+    /* ---------- chips de classificação (dinâmico, direto do que existe no arquivo) ----------
+       Rótulo mostra a(s) rua(s) junto (pedido do usuário, 23/09/2026) — sem
+       isso "Sujeira" sozinho não dizia se era a rua 24 ou a 26, e rótulos
+       como "Baixar Ressuprimento" não diziam qual rua é (500). */
+    const ruasPorClassif = new Map();
+    validacaoTudo.forEach(function (v) {
+      if (!ruasPorClassif.has(v.classificacao)) ruasPorClassif.set(v.classificacao, new Set());
+      ruasPorClassif.get(v.classificacao).add(v.rua);
+    });
+    const classificacoes = Array.from(ruasPorClassif.keys()).sort();
     let chipsClassif = '<div class="filtros">' +
       '<span class="rot-filtro">Classificação</span>' +
       '<span class="chip' + (!filtroClassifValidacao.size ? ' on' : '') +
         '" onclick="alternarFiltroClassifValidacao(null)">Todas</span>';
     classificacoes.forEach(function (c) {
+      const ruasDoChip = Array.from(ruasPorClassif.get(c)).sort(function (a, b) { return Number(a) - Number(b); });
+      // Rótulos que já começam com "Rua N —" (rua 98) não repetem o número.
+      const rotuloRua = /^Rua\s+\d/i.test(c) ? '' : ' (rua ' + ruasDoChip.join(', ') + ')';
       chipsClassif += '<span class="chip' + (filtroClassifValidacao.has(c) ? ' on' : '') +
-        '" onclick="alternarFiltroClassifValidacao(\'' + escaparJs(c) + '\')">' + escapar(c) + '</span>';
+        '" onclick="alternarFiltroClassifValidacao(\'' + escaparJs(c) + '\')">' + escapar(c) + escapar(rotuloRua) + '</span>';
     });
     if (filtroClassifValidacao.size) {
       chipsClassif += '<span class="chip" style="color:var(--red)" onclick="alternarFiltroClassifValidacao(null)">✕ Limpar filtro</span>';
@@ -4590,6 +4601,9 @@ function renderizarEstoqueOperacao(p) {
         case 'sku': return v.artigo_codigo + '/' + v.cor + '/' + v.tamanho;
         case 'nome': return v.descricao || '';
         case 'data': return v.entrada || '9999'; // sem registro no Kardex vai pro fim (asc)
+        case 'login': return v.entrada_login || '';
+        case 'volume': return (v.volumes_det[0] && v.volumes_det[0].v) || '';
+        case 'criacao': return v.mais_antigo || '9999';
         default: return v.qtd;
       }
     }
@@ -4621,10 +4635,11 @@ function renderizarEstoqueOperacao(p) {
             : '<span style="color:var(--text-muted)" title="Nenhum TL+ deste volume para este endereço nos Kardex já processados">sem registro</span>') +
         '</td>' +
         '<td class="centro" style="font-size:11px">' + escapar(v.entrada_login || '—') + '</td>' +
-        '<td class="centro" style="font-size:11px;font-family:monospace">' +
-          (v.volumes_det.length
-            ? escapar(v.volumes_det[0].v) + (v.volumes_det.length > 1 ? ' <span style="color:var(--text-muted)">+' + (v.volumes_det.length - 1) + '</span>' : '')
-            : '—') +
+        '<td class="centro" style="font-size:11px;font-family:monospace" title="' +
+          escapar(v.volumes_det.map(function (x) { return x.v; }).join(', ')) + '">' +
+          (v.volumes_det.length === 0 ? '—'
+            : v.volumes_det.length === 1 ? escapar(v.volumes_det[0].v)
+            : fmtInt(v.volumes_det.length) + ' volumes') +
         '</td>' +
         '<td style="color:var(--text-muted)">' + (v.mais_antigo ? formatarDataSimples(v.mais_antigo) : '—') + '</td></tr>';
     }).join('');
@@ -4694,8 +4709,8 @@ function renderizarEstoqueOperacao(p) {
           thOrdenavelBO('endereco', 'Endereço', 'centro') + thOrdenavelBO('classificacao', 'Classificação', 'centro') +
           thOrdenavelBO('sku', 'SKU', 'centro') + thOrdenavelBO('nome', 'Nome do produto', 'centro') +
           thOrdenavelBO('qtd', 'QTDE') + thOrdenavelBO('data', 'Entrou no endereço') +
-          '<th class="centro">Movimentado por</th><th class="centro">Volume</th>' +
-          '<th title="DT. CRI. do Pulmão — criação do volume / 1ª alocação no CD, não a entrada neste endereço">Criação do volume</th>' +
+          thOrdenavelBO('login', 'Movimentado por', 'centro') + thOrdenavelBO('volume', 'Volume', 'centro') +
+          thOrdenavelBO('criacao', 'Última movimentação registrada') +
         '</tr></thead><tbody>' + linhasBO + linhaTotalBO + '</tbody></table></div>' +
       '</div>';
   }
@@ -5035,7 +5050,10 @@ function blocoMovimentacoes() {
       '<div class="val forte" style="color:var(--amber)">' + (pecasFila !== null ? fmtInt(pecasFila) : '—') + '</div>' +
       chipsFila +
       '<div class="sub">' + (pecasFila !== null
-        ? fmtInt(filaItens.length) + ' baixa(s) do Pulmão ainda paradas no corredor (último Kardex)'
+        ? fmtInt(filaItens.length) + ' baixa(s) do Pulmão ainda paradas no corredor' +
+          (modoFilaRessuprimento === 'periodo'
+            ? ' · baixadas entre ' + (filtroHistDe ? formatarDataSimples(filtroHistDe) : '—') + ' e ' + (filtroHistAte ? formatarDataSimples(filtroHistAte) : '—')
+            : ' (todo o último Kardex processado, sem recorte de período)')
         : 'reprocesse o Kardex para listar a fila por item') + '</div></div>' +
   '</div>';
 
@@ -5207,10 +5225,18 @@ function blocoMovimentacoes() {
         '<div class="val forte" style="color:var(--olive)">' + fmtInt(pecasD0) + ' Peças</div>' +
         '<div class="sub">' + fmtInt(d0.length) + ' de ' + fmtInt(plano.length) + ' PFAs planejadas</div></div>' +
       '<div class="kpi"><div class="rot">Planejado, não ressuprido</div>' +
-        '<div class="val forte" style="color:var(--red)">' + fmtInt(paresNaoRessup) + ' Peças</div>' +
+        // "0 Peças" quando TODAS as PFAs estão fora do Pendentes atual dava a
+        // entender que não havia pendência nenhuma — mas a árvore abaixo
+        // mostrava "N pendentes" do mesmo jeito (achado pelo usuário,
+        // 23/09/2026). Sem nenhum par CONHECIDO, mostra "—" em vez de "0":
+        // a pendência existe (conta de PFAs abaixo prova isso), só não dá
+        // pra saber quantas peças ela carrega.
+        '<div class="val forte" style="color:var(--red)" title="' +
+          (naoRessupSemPfa ? escapar(fmtInt(naoRessupSemPfa) + ' PFA(s) sem pares conhecidos — não aparecem mais no Pendentes atual pra dizer quanto carregam') : '') +
+          '">' + (paresNaoRessup > 0 ? fmtInt(paresNaoRessup) + ' Peças' : (naoRessupSemPfa ? '—' : fmtInt(paresNaoRessup) + ' Peças')) + '</div>' +
         '<div class="sub">' + fmtInt(naoRessup.length) + ' PFAs' +
           (aguardando.length ? ' (+ ' + fmtInt(aguardando.length) + ' aguardando o turno)' : ' sem nenhum movimento no Kardex') +
-          (naoRessupSemPfa ? ' · ' + fmtInt(naoRessupSemPfa) + ' fora do Pendentes atual' : '') +
+          (naoRessupSemPfa ? ' · ' + fmtInt(naoRessupSemPfa) + ' com pares desconhecidos (fora do Pendentes atual)' : '') +
         '</div></div>' +
       '<div class="kpi"><div class="rot">Sem planejamento</div>' +
         '<div class="val forte" style="color:var(--amber)">' + fmtInt(pecasSemPlano) + '</div>' +

@@ -418,8 +418,10 @@ const endRua10 = payloadRua10.transito_pulmao.enderecos.find(function (e) { retu
 eq(endRua10.qtd, 50, 'peça da Rua 10 continua visível no card de trânsito');
 eq(endRua10.classif_rotulo, 'Erro de Movimentação', 'rótulo da rua 10 é "Erro de Movimentação" (nome da operação)');
 
-// Rua 100: recebimento armazenado no chão — fora do card de material parado
-// E fora da capacidade do Pulmão, mas é estoque bom (apoio confiável).
+// Rua 100: recebimento armazenado no chão, provisório — volta a aparecer no
+// card de material parado pra acompanhamento (pedido do usuário,
+// 23/09/2026), mas continua fora da capacidade do Pulmão (não é
+// porta-pallet) e conta como apoio confiável (é estoque real).
 const payloadRua100 = construirSnapshotRessuprimento(
   { registros: [], negativas_excluidas: 0, negativas_unidades: 0 },
   { registros: [
@@ -427,9 +429,9 @@ const payloadRua100 = construirSnapshotRessuprimento(
   ], colisoes_volume: 0 },
   mapaFamilias, { pulmao: 100 }, { arquivo_picking: 'x.txt', arquivo_pulmao: 'p.txt' }
 );
-eq(payloadRua100.validacao.length, 0, 'rua 100 não aparece no card de material parado');
-eq(payloadRua100.transito_pulmao.total_enderecos, 0, 'nem no resumo de trânsito');
-eq(payloadRua100.ocupacao.pulmao.total.ocupado, 0, 'e não ocupa posição de porta-pallet do Pulmão');
+eq(payloadRua100.validacao.length, 1, 'rua 100 volta a aparecer no card de material parado (provisório)');
+eq(payloadRua100.validacao[0].classificacao, 'Recebimento armazenado no chão (provisório)', 'rótulo deixa claro que é provisório');
+eq(payloadRua100.ocupacao.pulmao.total.ocupado, 0, 'mas continua sem ocupar posição de porta-pallet do Pulmão');
 
 
 /* -------------------------------------------------------------------------- */
