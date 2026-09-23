@@ -2749,8 +2749,9 @@ function avaliarDiasRessuprimento(dias) {
   return { fechados: fechados, suspeitos: suspeitos };
 }
 const abertosRessuprimento = new Set();
-// Árvore Rua › Classificação › Segmento do card "Endereços vazios e com
-// menos de N peças" (Estoque) — mesmo padrão de abertosRessuprimento acima.
+// Árvore Rua › Picking/Pulmão › Vazio/Menos de N pç do card "Endereços
+// vazios e com menos de N peças" (Estoque) — mesmo padrão de
+// abertosRessuprimento acima.
 const abertosOciosos = new Set();
 function alternarNoOciosos(chave) {
   if (abertosOciosos.has(chave)) abertosOciosos.delete(chave); else abertosOciosos.add(chave);
@@ -2760,17 +2761,17 @@ function expandirTudoOciosos() {
   const p = window._snapshotRessuprimento;
   const oc = p && p.enderecos_ociosos;
   if (!oc) return;
+  // Mesma chave de zona usada em blocoOciosos: 'OC|R|<rua>|Z|picking' ou
+  // '...|Z|pulmao' — vazio/picado ficam no nível 3, sempre sem filhos.
   const listas = [
-    { chave: 'pv', lista: oc.picking.vazios },
-    { chave: 'pp', lista: oc.picking.picados },
-    { chave: 'uv', lista: oc.pulmao.vazios },
-    { chave: 'up', lista: oc.pulmao.picados },
+    { zona: 'picking', lista: oc.picking.vazios }, { zona: 'picking', lista: oc.picking.picados },
+    { zona: 'pulmao', lista: oc.pulmao.vazios }, { zona: 'pulmao', lista: oc.pulmao.picados },
   ];
   listas.forEach(function (c) {
     c.lista.forEach(function (l) {
       const rua = l[0];
-      const chaveR = 'OC|R|' + rua, chaveC = chaveR + '|C|' + c.chave;
-      abertosOciosos.add(chaveR); abertosOciosos.add(chaveC);
+      const chaveR = 'OC|R|' + rua, chaveZ = chaveR + '|Z|' + c.zona;
+      abertosOciosos.add(chaveR); abertosOciosos.add(chaveZ);
     });
   });
   renderizarEstoqueOperacao();
@@ -3695,16 +3696,14 @@ function renderizarPfas() {
       { chave: '0-2', rotulo: '0–2 dias', ate: 2 }, { chave: '3-5', rotulo: '3–5 dias', ate: 5 },
       { chave: '6-10', rotulo: '6–10 dias', ate: 10 }, { chave: '11+', rotulo: '11+ dias', ate: Infinity },
     ];
-    const porFaixaNf = new Map(), pfasFaixaNf = new Map(), porDiaNf = new Map();
-    let semData = 0;
+    const porFaixaNf = new Map(), pfasFaixaNf = new Map();
     doSeg.forEach(function (r) {
-      if (!r.data_nota) { semData += r.qtde; return; }
+      if (!r.data_nota) return;
       const d = diasDesdeIso(r.data_nota);
       const f = FAIXAS_NF.find(function (x) { return d <= x.ate; });
       porFaixaNf.set(f.chave, (porFaixaNf.get(f.chave) || 0) + r.qtde);
       if (!pfasFaixaNf.has(f.chave)) pfasFaixaNf.set(f.chave, new Set());
       pfasFaixaNf.get(f.chave).add(r.pfa);
-      porDiaNf.set(r.data_nota, (porDiaNf.get(r.data_nota) || 0) + r.qtde);
     });
     // Pizza (donut) por faixa de FIFO — mesmo traço em anel do "Backlog
     // FIFO" do Report E-commerce (pedido do usuário, 23/09/2026), dentro de
@@ -3721,7 +3720,6 @@ function renderizarPfas() {
         '<span style="color:var(--text-muted);width:34px;text-align:right">' + fmtInt(npfas) + ' PFA</span>' +
       '</div>';
     }).join('');
-    const diasOrdenados = Array.from(porDiaNf.entries()).sort(function (a, b) { return a[0] < b[0] ? -1 : 1; });
     const posTooltip = segColetaTooltipPos || { top: 80, left: 80 };
     detalheSegColeta =
       // Fundo invisível cobrindo a tela inteira — clicar fora fecha o tooltip.
@@ -3734,14 +3732,8 @@ function renderizarPfas() {
           '<span class="chip" onclick="alternarSegColeta(null)" style="cursor:pointer;font-size:10px">✕</span>' +
         '</div>' +
         '<p style="font-size:10.5px;color:var(--text-muted);margin:0 0 10px">Dias desde a emissão da NF (FIFO)</p>' +
-        '<div style="display:flex;align-items:center;gap:14px">' +
-          donutMultiSegmento(segmentosPizza, 'pç') +
-          '<div style="flex:1;min-width:0">' + legendaPizza + '</div>' +
-        '</div>' +
-        '<p style="font-size:10.5px;color:var(--text-muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">' +
-          '<strong>Por data de NF:</strong> ' +
-          diasOrdenados.map(function (e) { return formatarDataSimples(e[0]) + ' (' + fmtInt(e[1]) + ' pç)'; }).join(' · ') +
-          (semData ? ' · sem data: ' + fmtInt(semData) + ' pç' : '') + '</p>' +
+        '<div style="display:flex;justify-content:center">' + donutMultiSegmento(segmentosPizza, 'pç') + '</div>' +
+        '<div style="margin-top:10px">' + legendaPizza + '</div>' +
       '</div>';
   }
 
@@ -4445,30 +4437,45 @@ function renderizarEstoqueOperacao(p) {
     blocoOciosos = '<div class="card"><div class="section-title">Endereços vazios e com menos de 10 peças</div>' +
       '<div class="aviso">Reprocesse <strong>Picking + Pulmão</strong> em Admin › Abastecimento para mapear os endereços vazios.</div></div>';
   } else {
-    // Árvore Rua › Classificação › Segmento (pedido do usuário, 23/09/2026)
-    // em vez de tabela achatada com 4 colunas lado a lado — cada "gaveta" é
-    // Picking vazio / Picking < N / Pulmão vazio / Pulmão < N.
-    const CLASSIFS_OCIOSOS = [
-      { chave: 'pv', rotulo: 'Picking vazio', lista: oc.picking.vazios, cor: null },
-      { chave: 'pp', rotulo: 'Picking < ' + oc.limite_picado + ' pç', lista: oc.picking.picados, cor: '--amber' },
-      { chave: 'uv', rotulo: 'Pulmão vazio (estimado)', lista: oc.pulmao.vazios, cor: null },
-      { chave: 'up', rotulo: 'Pulmão < ' + oc.limite_picado + ' pç', lista: oc.pulmao.picados, cor: '--amber' },
+    // Árvore Rua › Picking/Pulmão › Vazio/Menos de N pç (pedido do usuário,
+    // 23/09/2026: "Numero da rua>PICKING/PULMÃO>VAZIO/MENOS DE 10 PÇS" — a
+    // zona (Picking ou Pulmão) vem antes do tipo, não misturados num rótulo
+    // só como antes ("Picking vazio", "Pulmão < N pç" etc.).
+    //
+    // Rua > 15 fica de fora aqui também, na tela, além de já ficar de fora
+    // no ingest (pedido do usuário, 23/09/2026: prédio físico só vai até a
+    // rua 15) — reforço client-side pra valer mesmo em snapshots antigos,
+    // gerados antes desse corte existir no ingest, sem esperar reprocessar.
+    const LIMITE_RUA_FISICA_TELA = 15;
+    const ZONAS_OCIOSOS = [
+      { chave: 'picking', rotulo: 'Picking', tipos: [
+        { chave: 'vazio', rotulo: 'Vazio', lista: oc.picking.vazios, cor: null },
+        { chave: 'picado', rotulo: 'Menos de ' + oc.limite_picado + ' pç', lista: oc.picking.picados, cor: '--amber' },
+      ] },
+      { chave: 'pulmao', rotulo: 'Pulmão', tipos: [
+        { chave: 'vazio', rotulo: 'Vazio (estimado)', lista: oc.pulmao.vazios, cor: null },
+        { chave: 'picado', rotulo: 'Menos de ' + oc.limite_picado + ' pç', lista: oc.pulmao.picados, cor: '--amber' },
+      ] },
     ];
-    const ruas = new Map(); // rua -> { classifs: Map(chave -> { rotulo, cor, segs: Map(seg -> {end, pecas}), end, pecas }), end, pecas }
+    const ruas = new Map(); // rua -> { zonas: Map(chave -> { rotulo, tipos: Map(chave -> {rotulo, cor, end, pecas}), end, pecas }), end, pecas }
     const tot = { pv: 0, pp: 0, uv: 0, up: 0 };
-    CLASSIFS_OCIOSOS.forEach(function (c) {
-      c.lista.forEach(function (l) {
-        const rua = l[0], seg = l[5], pecas = l[3];
-        tot[c.chave]++;
-        if (!ruas.has(rua)) ruas.set(rua, { classifs: new Map(), end: 0, pecas: 0 });
-        const r = ruas.get(rua);
-        r.end++; r.pecas += pecas;
-        if (!r.classifs.has(c.chave)) r.classifs.set(c.chave, { rotulo: c.rotulo, cor: c.cor, segs: new Map(), end: 0, pecas: 0 });
-        const cl = r.classifs.get(c.chave);
-        cl.end++; cl.pecas += pecas;
-        if (!cl.segs.has(seg)) cl.segs.set(seg, { end: 0, pecas: 0 });
-        const s = cl.segs.get(seg);
-        s.end++; s.pecas += pecas;
+    const TOT_CHAVE = { picking: { vazio: 'pv', picado: 'pp' }, pulmao: { vazio: 'uv', picado: 'up' } };
+    ZONAS_OCIOSOS.forEach(function (z) {
+      z.tipos.forEach(function (t) {
+        t.lista.forEach(function (l) {
+          const rua = l[0], pecas = l[3];
+          if (Number(rua) > LIMITE_RUA_FISICA_TELA) return;
+          tot[TOT_CHAVE[z.chave][t.chave]]++;
+          if (!ruas.has(rua)) ruas.set(rua, { zonas: new Map(), end: 0, pecas: 0 });
+          const r = ruas.get(rua);
+          r.end++; r.pecas += pecas;
+          if (!r.zonas.has(z.chave)) r.zonas.set(z.chave, { rotulo: z.rotulo, tipos: new Map(), end: 0, pecas: 0 });
+          const zn = r.zonas.get(z.chave);
+          zn.end++; zn.pecas += pecas;
+          if (!zn.tipos.has(t.chave)) zn.tipos.set(t.chave, { rotulo: t.rotulo, cor: t.cor, end: 0, pecas: 0 });
+          const tp = zn.tipos.get(t.chave);
+          tp.end++; tp.pecas += pecas;
+        });
       });
     });
     const ruasOrdenadas = Array.from(ruas.keys()).sort(function (a, b) { return Number(a) - Number(b); });
@@ -4492,15 +4499,16 @@ function renderizarEstoqueOperacao(p) {
       const chaveR = 'OC|R|' + rua;
       linhasArvoreOciosos += linhaOciosos(1, chaveR, 'Rua ' + rua, r.end, r.pecas, true, null);
       if (!abertosOciosos.has(chaveR)) return;
-      CLASSIFS_OCIOSOS.forEach(function (c) {
-        const cl = r.classifs.get(c.chave);
-        if (!cl) return;
-        const chaveC = chaveR + '|C|' + c.chave;
-        linhasArvoreOciosos += linhaOciosos(2, chaveC, c.rotulo, cl.end, cl.pecas, true, c.cor);
-        if (!abertosOciosos.has(chaveC)) return;
-        Array.from(cl.segs.keys()).sort(function (a, b) { return String(ROT_BUCKET[a] || a).localeCompare(String(ROT_BUCKET[b] || b)); }).forEach(function (seg) {
-          const s = cl.segs.get(seg);
-          linhasArvoreOciosos += linhaOciosos(3, chaveC + '|S|' + seg, escapar(ROT_BUCKET[seg] || seg), s.end, s.pecas, false, null);
+      ZONAS_OCIOSOS.forEach(function (z) {
+        const zn = r.zonas.get(z.chave);
+        if (!zn) return;
+        const chaveZ = chaveR + '|Z|' + z.chave;
+        linhasArvoreOciosos += linhaOciosos(2, chaveZ, z.rotulo, zn.end, zn.pecas, true, null);
+        if (!abertosOciosos.has(chaveZ)) return;
+        z.tipos.forEach(function (t) {
+          const tp = zn.tipos.get(t.chave);
+          if (!tp) return;
+          linhasArvoreOciosos += linhaOciosos(3, chaveZ + '|T|' + t.chave, tp.rotulo, tp.end, tp.pecas, false, tp.cor);
         });
       });
     });
@@ -4517,7 +4525,7 @@ function renderizarEstoqueOperacao(p) {
         '</span>' +
       '</div>' +
       '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Picking: endereço alocado com saldo zero (disponível + cativado). ' +
-        'Pulmão: posição <strong>estimada</strong> — box que existe na rua mas está sem volume naquele nível. Segmento = predominante do endereço (ou da rua, no vazio do Pulmão).</p>' +
+        'Pulmão: posição <strong>estimada</strong> — box que existe na rua mas está sem volume naquele nível. Só rua física até a ' + LIMITE_RUA_FISICA_TELA + ' — acima disso é corredor/trânsito, fora da conta.</p>' +
       '<div class="kpi-row">' +
         '<div class="kpi"><div class="rot">Picking vazio</div><div class="val forte">' + fmtInt(tot.pv) + '</div><div class="sub">endereços alocados sem saldo</div></div>' +
         '<div class="kpi"><div class="rot">Picking &lt; ' + oc.limite_picado + ' pç</div><div class="val forte" style="color:var(--amber)">' + fmtInt(tot.pp) + '</div><div class="sub">candidatos a compactar</div></div>' +
@@ -4525,7 +4533,7 @@ function renderizarEstoqueOperacao(p) {
         '<div class="kpi"><div class="rot">Pulmão &lt; ' + oc.limite_picado + ' pç</div><div class="val forte" style="color:var(--amber)">' + fmtInt(tot.up) + '</div><div class="sub">candidatos a compactar</div></div>' +
       '</div>' +
       '<div class="tabela-rolavel" style="margin-top:12px"><table class="arvore"><thead><tr>' +
-        '<th class="esq">Rua › Classificação › Segmento</th><th>Endereços</th><th>Peças</th>' +
+        '<th class="esq">Rua › Picking/Pulmão › Vazio/Menos de ' + oc.limite_picado + ' pç</th><th>Endereços</th><th>Peças</th>' +
       '</tr></thead><tbody>' + linhasArvoreOciosos +
         '<tr class="total"><th class="esq">TOTAL</th><td>' + fmtInt(totEnd) + '</td><td>' + fmtInt(totPecas) + '</td></tr>' +
       '</tbody></table></div>' +
