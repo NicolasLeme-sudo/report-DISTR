@@ -1640,6 +1640,7 @@ function mostrarSecao(secao) {
 
   document.querySelectorAll('.secao').forEach(function (s) { s.classList.remove('ativa'); });
   document.getElementById('secao-' + secao).classList.add('ativa');
+  ajustarTabelas5Linhas(document.getElementById('secao-' + secao));
   document.querySelectorAll('.menu-item').forEach(function (i) { i.classList.remove('ativo'); });
   const item = {
     start: 'menuStart', ressuprimento: 'menuRessuprimento', estoqueop: 'menuEstoqueOp', estoque: 'menuEstoque',
@@ -4254,6 +4255,24 @@ function donutOcupacao(pctVal, cor) {
   '</svg>';
 }
 
+/* Tabelas que mostram 5 linhas e rolam por dentro (pedido do usuário,
+   23/09/2026: "Endereços vazios" e "Material parado"). Altura medida das
+   linhas reais — em px fixo, a fonte/zoom de cada máquina mudava quantas
+   linhas cabiam. Conta cabeçalho + 5 linhas + a linha de TOTAL (fixa). */
+function ajustarTabelas5Linhas(raiz) {
+  (raiz || document).querySelectorAll('.tabela-5-linhas').forEach(function (box) {
+    const cab = box.querySelector('thead tr');
+    const linhas = box.querySelectorAll('tbody tr:not(.total)');
+    const total = box.querySelector('tbody tr.total');
+    if (!cab || !linhas.length) return;
+    let h = cab.getBoundingClientRect().height;
+    if (!h) return; // seção oculta: mede de novo quando ela abrir (mostrarSecao)
+    for (let i = 0; i < Math.min(5, linhas.length); i++) h += linhas[i].getBoundingClientRect().height;
+    if (total) h += total.getBoundingClientRect().height;
+    box.style.maxHeight = Math.ceil(h + 2) + 'px';
+  });
+}
+
 function renderizarEstoqueOperacao(p) {
   p = p || window._snapshotRessuprimento;
   if (!p) return;
@@ -4517,7 +4536,7 @@ function renderizarEstoqueOperacao(p) {
         '<div class="kpi"><div class="rot">Pulmão vazio (estimado)</div><div class="val forte">' + fmtInt(tot.uv) + '</div><div class="sub">posições de porta-pallet livres</div></div>' +
         '<div class="kpi"><div class="rot">Pulmão &lt; ' + oc.limite_picado + ' pç</div><div class="val forte" style="color:var(--amber)">' + fmtInt(tot.up) + '</div><div class="sub">candidatos a compactar</div></div>' +
       '</div>' +
-      '<div class="tabela-rolavel" style="margin-top:12px"><table class="arvore"><thead><tr>' +
+      '<div class="tabela-rolavel tabela-5-linhas" style="margin-top:12px"><table class="arvore"><thead><tr>' +
         '<th class="esq">Rua › Picking/Pulmão › Vazio/Menos de ' + oc.limite_picado + ' pç</th><th>Endereços</th><th>Peças</th>' +
       '</tr></thead><tbody>' + linhasArvoreOciosos +
         '<tr class="total"><th class="esq">TOTAL</th><td>' + fmtInt(totEnd) + '</td><td>' + fmtInt(totPecas) + '</td></tr>' +
@@ -4807,7 +4826,7 @@ function renderizarEstoqueOperacao(p) {
         '</div>' +
         '<p style="font-size:11px;color:var(--text-muted);margin-bottom:6px">' +
           'Exibindo ' + fmtInt(linhasCarregadas.length) + ' de ' + fmtInt(linhasVolume.length) + ' volume(s).</p>' +
-        '<div class="tabela-rolavel"><table class="arvore"><thead><tr>' +
+        '<div class="tabela-rolavel tabela-5-linhas"><table class="arvore"><thead><tr>' +
           thOrdenavelBO('endereco', 'Endereço', 'centro') +
           thOrdenavelBO('sku', 'SKU', 'centro') + thOrdenavelBO('nome', 'Nome do produto', 'centro') +
           thOrdenavelBO('qtd', 'QTDE') +
@@ -4870,6 +4889,7 @@ function renderizarEstoqueOperacao(p) {
     '<div style="font-size:11px;color:var(--text-muted);margin-top:12px">' +
       'Picking: ' + escapar(p.arquivo_picking || '—') + ' · Pulmão: ' + escapar(p.arquivo_pulmao || '—') +
     '</div>';
+  ajustarTabelas5Linhas(document.getElementById('estoqueop-conteudo'));
 }
 
 /* ============================================================
