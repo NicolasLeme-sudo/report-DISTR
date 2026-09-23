@@ -280,6 +280,10 @@ html { overflow-x: hidden; }
 }
 .kpi .val { font-size: 21px; font-weight: 300; letter-spacing: -.01em; }
 .kpi .val.forte { font-weight: 700; font-size: 20px; }
+/* Ressuprimento por dia: valor principal maior (pedido do usuário,
+   23/09/2026) — peças ressupridas, movimentos, média e fila. */
+.kpi-row-destaque .kpi .val { font-size: 30px; }
+.kpi-row-destaque .kpi .val.forte { font-size: 28px; }
 .kpi .sub { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; }
 
 /* Card de ocupação com rosca — Ressuprimento (Picking × Pulmão). Sobrescreve
@@ -297,6 +301,10 @@ html { overflow-x: hidden; }
    5) FILTRO DE STATUS
    ============================================================ */
 .filtros { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+/* Kicker (rótulo pequeno, 3px de margem) direto em cima de uma linha de
+   filtro ficava colado — sem título grande no meio pra dar respiro (pedido
+   do usuário, 23/09/2026: mais espaço entre filtros e título dos cards). */
+.kicker + .filtros, .kicker + .filtros-linha { margin-top: 10px; }
 .filtros .rot-filtro {
   font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
   color: var(--text-label); margin-right: 2px;
@@ -5134,7 +5142,11 @@ function blocoMovimentacoes() {
   }
 
   /* ---------- cards ---------- */
-  const kpis = '<div class="kpi-row">' +
+  // kpi-row-destaque: valores maiores só aqui (pedido do usuário,
+  // 23/09/2026) — .kpi .val.forte é usado em cards de outras telas também,
+  // então o aumento de fonte fica isolado por classe em vez de mexer na
+  // regra global.
+  const kpis = '<div class="kpi-row kpi-row-destaque">' +
     '<div class="kpi"><div class="rot">Peças ressupridas</div>' +
       '<div class="val forte">' + fmtInt(pecas) + '</div>' +
       '<div class="sub">' + (filtroTurnoRessuprimento.size ? rotuloTurnosSelecionados(filtroTurnoRessuprimento) + ' · ' : '') +
@@ -5224,8 +5236,22 @@ function blocoMovimentacoes() {
     ? formatarDataSimples(filtroHistDe) + ' a ' + formatarDataSimples(filtroHistAte)
     : (m && m.periodo && m.periodo.de ? m.periodo.de + ' a ' + m.periodo.ate : 'período não identificado no arquivo');
 
-  /* ---------- composição por segmento (resolvida pelo dicionário artigo→família) ---------- */
-  const porSegmento = porSegmentoFonte;
+  /* ---------- composição por segmento (resolvida pelo dicionário artigo→família) ----------
+     CHUTEIRA e CHINELO entram somados dentro de CALÇADO neste gráfico só,
+     mesmo critério e mesmo motivo do gráfico equivalente da tela Estoque
+     (pedido do usuário, 23/09/2026): fatia pequena demais (0,1% cada) pra
+     pesar sozinha aqui. */
+  const porSegmento = (function () {
+    const fundidos = ['CHUTEIRA', 'CHINELO'];
+    const porNome = new Map();
+    porSegmentoFonte.forEach(function (s) {
+      const alvo = fundidos.indexOf(s.segmento) !== -1 ? 'CALÇADO' : s.segmento;
+      if (!porNome.has(alvo)) porNome.set(alvo, { segmento: alvo, pecas: 0, movimentos: 0 });
+      const g = porNome.get(alvo);
+      g.pecas += s.pecas; g.movimentos += s.movimentos;
+    });
+    return Array.from(porNome.values()).sort(function (a, b) { return b.pecas - a.pecas; });
+  })();
   const totalSegMov = porSegmento.reduce(function (s, x) { return s + x.pecas; }, 0);
   const maxSegMov = porSegmento.reduce(function (mx, x) { return Math.max(mx, x.pecas); }, 0);
   let barrasSegMov = '';
