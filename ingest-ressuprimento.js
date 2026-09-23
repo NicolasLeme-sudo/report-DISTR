@@ -840,7 +840,36 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     enderecos_ociosos: mapearEnderecosOciosos(
       pickingReal.concat(pulmaoTudo.filter(function (r) { return r.origem !== 'pulmao' && r.apoio_confiavel; })),
       pulmaoFisico),
+    // Material dividido por rua — visão pedida antes da quebra Picking/Pulmão
+    // (pedido do usuário, 23/09/2026: rua primeiro, depois picking×pulmão).
+    material_por_rua: materialPorRua(
+      pickingReal.concat(pulmaoTudo.filter(function (r) { return r.origem !== 'pulmao' && r.apoio_confiavel; })),
+      pulmaoFisico),
   };
+}
+
+/* ============================================================================
+   MATERIAL POR RUA — soma TODO o saldo (não só vazio/picado) por rua, Picking
+   e Pulmão lado a lado. Mesma entrada de mapearEnderecosOciosos (Picking já
+   inclui 20/70/80/81-02, apoio confiável; Pulmão é só o físico). Pedido do
+   usuário, 23/09/2026: "material dividido inicialmente por rua" — a primeira
+   pergunta antes de entrar na quebra por zona ou por segmento.
+   ============================================================================ */
+function materialPorRua(pickingReal, pulmaoFisico) {
+  function porRua(lista) {
+    const m = new Map();
+    lista.forEach(function (r) {
+      if (!m.has(r.rua)) m.set(r.rua, { rua: r.rua, qtd: 0, skus: new Set(), enderecos: new Set() });
+      const e = m.get(r.rua);
+      e.qtd += (r.qtd || 0) + (r.qtd_cativado || 0);
+      e.skus.add(r.artigo_codigo + '|' + r.cor + '|' + r.tamanho);
+      e.enderecos.add(r.rua + '|' + r.nivel + '|' + r.box);
+    });
+    return Array.from(m.values())
+      .map(function (e) { return { rua: e.rua, qtd: e.qtd, skus: e.skus.size, enderecos: e.enderecos.size }; })
+      .sort(function (a, b) { return Number(a.rua) - Number(b.rua); });
+  }
+  return { picking: porRua(pickingReal), pulmao: porRua(pulmaoFisico) };
 }
 
 /* ============================================================================
