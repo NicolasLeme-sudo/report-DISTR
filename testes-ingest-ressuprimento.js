@@ -435,6 +435,21 @@ eq(payloadRua100.validacao.length, 1, 'rua 100 volta a aparecer no card de mater
 eq(payloadRua100.validacao[0].classificacao, 'Recebimento armazenado no chão (provisório)', 'rótulo deixa claro que é provisório');
 eq(payloadRua100.ocupacao.pulmao.total.ocupado, 0, 'mas continua sem ocupar posição de porta-pallet do Pulmão');
 
+// Rua 99 (23/09/2026): transitório — entra no card de material parado venha
+// ela do arquivo de Pulmão ou do de Picking, e sai da posição de Picking.
+const payloadRua99 = construirSnapshotRessuprimento(
+  { registros: [
+    { familia_codigo: '101', artigo_codigo: 'D1', cor: 'PT', tamanho: '40', ean: 'EAND1', rua: '99', nivel: '1', box: '1', qtd: 12, qtd_cativado: 0, qtd_gap_reservado: 0 },
+  ], negativas_excluidas: 0, negativas_unidades: 0 },
+  { registros: [
+    { familia_codigo: '101', artigo_codigo: 'D2', cor: 'PT', tamanho: '40', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '99', nivel: '2', box: '3', dt_cri: null, qtd: 20, codbar: 'EAND2' },
+  ], colisoes_volume: 0 },
+  mapaFamilias, { pulmao: 100 }, { arquivo_picking: 'x.txt', arquivo_pulmao: 'p.txt' }
+);
+eq(payloadRua99.validacao.length, 2, 'rua 99 do Pulmão e do Picking entram no material parado');
+ok(payloadRua99.validacao.every(function (v) { return v.classificacao === 'Transitório'; }), 'rótulo "Transitório" (vira "Rua 99 — Transitório" na tela)');
+eq(payloadRua99.ocupacao.picking.total.ocupado, 0, 'rua 99 do Picking não ocupa posição de Picking');
+
 
 /* -------------------------------------------------------------------------- */
 secao('segmentoMacro — os 6 baldes da gestão, cruzando todas as marcas');

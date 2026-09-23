@@ -62,6 +62,9 @@ Object.assign(CLASSIF_RUA_PULMAO, {
   '26':  { grupo: 'VALIDACAO', rotulo: 'Sujeira' },
   '27':  { grupo: 'VALIDACAO', rotulo: 'Perca' },
   '98':  { grupo: 'VALIDACAO', rotulo: 'Transitório - Armazenagem/Ressuprimento' },
+  // Rua 99 (23/09/2026, pedido do usuário): endereço transitório, entra no
+  // card de material parado. Antes caía em "fora do gabarito".
+  '99':  { grupo: 'VALIDACAO', rotulo: 'Transitório' },
   // Rua 100 (23/09/2026, operação): material do RECEBIMENTO armazenado no
   // chão, endereços criados porque faltou espaço no Pulmão. É estoque bom
   // (conta como apoio confiável), mas provisório — por isso aparece no card
@@ -92,6 +95,9 @@ const RECLASSIFICA_PICKING_PARA_PULMAO = {
   // Estoque bom, não é pendência.
   '70': { motivo: 'Excedente do picking Mizuno alocado no Pulmão', apoioConfiavel: true },
   '80': { motivo: 'Excedente do picking Under Armour alocado no Pulmão', apoioConfiavel: true },
+  // Rua 99 no arquivo de Picking também é transitório (23/09/2026): sai do
+  // Picking e vai pro card de material parado, igual à 99 do Pulmão.
+  '99': { motivo: 'Transitório', apoioConfiavel: false },
   // rua 81 é tratada à parte (abaixo): só o nível 02 reclassifica.
 };
 const MOTIVO_81_02 = 'Capacidade de calçados Under Armour esgotada no picking';
@@ -408,7 +414,7 @@ function classificarPickingEPulmao(picking, pulmao, mapaFamilias) {
     });
   }).concat(pulmaoViaPicking.map(function (r) {
     return Object.assign({}, r, {
-      em_validacao: !r.apoio_confiavel, // rua 70/80 (sujeira) entra em validação; 20 e 81-02 não
+      em_validacao: !r.apoio_confiavel, // rua 99 (transitório) entra em validação; 20/70/80/81-02 não
       classif_grupo: r.apoio_confiavel ? 'PULMAO' : 'VALIDACAO',
       classif_rotulo: r.motivo,
     });
