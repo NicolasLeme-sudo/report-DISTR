@@ -565,8 +565,11 @@ tr.total > th, tr.total > td {
 .loading-msg { color: var(--text-muted); font-size: 12px; padding: 20px 0; }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+/* Perdas (largo) + DE×PARA (estreito) lado a lado, no fim do Start Inicial. */
+.grid-perdas { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
 @media (max-width: 900px) {
   .grid2 { grid-template-columns: 1fr; }
+  .grid-perdas { grid-template-columns: 1fr; }
   .sidebar { display: none; }
   .topbar { left: 0; }
   .conteudo { margin-left: 0; }
@@ -1245,7 +1248,7 @@ tr.total > th, tr.total > td {
       <div class="section-title" style="margin-top:24px">Ajustes de PFA</div>
       <div class="card">
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
-          Planilha manual — uma linha por ajuste, cancelamento, B.O. pós-NF ou devolução por AD, a partir do
+          Planilha manual — uma linha por ajuste, DE-PARA, cancelamento, envio faltante com NF ou devolução por AD, a partir do
           e-mail do comercial. <strong>Não recalcula a tela sozinho</strong>: os cards de "Perdas e ajustes do
           período" e a exclusão de PFA baixada só atualizam no <strong>próximo upload de PFAs</strong> acima
           (Pendentes/Analítico/Embarcadas) — esta caixa só grava a tabela.
@@ -1273,14 +1276,14 @@ tr.total > th, tr.total > td {
                 <td>Ajuste de encomenda</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
               </tr>
               <tr>
-                <td>BO_POS_NF</td><td>959112</td><td>241650</td><td class="vazio"></td><td>46212 CHARLESTON WILLIA</td>
+                <td>FALTANTE_NF</td><td>959112</td><td>241650</td><td class="vazio"></td><td>46212 CHARLESTON WILLIA</td>
                 <td>102</td><td>OIMCR24302</td><td>PT/PRT</td><td>M</td><td>60</td><td>2</td>
                 <td>Stockout</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
               </tr>
               <tr class="destaque">
-                <td>AJUSTE</td><td>961205</td><td>242190</td><td>242311</td><td>62410 GRUPO SPORTSTYLE</td>
-                <td>082</td><td>OIVCR23110</td><td>PT</td><td>M</td><td>30</td><td>0</td>
-                <td>DE-PARA (artigo substituto)</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
+                <td>DE_PARA</td><td>961205</td><td>242190</td><td>242311</td><td>62410 GRUPO SPORTSTYLE</td>
+                <td>082</td><td>OIVCR23110</td><td>PT</td><td>M</td><td>30</td><td>30</td>
+                <td>Artigo substituto enviado</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
               </tr>
               <tr>
                 <td>CANCELAMENTO</td><td>957004</td><td>241902</td><td class="vazio"></td><td>51330 REDE CALCADOS MG</td>
@@ -1296,18 +1299,21 @@ tr.total > th, tr.total > td {
           </table>
         </div>
         <ul style="font-size:12px;color:var(--text-muted);margin:10px 0 14px 18px;padding:0">
-          <li><strong>tipo</strong> só aceita: AJUSTE · CANCELAMENTO · BO_POS_NF · AD_DEVOLUCAO (reconhece por
-            palavra-chave — não precisa ser exatamente esse texto).</li>
+          <li><strong>tipo</strong> só aceita: AJUSTE · DE_PARA · CANCELAMENTO · FALTANTE_NF (envio faltante com NF
+            emitida; o antigo BO_POS_NF continua aceito) · AD_DEVOLUCAO (reconhece por palavra-chave — não precisa ser
+            exatamente esse texto).</li>
           <li><strong>cliente</strong>, <strong>familia_codigo</strong>, <strong>cor</strong> e <strong>tam</strong>
             vêm exatamente como o e-mail do comercial e a extração do sistema já trazem — sem juntar código+nome
             do cliente, sem juntar cor+tam, sem adivinhar família à mão.</li>
-          <li><strong>pfa_nova</strong> fica em branco em cancelamento, B.O. pós-NF e AD — nenhum dos três gera PFA
+          <li><strong>pfa_nova</strong> fica em branco em cancelamento, envio faltante com NF e AD — nenhum dos três gera PFA
             nova. Num <strong>AJUSTE</strong>, também pode ficar em branco quando é só uma <strong>falta
             parcial</strong> (a PFA continua ativa na operação, só com quantidade menor) — nesse caso ela
             <strong>não some do Pendentes</strong>; só some quando o comercial de fato gerar e informar a PFA nova.</li>
           <li><strong>qtde_faltante</strong> é a falta pronta por artigo (não um "antes/depois" pra subtrair).
-            <strong>DE-PARA</strong> (linha destacada): quando um artigo substituto cobre o corte inteiro,
-            preencha <strong>qtde_faltante com 0</strong> — a perda sai zero sozinha, sem coluna extra.</li>
+            <strong>DE_PARA</strong> (linha destacada): artigo substituto enviado no lugar do cortado — use o tipo
+            DE_PARA e preencha <strong>qtde_faltante com a quantidade substituída</strong>. Não conta como perda; vai
+            para o card "DE×PARA" do Start Inicial. (AJUSTE com qtde_faltante 0, a convenção antiga, continua sendo lido
+            como DE-PARA.)</li>
           <li>Reenviar a planilha nunca duplica: a linha é identificada por encomenda + pfa_antiga + artigo +
             cor + tam — subir de novo com esse quinteto igual substitui a linha, corrigindo um valor errado.</li>
           <li><strong>CANCELAMENTO enxuto</strong>: às vezes o comercial pede o cancelamento de uma PFA inteira e só
@@ -1453,6 +1459,15 @@ function formatarDataHora(isoStr) {
   const m = {};
   partes.forEach(function (p) { m[p.type] = p.value; });
   return m.day + '/' + m.month + '/' + m.year + ' ' + m.hour + ':' + m.minute;
+}
+/* Dias corridos de uma data "AAAA-MM-DD" até hoje, ao meio-dia local (não
+   escorrega de dia por fuso). */
+function diasDesdeIso(yyyymmdd) {
+  if (!yyyymmdd) return null;
+  const p = String(yyyymmdd).split('-').map(Number);
+  const d = new Date(p[0], p[1] - 1, p[2], 12);
+  const h = new Date(); h.setHours(12, 0, 0, 0);
+  return Math.max(0, Math.round((h - d) / 86400000));
 }
 function formatarDataSimples(yyyymmdd) {
   if (!yyyymmdd) return '—';
@@ -2776,9 +2791,13 @@ let filtroFifoPfa = new Set();        // vazio = todas as faixas
 // card tinha o seu próprio filtro de etapa; virou 3 cliques pra responder
 // "e só o que está em picking?" em vez de 1.
 let filtroEtapaPfa = new Set();
-let filtroConfTabelaPfa = new Set();   // conferência (resumida) só na tabela
-let filtroOrigemTabelaPfa = new Set(); // Lojas / S/Carro / Cliente, só na tabela
-let filtroSituacaoTabelaPfa = new Set(); // Normal / Retrabalhada, só na tabela
+// Conferência / Situação / Origem subiram pro topo (23/09/2026, pedido da
+// gestão) e filtram a tela inteira, não só a tabela.
+let filtroConfTabelaPfa = new Set();
+let filtroOrigemTabelaPfa = new Set();
+let filtroSituacaoTabelaPfa = new Set();
+let segColetaAberto = null;   // segmento clicado em "Com nota, aguardando coleta"
+let filtroTextoPerdas = '';   // busca de PFA/NF/artigo no card de Perdas
 // Período do grupo "Perdas e ajustes" — próprio, não mexe nos filtros gerais
 // da tela (marca/segmento/FIFO/etapa acima não têm nada a ver com isso).
 let periodoPerdasPfa = { modo: 'mes', de: null, ate: null };
@@ -2845,8 +2864,26 @@ const GRUPOS_CONFERENCIA = [
   { valor: 'completa', rotulo: 'Completa' },
   { valor: 'parcial', rotulo: 'Parcial' },
   { valor: 'nao_iniciada', rotulo: 'Não iniciada' },
+  // Só o "Parcial (rastreio)" — parcial parada 3+ dias (pedido da gestão, 23/09/2026).
+  { valor: 'rastreio', rotulo: 'Rastreio' },
 ];
 function grupoConferenciaPfa(c) { return GRUPO_CONFERENCIA[c] || 'nao_iniciada'; }
+function passaConferenciaPfa(r) {
+  if (!filtroConfTabelaPfa.size) return true;
+  if (filtroConfTabelaPfa.has('rastreio') && r.conferencia === 'parcial_rastreio') return true;
+  return filtroConfTabelaPfa.has(grupoConferenciaPfa(r.conferencia));
+}
+/* Conferência / Situação / Origem — mesmas regras pra qualquer linha de
+   Pendentes (tabela, KPIs, funil, FIFO, e o cruzamento de "com nota"). */
+function passaFiltrosPfaLinha(r) {
+  if (!passaConferenciaPfa(r)) return false;
+  if (filtroOrigemTabelaPfa.size && !filtroOrigemTabelaPfa.has(classificarOrigemPfa(r))) return false;
+  if (filtroSituacaoTabelaPfa.size && !filtroSituacaoTabelaPfa.has(grupoSituacaoPfa(r.situacao_pfa))) return false;
+  return true;
+}
+function filtrosPfaLinhaAtivos() {
+  return filtroConfTabelaPfa.size > 0 || filtroOrigemTabelaPfa.size > 0 || filtroSituacaoTabelaPfa.size > 0;
+}
 
 /* Origem do pedido — não vem pronta em nenhum arquivo, é inferida do nome do
    cliente e da transportadora (confirmado com a operação, 09/09/2026):
@@ -2950,6 +2987,24 @@ function filtrarTextoPfa(t) {
   }
   window.scrollTo(0, scrollY);
 }
+const ROT_TIPO_AJUSTE = {
+  AJUSTE: 'Ajuste', DE_PARA: 'DE×PARA', CANCELAMENTO: 'Cancelamento',
+  BO_POS_NF: 'Envio faltante c/ NF emitida', AD_DEVOLUCAO: 'Devolução por AD',
+};
+function alternarSegColeta(seg) {
+  segColetaAberto = (seg === null || segColetaAberto === seg) ? null : seg;
+  const scrollY = window.scrollY;
+  renderizarPfas();
+  window.scrollTo(0, scrollY);
+}
+function filtrarTextoPerdas(t) {
+  filtroTextoPerdas = t;
+  const scrollY = window.scrollY;
+  renderizarPfas();
+  const input = document.getElementById('buscaPerdas');
+  if (input) { input.focus(); input.setSelectionRange(t.length, t.length); }
+  window.scrollTo(0, scrollY);
+}
 function alterarLimitePfa(v) { limitePfa = v === 'todos' ? Infinity : Number(v); renderizarPfas(); }
 function ordenarPfa(campo) {
   if (ordemPfa.campo === campo) ordemPfa.direcao = ordemPfa.direcao === 'asc' ? 'desc' : 'asc';
@@ -2970,7 +3025,7 @@ function pendentesFiltradosPfa() {
     if (!passaMarcaSegmentoPfa(r)) return false;
     if (filtroFifoPfa.size && !filtroFifoPfa.has(r.faixa_fifo)) return false;
     if (filtroEtapaPfa.size && !filtroEtapaPfa.has(r.situacao)) return false;
-    return true;
+    return passaFiltrosPfaLinha(r);
   });
 }
 
@@ -2981,9 +3036,6 @@ function pendentesFiltradosPfa() {
 function linhasTabelaPfa() {
   const busca = filtroTextoPfa.trim().toLowerCase();
   return pendentesFiltradosPfa().filter(function (r) {
-    if (filtroConfTabelaPfa.size && !filtroConfTabelaPfa.has(grupoConferenciaPfa(r.conferencia))) return false;
-    if (filtroOrigemTabelaPfa.size && !filtroOrigemTabelaPfa.has(classificarOrigemPfa(r))) return false;
-    if (filtroSituacaoTabelaPfa.size && !filtroSituacaoTabelaPfa.has(grupoSituacaoPfa(r.situacao_pfa))) return false;
     if (!busca) return true;
     const alvo = [r.pfa, r.cliente_nome, r.cliente_codigo, rotEtapaPfa(r.situacao), r.marca,
       r.segmento_macro, r.familia_codigo, r.transportadora_nome, r.cluster,
@@ -3067,13 +3119,15 @@ function renderizarPfas() {
     '</div>' +
     '<div class="filtros-linha">' + chipsSet('Etapa', filtroEtapaPfa, (p.etapas || []).map(function (e) {
       return { valor: e, rotulo: rotEtapaPfa(e) };
-    }), 'alternarEtapaPfa') + '</div>';
+    }), 'alternarEtapaPfa') + '</div>' +
+    '<div class="filtros-linha">' +
+      chipsConferencia(filtroConfTabelaPfa, 'alternarConfTabelaPfa') +
+      chipsSituacaoPfa(filtroSituacaoTabelaPfa, 'alternarSituacaoTabelaPfa') +
+      chipsOrigemPfa(filtroOrigemTabelaPfa, 'alternarOrigemTabelaPfa') +
+    '</div>';
 
   /* ---------- KPIs ---------- */
   const pares = filtrados.reduce(function (s, r) { return s + r.pares; }, 0);
-  const maisAntiga = filtrados.reduce(function (mx, r) {
-    return (r.dias_abertos !== null && r.dias_abertos > mx.dias) ? { dias: r.dias_abertos, data: r.data_importacao } : mx;
-  }, { dias: 0, data: null });
 
   // Fluxo de coleta e "aguard. NF" agora vêm direto do Pendentes (situação),
   // não mais do cruzamento com o Analítico — respeitam os MESMOS filtros do
@@ -3093,10 +3147,17 @@ function renderizarPfas() {
   // Etapa valer aqui também, cruza pelo número da PFA com a situação atual
   // em Pendentes. PFA que não aparece mais em Pendentes fica de fora sempre
   // que algum filtro de etapa estiver ativo (não tem etapa que se afirme).
-  const etapaPorPfa = new Map();
-  (p.pendentes || []).forEach(function (r) { etapaPorPfa.set(r.pfa, r.situacao); });
+  // Conferência/Situação/Origem também cruzam pela PFA (Analítico não tem
+  // esses campos) — mesma regra: sem linha em Pendentes, fica de fora quando
+  // algum desses filtros estiver ativo.
+  const pendentePorPfa = new Map();
+  (p.pendentes || []).forEach(function (r) { pendentePorPfa.set(r.pfa, r); });
   function passaEtapaCruzada(pfa) {
-    return !filtroEtapaPfa.size || filtroEtapaPfa.has(etapaPorPfa.get(pfa));
+    if (!filtroEtapaPfa.size && !filtrosPfaLinhaAtivos()) return true;
+    const r = pendentePorPfa.get(pfa);
+    if (!r) return false;
+    if (filtroEtapaPfa.size && !filtroEtapaPfa.has(r.situacao)) return false;
+    return passaFiltrosPfaLinha(r);
   }
   const coletaFiltrado = (p.aguardando_coleta || []).filter(function (r) {
     return passaMarcaSegmentoPfa(r) && passaEtapaCruzada(r.pfa);
@@ -3123,13 +3184,31 @@ function renderizarPfas() {
   const qtdeColeta = coletaFiltrado.reduce(function (s, r) { return s + r.qtde; }, 0);
   const pfasColeta = new Set(coletaFiltrado.map(function (r) { return r.pfa; })).size;
   const ajustesEmAberto = p.ajustes_em_aberto || 0;
+
+  /* PFA mais antiga em tela COM NF EMITIDA (pedido da gestão, 23/09/2026):
+     o prazo que a operação passa pro cliente conta a partir do faturamento,
+     então a idade é pela data da NF, e só entra quem ainda está em tela
+     (confirmado em Pendentes). Itens = soma da PFA inteira (todas as
+     famílias dela), não só da linha mais antiga. */
+  const itensPorPfaNota = new Map();
+  coletaSep.conf.forEach(function (r) { itensPorPfaNota.set(r.pfa, (itensPorPfaNota.get(r.pfa) || 0) + r.qtde); });
+  const pfaNotaMaisAntiga = coletaSep.conf.reduce(function (mx, r) {
+    if (!r.data_nota) return mx;
+    return (!mx || r.data_nota < mx.data_nota) ? r : mx;
+  }, null);
+  const diasNotaMaisAntiga = pfaNotaMaisAntiga ? diasDesdeIso(pfaNotaMaisAntiga.data_nota) : null;
+
   const kpis = '<div class="kpi-row">' +
     '<div class="kpi"><div class="rot">Material Pendente - Total</div>' +
       '<div class="val forte">' + fmtInt(pares) + ' Peças</div>' +
       '<div class="sub">' + fmtInt(filtrados.length) + ' PFAs</div></div>' +
-    '<div class="kpi"><div class="rot">PFA Mais antiga em tela</div>' +
-      '<div class="val forte" style="color:var(--amber)">' + (maisAntiga.dias ? fmtInt(maisAntiga.dias) + ' dias' : '—') + '</div>' +
-      '<div class="sub">' + (maisAntiga.data ? 'Importada ' + formatarDataSimples(maisAntiga.data) : 'Sem PFA no recorte') + '</div></div>' +
+    '<div class="kpi"><div class="rot">PFA Mais antiga em tela (NF emitida)</div>' +
+      '<div class="val forte" style="color:var(--amber)">' + (pfaNotaMaisAntiga
+        ? fmtInt(diasNotaMaisAntiga) + ' Dias - ' + fmtInt(itensPorPfaNota.get(pfaNotaMaisAntiga.pfa)) + ' Itens'
+        : '—') + '</div>' +
+      '<div class="sub">' + (pfaNotaMaisAntiga
+        ? 'PFA ' + escapar(pfaNotaMaisAntiga.pfa) + ' · NF emitida ' + formatarDataSimples(pfaNotaMaisAntiga.data_nota)
+        : 'Nenhuma PFA com NF em tela no recorte') + '</div></div>' +
     '<div class="kpi"><div class="rot">Ag. Formação para Coleta</div>' +
       '<div class="val forte">' + fmtInt(paresAgFormacao) + ' Peças</div>' +
       '<div class="sub">' + fmtInt(agFormacao.length) + ' PFAs</div></div>' +
@@ -3148,31 +3227,40 @@ function renderizarPfas() {
       '<div class="sub">' + (ajustesEmAberto
         ? 'Ag. Ação do Time Comercial'
         : 'Nenhum ajuste travado') + '</div></div>' +
-  '</div>' +
+  '</div>';
 
   /* ---------- Perdas e ajustes do período (grupo à parte, com o próprio seletor) ----------
-     Marca/Segmento do topo TAMBÉM recortam este card (mesmo passaMarcaSegmentoPfa
-     das outras seções — o ajuste carrega marca/segmento_macro resolvidos pelo
-     artigo). FIFO e Etapa ficam de fora de propósito: nenhum dos dois tem
-     equivalente num evento de ajuste — FIFO mede dias desde a importação em
-     Pendentes e Etapa mede a situação atual, e a PFA antiga de um ajuste já
-     SAIU de Pendentes no momento do corte. Aplicá-los seria inventar um dado
-     que a linha não tem. */
-  (function () {
+     Fica no FIM da página (pedido da gestão, 23/09/2026). Marca/Segmento do
+     topo recortam; FIFO, Etapa, Conferência, Situação e Origem não — nenhum
+     deles tem equivalente num evento de ajuste (a PFA antiga já saiu de
+     Pendentes no momento do corte). Aplicá-los seria inventar um dado que a
+     linha não tem.
+     Ajustes = dados BRUTOS de ajuste (sem DE-PARA). DE-PARA (artigo
+     substituto enviado) virou card próprio ao lado — não é perda. */
+  const blocoPerdas = (function () {
     const janela = janelaPeriodoPerdasPfa();
     const ajustesTodos = (p.ajustes || []).filter(passaMarcaSegmentoPfa);
-    const fifoOuEtapaAtivos = filtroFifoPfa.size > 0 || filtroEtapaPfa.size > 0;
+    const filtrosQueNaoValem = filtroFifoPfa.size > 0 || filtroEtapaPfa.size > 0 || filtrosPfaLinhaAtivos();
+    const noPeriodo = ajustesTodos.filter(function (a) { return ajustePfaNoPeriodo(a, janela); });
+    function ehDeParaLinha(a) {
+      // Snapshot antigo (antes do campo de_para): AJUSTE com falta 0 era a convenção de DE-PARA.
+      return a.de_para != null ? a.de_para : (a.tipo === 'DE_PARA' || (a.tipo === 'AJUSTE' && !a.qtde_faltante));
+    }
     function somaPorTipo(tipo) {
-      const lista = ajustesTodos.filter(function (a) { return a.tipo === tipo && ajustePfaNoPeriodo(a, janela); });
+      const lista = noPeriodo.filter(function (a) { return a.tipo === tipo && !ehDeParaLinha(a); });
       const pfas = new Set(lista.map(function (a) { return a.pfa_antiga; }));
       return { perda: lista.reduce(function (s, a) { return s + a.perda_liquida; }, 0), pfas: pfas.size, eventos: lista.length };
     }
-    const ajusteLiq = somaPorTipo('AJUSTE');
-    const boPosNf = somaPorTipo('BO_POS_NF');
+    const ajusteBruto = somaPorTipo('AJUSTE');
+    const faltanteNf = somaPorTipo('BO_POS_NF');
     const adDevol = somaPorTipo('AD_DEVOLUCAO');
     const cancelamento = somaPorTipo('CANCELAMENTO');
-    const perdasTotal = ajusteLiq.perda + boPosNf.perda + adDevol.perda + cancelamento.perda;
-    const eventosTotal = ajusteLiq.eventos + boPosNf.eventos + adDevol.eventos + cancelamento.eventos;
+    const dePara = noPeriodo.filter(ehDeParaLinha);
+    const deParaPfas = new Set(dePara.map(function (a) { return a.pfa_antiga; })).size;
+    const deParaQtde = dePara.reduce(function (s, a) { return s + (a.qtde_de_para || 0); }, 0);
+    const deParaSemQtde = dePara.filter(function (a) { return a.qtde_de_para == null; }).length;
+    const perdasTotal = ajusteBruto.perda + faltanteNf.perda + adDevol.perda + cancelamento.perda;
+    const eventosTotal = ajusteBruto.eventos + faltanteNf.eventos + adDevol.eventos + cancelamento.eventos;
     const rotuloPeriodo = periodoPerdasPfa.modo === 'semana' ? 'Esta semana'
       : periodoPerdasPfa.modo === 'entre' ? 'Período escolhido' : 'Este mês';
 
@@ -3181,7 +3269,48 @@ function renderizarPfas() {
         '" onclick="alternarPeriodoPerdasPfa(\'' + modo + '\')">' + rotulo + '</span>';
     }
 
-    return '<div class="card" style="border-color:var(--red)">' +
+    /* ---------- busca de PFA / NF / artigo ----------
+       Procura em TODOS os ajustes (não só no período), pra achar a PFA e ver
+       todos os itens que foram ajustados nela. */
+    const buscaP = filtroTextoPerdas.trim().toLowerCase();
+    // Ajuste não guarda a NF — vem do Analítico (com nota), pela PFA antiga.
+    const notaPorPfa = new Map();
+    (p.aguardando_coleta || []).concat(p.aguardando_nf || []).forEach(function (r) {
+      if (r.nota && !notaPorPfa.has(r.pfa)) notaPorPfa.set(r.pfa, r.nota);
+    });
+    let resultadoBusca = '';
+    if (buscaP) {
+      const achados = ajustesTodos.filter(function (a) {
+        return [a.pfa_antiga, a.pfa_nova, a.pfa_nova_por_encomenda, a.encomenda, notaPorPfa.get(a.pfa_antiga), a.cliente, a.artigo, a.cor_tam,
+          a.motivo, a.solicitante, ROT_TIPO_AJUSTE[a.tipo] || a.tipo].join(' ').toLowerCase().indexOf(buscaP) !== -1;
+      }).sort(function (a, b) {
+        return String(b.data_solicitacao || '').localeCompare(String(a.data_solicitacao || '')) ||
+          String(a.pfa_antiga).localeCompare(String(b.pfa_antiga), 'pt-BR', { numeric: true });
+      });
+      const totFalta = achados.reduce(function (s, a) { return s + (a.perda_liquida || 0); }, 0);
+      resultadoBusca = '<p style="font-size:11px;color:var(--text-muted);margin:8px 0 6px">' +
+        fmtInt(achados.length) + ' item(ns) ajustado(s) em ' +
+        fmtInt(new Set(achados.map(function (a) { return a.pfa_antiga; })).size) + ' PFA(s) · ' +
+        fmtInt(totFalta) + ' pares de perda (todas as datas).</p>' +
+        (achados.length ? '<div class="tabela-rolavel"><table class="arvore"><thead><tr>' +
+          '<th class="centro">PFA</th><th class="centro">NF</th><th class="centro">PFA nova</th><th class="centro">Tipo</th>' +
+          '<th class="centro">Artigo</th><th class="centro">Cor/Tam</th><th>Pedido</th><th>Faltante</th>' +
+          '<th class="centro">Motivo</th><th>Data</th></tr></thead><tbody>' +
+          achados.slice(0, 500).map(function (a) {
+            return '<tr><th class="centro">' + escapar(a.pfa_antiga) + '</th>' +
+              '<td class="centro">' + escapar(notaPorPfa.get(a.pfa_antiga) || '—') + '</td>' +
+              '<td class="centro">' + escapar(a.pfa_nova || a.pfa_nova_por_encomenda || '—') + '</td>' +
+              '<td class="centro">' + escapar(ROT_TIPO_AJUSTE[a.tipo] || a.tipo) + (ehDeParaLinha(a) && a.tipo !== 'DE_PARA' ? ' (DE×PARA)' : '') + '</td>' +
+              '<td class="centro">' + escapar(a.artigo || '—') + '</td>' +
+              '<td class="centro">' + escapar(a.cor_tam || '—') + '</td>' +
+              '<td>' + fmtInt(a.qtde_total_pedido || 0) + '</td>' +
+              '<td>' + fmtInt(a.qtde_faltante || 0) + '</td>' +
+              '<td class="centro" style="font-size:11px">' + escapar(a.motivo || '—') + '</td>' +
+              '<td>' + (a.data_solicitacao ? formatarDataSimples(a.data_solicitacao) : '—') + '</td></tr>';
+          }).join('') + '</tbody></table></div>' : '<div class="aviso">Nenhum ajuste encontrado para "' + escapar(filtroTextoPerdas) + '".</div>');
+    }
+
+    const cardPerdas = '<div class="card" style="border-color:var(--red);margin:0">' +
       '<div class="section-title" style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:10px">' +
         '<span style="color:var(--red)">Perdas e ajustes do período</span>' +
         '<div class="filtros" style="margin:0">' +
@@ -3194,21 +3323,21 @@ function renderizarPfas() {
             'onchange="definirPeriodoPerdasPfa(\'ate\', this.value)" ' +
             'style="padding:4px 6px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border);font-size:11px">' +
           '<button class="btn-mini" id="btnExportarGapEstoque" onclick="exportarGapEstoqueAjustes()" ' +
-            'title="AJUSTE e B.O. pós-NF com perda — cruza com o saldo por endereço do último Picking/Pulmão abastecido">' +
+            'title="Ajustes e envios faltantes com NF emitida que viraram perda — cruza com o saldo por endereço do último Picking/Pulmão abastecido">' +
             '⬇ Gap de estoque (.xlsx)</button>' +
         '</div>' +
       '</div>' +
       '<p style="font-size:12px;color:var(--text-muted);margin:4px 0 12px">' + rotuloPeriodo + ' · ' +
-        fmtInt(eventosTotal) + ' solicitação(ões) de ajuste de saldo, lançada(s) manualmente pela assistente a partir do e-mail do comercial.</p>' +
+        fmtInt(eventosTotal) + ' solicitação(ões) de ajuste de saldo lançada(s) a partir do e-mail do comercial.</p>' +
       '<div class="kpi-row">' +
         '<div class="kpi" style="border-color:var(--red)">' +
-          '<div class="rot" style="color:var(--red)">Ajustes (líquido)</div>' +
-          '<div class="val forte" style="color:var(--red)">' + fmtInt(ajusteLiq.perda) + ' pares</div>' +
-          '<div class="sub">' + fmtInt(ajusteLiq.eventos) + ' ajuste(s) · já descontado o que saiu por DE-PARA</div></div>' +
+          '<div class="rot" style="color:var(--red)">Ajustes</div>' +
+          '<div class="val forte" style="color:var(--red)">' + fmtInt(ajusteBruto.perda) + ' pares</div>' +
+          '<div class="sub">' + fmtInt(ajusteBruto.eventos) + ' ajuste(s) · ' + fmtInt(ajusteBruto.pfas) + ' PFA(s)</div></div>' +
         '<div class="kpi" style="border-color:var(--red)">' +
-          '<div class="rot" style="color:var(--red)">B.O. por envio com falta (pós-NF)</div>' +
-          '<div class="val forte" style="color:var(--red)">' + fmtInt(boPosNf.perda) + ' pares</div>' +
-          '<div class="sub">' + fmtInt(boPosNf.pfas) + ' envio(s) com falta · nota já emitida, sem correção possível</div></div>' +
+          '<div class="rot" style="color:var(--red)">Envio de material faltante com NF emitida</div>' +
+          '<div class="val forte" style="color:var(--red)">' + fmtInt(faltanteNf.perda) + ' pares</div>' +
+          '<div class="sub">' + fmtInt(faltanteNf.pfas) + ' envio(s) · nota já emitida, sem correção possível</div></div>' +
         '<div class="kpi" style="border-color:var(--red)">' +
           '<div class="rot" style="color:var(--red)">Devolução por AD (100%)</div>' +
           '<div class="val forte" style="color:var(--red)">' + fmtInt(adDevol.perda) + ' pares</div>' +
@@ -3216,16 +3345,54 @@ function renderizarPfas() {
         '<div class="kpi" style="border-width:2px;border-color:var(--red)">' +
           '<div class="rot" style="color:var(--red)">Perdas no período</div>' +
           '<div class="val forte" style="color:var(--red)">' + fmtInt(perdasTotal) + ' pares</div>' +
-          '<div class="sub">' + fmtInt(eventosTotal) + ' solicitação(ões) de ajuste de saldo · ' + rotuloPeriodo + '</div></div>' +
+          '<div class="sub">' + fmtInt(eventosTotal) + ' solicitação(ões) · ' + rotuloPeriodo + '</div></div>' +
       '</div>' +
-      '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Perda = quantidade faltante (DE-PARA zera sozinho; cancelamento sem reposição conta 100%).' +
-        (fifoOuEtapaAtivos ? ' <strong style="color:var(--amber)">FIFO e Etapa não se aplicam aqui.</strong>' : '') +
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px">' +
+        '<input type="text" id="buscaPerdas" placeholder="Buscar PFA, NF, encomenda, artigo…" ' +
+          'value="' + escapar(filtroTextoPerdas) + '" oninput="filtrarTextoPerdas(this.value)" ' +
+          'style="padding:6px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);' +
+          'border:1px solid var(--border);font-size:12px;flex:1 1 260px;max-width:360px">' +
+      '</div>' +
+      resultadoBusca +
+      '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Perda = quantidade faltante (cancelamento sem reposição conta 100%). DE×PARA fica no card ao lado e não conta como perda.' +
+        (filtrosQueNaoValem ? ' <strong style="color:var(--amber)">FIFO, Etapa, Conferência, Situação e Origem não se aplicam aqui.</strong>' : '') +
         '</p>' +
       '<p style="font-size:11px;color:var(--text-muted);margin-top:4px">' +
         '<strong>Gap de estoque (.xlsx)</strong>: cruza os ajustes com o saldo físico do último Picking/Pulmão. ' +
         '<strong style="color:var(--amber)">Precisa reprocessar Picking/Pulmão pelo menos 1x</strong> em Admin antes de usar.' +
         '</p>' +
     '</div>';
+
+    // Top artigos trocados no DE×PARA do período — mostra as "gambiarras" de envio.
+    const porArtigoDePara = new Map();
+    dePara.forEach(function (a) {
+      const k = (a.artigo || '—') + ' ' + (a.cor_tam || '');
+      if (!porArtigoDePara.has(k)) porArtigoDePara.set(k, { rot: k.trim(), n: 0, q: 0 });
+      const g = porArtigoDePara.get(k); g.n++; g.q += a.qtde_de_para || 0;
+    });
+    const topDePara = Array.from(porArtigoDePara.values()).sort(function (a, b) { return b.n - a.n || b.q - a.q; }).slice(0, 8);
+    const maxDePara = topDePara.reduce(function (mx, g) { return Math.max(mx, g.n); }, 0);
+    const cardDePara = '<div class="card" style="border-color:var(--amber);margin:0">' +
+      '<div class="section-title" style="color:var(--amber)">DE×PARA — artigo substituto no envio</div>' +
+      '<p style="font-size:12px;color:var(--text-muted);margin:4px 0 12px">' + rotuloPeriodo + ' · tudo que foi sinalizado como DE×PARA. Não é perda: o cliente recebeu outro artigo no lugar.</p>' +
+      '<div class="kpi-row">' +
+        '<div class="kpi" style="border-color:var(--amber)"><div class="rot" style="color:var(--amber)">DE×PARA no período</div>' +
+          '<div class="val forte" style="color:var(--amber)">' + fmtInt(dePara.length) + '</div>' +
+          '<div class="sub">' + fmtInt(deParaPfas) + ' PFA(s)</div></div>' +
+        '<div class="kpi" style="border-color:var(--amber)"><div class="rot" style="color:var(--amber)">Peças substituídas</div>' +
+          '<div class="val forte" style="color:var(--amber)">' + fmtInt(deParaQtde) + '</div>' +
+          '<div class="sub">' + (deParaSemQtde ? fmtInt(deParaSemQtde) + ' linha(s) antigas sem quantidade informada' : 'tipo DE_PARA na planilha') + '</div></div>' +
+      '</div>' +
+      (topDePara.length
+        ? '<div class="bar-list" style="margin-top:12px">' + topDePara.map(function (g) {
+            return '<div class="bar-item"><div class="nome" title="' + escapar(g.rot) + '">' + escapar(g.rot) + '</div>' +
+              '<div class="trilho"><div class="preench" style="width:' + (maxDePara ? g.n / maxDePara * 100 : 0) + '%;background:var(--amber)"></div></div>' +
+              '<div class="num">' + fmtInt(g.n) + 'x' + (g.q ? ' · ' + fmtInt(g.q) + ' pç' : '') + '</div></div>';
+          }).join('') + '</div>'
+        : '<div class="aviso" style="margin-top:12px">Nenhum DE×PARA sinalizado no período.</div>') +
+    '</div>';
+
+    return '<div class="grid-perdas">' + cardPerdas + cardDePara + '</div>';
   })();
 
   /* ---------- funil por etapa ---------- */
@@ -3284,14 +3451,70 @@ function renderizarPfas() {
   const segsColeta = Array.from(porSegColeta.entries()).sort(function (a, b) { return b[1] - a[1]; });
   const maxSegColeta = segsColeta.reduce(function (mx, e) { return Math.max(mx, e[1]); }, 0);
   let barrasSegColeta = '';
+  if (segColetaAberto && !porSegColeta.has(segColetaAberto)) segColetaAberto = null;
   segsColeta.forEach(function (e) {
     const larg = maxSegColeta > 0 ? e[1] / maxSegColeta * 100 : 0;
-    barrasSegColeta += '<div class="bar-item">' +
-      '<div class="nome">' + escapar(e[0]) + '</div>' +
+    const aberto = segColetaAberto === e[0];
+    barrasSegColeta += '<div class="bar-item" style="cursor:pointer' + (aberto ? ';outline:1px solid var(--accent);border-radius:6px' : '') + '" ' +
+      'onclick="alternarSegColeta(\'' + escaparJs(e[0]) + '\')" title="Clique para ver por data de faturamento">' +
+      '<div class="nome">' + (aberto ? '▾ ' : '▸ ') + escapar(e[0]) + '</div>' +
       '<div class="trilho"><div class="preench" style="width:' + larg + '%;background:var(--accent)"></div></div>' +
       '<div class="num">' + fmtInt(e[1]) + '</div>' +
     '</div>';
   });
+
+  /* Data de faturamento (NF) do material "com nota" — o prazo passado ao
+     cliente conta a partir dela (pedido da gestão, 23/09/2026). Título
+     mostra a faixa de datas do recorte; clicar num segmento abre o gráfico
+     por idade desde a NF, no mesmo formato do "FIFO — dias em aberto". */
+  const datasNota = coletaFiltrado.map(function (r) { return r.data_nota; }).filter(Boolean).sort();
+  const faixaDatasNota = datasNota.length
+    ? (datasNota[0] === datasNota[datasNota.length - 1]
+        ? 'NF de ' + formatarDataSimples(datasNota[0])
+        : 'NF de ' + formatarDataSimples(datasNota[0]) + ' a ' + formatarDataSimples(datasNota[datasNota.length - 1]))
+    : '';
+  let detalheSegColeta = '';
+  if (segColetaAberto) {
+    const doSeg = coletaFiltrado.filter(function (r) { return r.segmento_macro === segColetaAberto; });
+    const FAIXAS_NF = [
+      { chave: '0-2', rotulo: '0–2 dias', ate: 2 }, { chave: '3-5', rotulo: '3–5 dias', ate: 5 },
+      { chave: '6-10', rotulo: '6–10 dias', ate: 10 }, { chave: '11+', rotulo: '11+ dias', ate: Infinity },
+    ];
+    const porFaixaNf = new Map(), pfasFaixaNf = new Map(), porDiaNf = new Map();
+    let semData = 0;
+    doSeg.forEach(function (r) {
+      if (!r.data_nota) { semData += r.qtde; return; }
+      const d = diasDesdeIso(r.data_nota);
+      const f = FAIXAS_NF.find(function (x) { return d <= x.ate; });
+      porFaixaNf.set(f.chave, (porFaixaNf.get(f.chave) || 0) + r.qtde);
+      if (!pfasFaixaNf.has(f.chave)) pfasFaixaNf.set(f.chave, new Set());
+      pfasFaixaNf.get(f.chave).add(r.pfa);
+      porDiaNf.set(r.data_nota, (porDiaNf.get(r.data_nota) || 0) + r.qtde);
+    });
+    const maxNf = Array.from(porFaixaNf.values()).reduce(function (mx, v) { return Math.max(mx, v); }, 0);
+    const colunasNf = FAIXAS_NF.map(function (f) {
+      const v = porFaixaNf.get(f.chave) || 0;
+      const npfas = pfasFaixaNf.has(f.chave) ? pfasFaixaNf.get(f.chave).size : 0;
+      return '<div class="col-dia" title="' + escapar(f.rotulo) + ' desde a NF · ' + fmtInt(v) + ' pç · ' + fmtInt(npfas) + ' PFA(s)">' +
+        '<div class="valor-dia">' + (v > 0 ? fmtInt(v) : '') + '</div>' +
+        '<div class="pilha" style="height:' + (maxNf ? v / maxNf * 100 : 0) + '%">' +
+          '<div class="seg" style="height:100%;background:var(' + (COR_FAIXA_FIFO[f.chave] || '--accent') + ')"></div>' +
+        '</div>' +
+        '<div class="rot-dia">' + escapar(f.rotulo) + '</div>' +
+      '</div>';
+    }).join('');
+    const diasOrdenados = Array.from(porDiaNf.entries()).sort(function (a, b) { return a[0] < b[0] ? -1 : 1; });
+    detalheSegColeta = '<div style="margin-top:14px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input)">' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px">' +
+        '<strong style="font-size:12px">' + escapar(segColetaAberto) + ' — dias desde a emissão da NF</strong>' +
+        '<span class="chip" onclick="alternarSegColeta(null)" style="cursor:pointer">✕ Fechar</span>' +
+      '</div>' +
+      '<div class="barras-dia">' + colunasNf + '</div>' +
+      '<p style="font-size:11px;color:var(--text-muted);margin-top:8px">Por data de NF: ' +
+        diasOrdenados.map(function (e) { return formatarDataSimples(e[0]) + ' (' + fmtInt(e[1]) + ' pç)'; }).join(' · ') +
+        (semData ? ' · sem data: ' + fmtInt(semData) + ' pç' : '') + '</p>' +
+    '</div>';
+  }
 
   function chipsConferencia(set, fn) {
     let h = '<div class="filtros" style="margin-bottom:0"><span class="rot-filtro">Conferência</span>' +
@@ -3429,24 +3652,23 @@ function renderizarPfas() {
         '<div class="barras-dia">' + barrasFifo + '</div>' +
       '</div>' +
       '<div class="card">' +
-        '<div class="section-title">Com nota, aguardando coleta — por segmento</div>' +
+        '<div class="section-title" style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">' +
+          '<span>Com nota, aguardando coleta — por segmento</span>' +
+          (faixaDatasNota ? '<span style="font-size:11px;font-weight:600;color:var(--amber)">' + faixaDatasNota + '</span>' : '') +
+        '</div>' +
         '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' + fmtInt(qtdeColeta) +
           ' pç já faturadas (' + fmtInt(pfasColeta) + ' PFAs) — única fatia com FIFO real' +
           (coletaSep.qtdeNaoConf ? ', incluindo ' + fmtInt(coletaSep.qtdeNaoConf) + ' pç não confirmadas em tela' : '') +
           '.</p>' +
         '<div class="bar-list">' + (barrasSegColeta || '<div class="aviso">Nada aguardando coleta neste recorte.</div>') + '</div>' +
-        '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Etapa vem do cruzamento com Pendentes (Analítico não tem esse campo).</p>' +
+        detalheSegColeta +
+        '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Clique num segmento para ver as datas de faturamento. Etapa, Conferência, Situação e Origem vêm do cruzamento com Pendentes.</p>' +
       '</div>' +
     '</div>' +
     '<div class="card">' +
       '<div class="section-title" style="display:flex;align-items:center;justify-content:space-between">' +
         '<span>PFAs mais antigas em tela</span>' +
         '<button class="btn-mini" onclick="exportarCSVPfas()">⬇ Exportar CSV</button>' +
-      '</div>' +
-      '<div class="filtros-linha" style="margin:12px 0 10px">' +
-        chipsConferencia(filtroConfTabelaPfa, 'alternarConfTabelaPfa') +
-        chipsSituacaoPfa(filtroSituacaoTabelaPfa, 'alternarSituacaoTabelaPfa') +
-        chipsOrigemPfa(filtroOrigemTabelaPfa, 'alternarOrigemTabelaPfa') +
       '</div>' +
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0">' +
         '<input type="text" id="buscaPfa" placeholder="Buscar (PFA, cliente, etapa, marca, cluster…)" ' +
@@ -3474,7 +3696,8 @@ function renderizarPfas() {
       '</tr></thead><tbody>' + linhasHtml + linhaTotal + '</tbody></table></div>' +
       '<p style="font-size:11px;color:var(--text-muted);margin-top:10px"><strong>Conferência</strong>: Não iniciada · Parcial · Completa ' +
         '(volumes lidos × total da PFA). Parcial parada 3+ dias vira <strong style="color:var(--red)">Parcial (rastreio)</strong>.</p>' +
-    '</div>';
+    '</div>' +
+    blocoPerdas;
 }
 
 function exportarCSVPfas() {
@@ -3844,7 +4067,7 @@ function renderizarEstoqueOperacao(p) {
   if (gap && gap.registros) {
     avisos += '<div class="aviso" style="border-color:var(--amber);color:var(--text)">' +
       '<strong>GAP conhecido:</strong> ' + fmtInt(gap.registros) + ' endereços do Picking tinham saldo ' +
-      'negativo (' + fmtInt(gap.unidades) + ' un.) — reserva de separação/B.O. de remanejamento OU ' +
+      'negativo (' + fmtInt(gap.unidades) + ' un.) — reserva de separação/pendência de remanejamento OU ' +
       'faturamento do fechamento cuja cativação sumiu. Sem como distinguir os dois casos ainda, ' +
       'essas unidades <strong>não entram</strong> em nenhum número desta tela até isso ser resolvido.</div>';
   }
@@ -5283,10 +5506,10 @@ const CABECALHO_MODELO_AJUSTES_PFA = ['tipo', 'encomenda', 'pfa_antiga', 'pfa_no
 const EXEMPLOS_MODELO_AJUSTES_PFA = [
   ['AJUSTE', '960841', '242018', '242305', '46212 CHARLESTON WILLIA',
     '102', 'OIMCR24302', 'PT/PRT', 'M', '60', '2', 'Ajuste de encomenda', '09/09/2026', 'ERIKA DOMINGUES LEME'],
-  ['BO_POS_NF', '959112', '241650', '', '46212 CHARLESTON WILLIA',
+  ['FALTANTE_NF', '959112', '241650', '', '46212 CHARLESTON WILLIA',
     '102', 'OIMCR24302', 'PT/PRT', 'M', '60', '2', 'Stockout', '09/09/2026', 'ERIKA DOMINGUES LEME'],
-  ['AJUSTE', '961205', '242190', '242311', '62410 GRUPO SPORTSTYLE',
-    '082', 'OIVCR23110', 'PT', 'M', '30', '0', 'DE-PARA (artigo substituto)', '09/09/2026', 'ERIKA DOMINGUES LEME'],
+  ['DE_PARA', '961205', '242190', '242311', '62410 GRUPO SPORTSTYLE',
+    '082', 'OIVCR23110', 'PT', 'M', '30', '30', 'Artigo substituto enviado', '09/09/2026', 'ERIKA DOMINGUES LEME'],
   ['CANCELAMENTO', '957004', '241902', '', '51330 REDE CALCADOS MG',
     '060', 'OIACS20044', 'PT', 'M', '14', '14', 'Financeiro', '09/09/2026', 'ERIKA DOMINGUES LEME'],
   ['AD_DEVOLUCAO', '955390', '240711', '', '46212 CHARLESTON WILLIA',
@@ -5349,7 +5572,7 @@ async function exportarGapEstoqueAjustes() {
         passaMarcaSegmentoPfa(a) && ajustePfaNoPeriodo(a, janela);
     });
     if (perdas.length === 0) {
-      alert('Nenhuma perda de AJUSTE/B.O. pós-NF no recorte atual (Marca/Segmento/Período) — nada pra exportar.');
+      alert('Nenhuma perda de AJUSTE/envio faltante com NF no recorte atual (Marca/Segmento/Período) — nada pra exportar.');
       return;
     }
 

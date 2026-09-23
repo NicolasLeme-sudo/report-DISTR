@@ -796,7 +796,7 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     gap_estoque_reservado_picking: {
       registros: picking.negativas_excluidas,
       unidades: picking.negativas_unidades,
-      nota: 'Itens com saldo negativo no Picking (reserva de separação/B.O. de remanejamento OU ' +
+      nota: 'Itens com saldo negativo no Picking (reserva de separação/pendência de remanejamento OU ' +
         'faturamento do fechamento cuja cativação sumiu) — não dá pra distinguir os dois casos só ' +
         'com este arquivo, então NÃO entram no saldo disponível (nem positivo, nem negativo). GAP a ' +
         'resolver quando houver como separar os dois motivos.',
@@ -894,7 +894,7 @@ async function processarRessuprimento(supabaseClient, filePicking, filePulmao, o
     picking.registros.length.toLocaleString('pt-BR') + ' linhas de Picking' +
     (picking.negativas_excluidas
       ? ' (' + picking.negativas_excluidas + ' com saldo negativo — ' +
-        picking.negativas_unidades.toLocaleString('pt-BR') + ' un. de reserva/B.O. não contadas, ver GAP)'
+        picking.negativas_unidades.toLocaleString('pt-BR') + ' un. de reserva/pendência não contadas, ver GAP)'
       : '') +
     ' · ' + pulmao.registros.length.toLocaleString('pt-BR') + ' linhas de Pulmão' +
     (pulmao.colisoes_volume ? ' (' + pulmao.colisoes_volume + ' volumes duplicados descartados)' : '') + '.'

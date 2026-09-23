@@ -1337,7 +1337,7 @@ function montarShell(root) {
     '<div class="df-hd"><div>' +
     '<p class="df-kick">Distribuidora · Fluxograma</p>' +
     "<h1>" + esc(DADOS.titulo_pagina || "Fluxo de Processos — DISTR") + "</h1>" +
-    '<p class="df-sub">Retângulo = etapa · Losango = decisão · Pílula = início/fim · Vermelho = desvio · Dourado = bifurcação · Verde = sem B.O.</p>' +
+    '<p class="df-sub">Retângulo = etapa · Losango = decisão · Pílula = início/fim · Vermelho = desvio · Dourado = bifurcação · Verde = fluxo padrão</p>' +
     '<div class="df-rule"></div></div>' +
     (isAdmin() ? '<button type="button" class="df-editbtn" id="df-editbtn">✏️ Editar fluxo</button>' : "") +
     "</div>" +
@@ -1345,7 +1345,7 @@ function montarShell(root) {
     '<div class="df-stat"><b id="df-stat-total">0</b><span>Etapas no fluxo</span></div>' +
     '<div class="df-stat"><b id="df-stat-fases">0</b><span>Fases / processos</span></div>' +
     '<div class="df-stat df-a"><b id="df-stat-normal">0</b><span>Caminho normal</span></div>' +
-    '<div class="df-stat df-b"><b id="df-stat-desvio">0</b><span>Desvios / B.O.</span></div>' +
+    '<div class="df-stat df-b"><b id="df-stat-desvio">0</b><span>Desvios</span></div>' +
     '<div class="df-stat df-c"><b id="df-stat-bif">0</b><span>Bifurcações</span></div>' +
     "</div></header>" +
     '<div class="df-wrap">' +
@@ -1361,7 +1361,7 @@ function montarShell(root) {
     '<section class="df-blk"><h2>Como a numeração funciona</h2>' +
     '<div class="df-rule-box">' +
     '<div><b>1, 2, 3…</b><p>Etapa do caminho padrão, sempre em sequência.</p></div>' +
-    '<div><b>6.1, 6.2…</b><p>Desvio/B.O. que nasce na etapa 6. Se ele mesmo se desdobrar: 6.1.1, 6.1.2.</p></div>' +
+    '<div><b>6.1, 6.2…</b><p>Desvio que nasce na etapa 6. Se ele mesmo se desdobrar: 6.1.1, 6.1.2.</p></div>' +
     '<div><b>5A, 5B</b><p>Bifurcação legítima — dois caminhos igualmente corretos, não um erro.</p></div>' +
     '<div><b>Cada fase recomeça do 1</b><p>Cada fase do fluxo é tratada como um processo separado.</p></div>' +
     "</div></section>" +
@@ -1371,7 +1371,7 @@ function montarShell(root) {
        mesma causa raiz do bug de TIPO_CLS acima. */
     '<section class="df-blk legend-blk"><div class="df-legs">' +
     '<div class="df-lg"><span class="df-sw df-sw-step"></span><div><b>Etapa</b><p>Passo do processo.</p></div></div>' +
-    '<div class="df-lg"><span class="df-sw df-sw-dev"></span><div><b>Desvio / B.O.</b><p>Só acontece fora do padrão.</p></div></div>' +
+    '<div class="df-lg"><span class="df-sw df-sw-dev"></span><div><b>Desvio</b><p>Só acontece fora do padrão.</p></div></div>' +
     '<div class="df-lg"><span class="df-sw df-sw-bif"></span><div><b>Bifurcação</b><p>Um dos caminhos possíveis.</p></div></div>' +
     '<div class="df-lg"><span class="df-sw df-sw-gate"></span><div><b>Regra do sistema</b><p>Bloqueio automático.</p></div></div>' +
     '<div class="df-lg"><span class="df-sw df-sw-dia"></span><div><b>Decisão</b><p>Losango — pergunta que define o caminho.</p></div></div>' +

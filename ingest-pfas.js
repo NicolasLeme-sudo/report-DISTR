@@ -300,7 +300,19 @@ function parsearPfasEmbarcadas(textoArquivo) {
 
 /* Estados possíveis de uma linha de ajuste, na ordem em que aparecem no
    e-mail do comercial (ver especificação validada em 09/09/2026). */
-const TIPOS_AJUSTE_PFA = ['AJUSTE', 'CANCELAMENTO', 'BO_POS_NF', 'AD_DEVOLUCAO'];
+const TIPOS_AJUSTE_PFA = ['AJUSTE', 'DE_PARA', 'CANCELAMENTO', 'BO_POS_NF', 'AD_DEVOLUCAO'];
+
+/* DE-PARA = artigo substituto enviado no lugar do cortado (pedido da gestão,
+   23/09/2026: card próprio, separado dos ajustes brutos). Tipo DE_PARA na
+   planilha: qtde_faltante = quantidade substituída, perda zero. Linhas
+   antigas continuam reconhecidas: AJUSTE com falta 0 era a convenção
+   anterior pra DE-PARA, e motivo citando "DE PARA" também conta. */
+function ehDePara(a) {
+  if (a.tipo === 'DE_PARA') return true;
+  if (a.tipo !== 'AJUSTE') return false;
+  const motivo = String(a.motivo || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z]/g, '');
+  return /DEX?PARA/.test(motivo) || !a.qtde_faltante;
+}
 
 /* `tipo` não precisa vir digitado igualzinho ao rótulo oficial — o operador
    que preenche a planilha não decora a lista, então reconhecemos a palavra-
@@ -316,6 +328,8 @@ function normalizarTipoAjuste(bruto) {
   if (/DEVOL/.test(soLetras)) return 'AD_DEVOLUCAO';
   if (/CANCEL/.test(soLetras)) return 'CANCELAMENTO';
   if (/BO/.test(soLetras) && /NF/.test(soLetras)) return 'BO_POS_NF';
+  if (/FALTANTE/.test(soLetras) && /NF/.test(soLetras)) return 'BO_POS_NF'; // "Envio faltante com NF emitida"
+  if (/DEX?PARA/.test(soLetras)) return 'DE_PARA';
   if (/AJUST/.test(soLetras)) return 'AJUSTE';
   return t.trim(); // não reconhecido — cai fora na checagem contra TIPOS_AJUSTE_PFA
 }
@@ -612,7 +626,7 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
   const pfasAjustadas = new Set();
   ajustesLista.forEach(function (a) {
     if (a.tipo === 'CANCELAMENTO') { pfasAjustadas.add(a.pfa_antiga); return; }
-    if (a.tipo === 'AJUSTE' && a.pfa_nova) pfasAjustadas.add(a.pfa_antiga);
+    if ((a.tipo === 'AJUSTE' || a.tipo === 'DE_PARA') && a.pfa_nova) pfasAjustadas.add(a.pfa_antiga);
   });
   const pfasComAD = new Set();
   ajustesLista.forEach(function (a) { if (a.tipo === 'AD_DEVOLUCAO') pfasComAD.add(a.pfa_antiga); });
@@ -722,7 +736,7 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
      antes do sistema importar a PFA nova. */
   const pfaNovaParaAjuste = new Map();
   ajustesLista.forEach(function (a) {
-    if (a.tipo === 'AJUSTE' && a.pfa_nova) pfaNovaParaAjuste.set(a.pfa_nova, a);
+    if ((a.tipo === 'AJUSTE' || a.tipo === 'DE_PARA') && a.pfa_nova) pfaNovaParaAjuste.set(a.pfa_nova, a);
   });
 
   /* ---------- 3. linhas de Pendentes, já enriquecidas ---------- */
@@ -959,7 +973,9 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
   }
 
   const ajustesPayload = ajustesLista.map(function (a) {
-    const perdaLiquida = Math.max(0, a.qtde_faltante || 0);
+    const dePara = ehDePara(a);
+    // DE-PARA nunca é perda: chegou um substituto no lugar.
+    const perdaLiquida = dePara ? 0 : Math.max(0, a.qtde_faltante || 0);
     const ms = marcaSegmentoDoAjuste(a);
     // Pendência do comercial (14/09/2026, regra confirmada com o usuário —
     // ver conversa): AJUSTE COM pfa_nova conta direto como perda de venda
@@ -989,6 +1005,10 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
       qtde_total_pedido: a.qtde_total_pedido, qtde_faltante: a.qtde_faltante,
       perda_liquida: perdaLiquida, motivo: a.motivo, data_solicitacao: a.data_solicitacao,
       solicitante: a.solicitante,
+      de_para: dePara,
+      // Quantidade substituída — só conhecida no tipo DE_PARA (no legado,
+      // AJUSTE com falta 0, a planilha não dizia quanto foi trocado).
+      qtde_de_para: a.tipo === 'DE_PARA' ? (a.qtde_faltante || 0) : null,
       // PFA que o comercial já criou de fato pra essa encomenda, achada
       // pelo cruzamento acima — só informativo (não vira pfa_nova de
       // verdade, ninguém confirmou isso formalmente ainda).

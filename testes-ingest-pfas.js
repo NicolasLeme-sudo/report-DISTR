@@ -465,6 +465,23 @@ const perdaDePara = snapAju.ajustes.find(function (a) { return a.pfa_antiga === 
 eq(perdaDePara.perda_liquida, 0, 'DE-PARA: qtde_faltante = 0 → perda líquida zero, sem coluna extra');
 const perdaCancelamento = snapAju.ajustes.find(function (a) { return a.pfa_antiga === '241902'; });
 eq(perdaCancelamento.perda_liquida, 14, 'cancelamento sem reposição: 100% do valor é perda');
+eq(perdaDePara.de_para, true, 'AJUSTE com falta 0 (convenção antiga) é marcado como DE-PARA');
+eq(perdaAjusteReal.de_para, false, 'ajuste com falta real não é DE-PARA');
+
+secao('DE_PARA — tipo próprio (23/09/2026): card separado, nunca perda');
+eq(normalizarTipoAjuste('DE-PARA'), 'DE_PARA', '"DE-PARA" vira DE_PARA');
+eq(normalizarTipoAjuste('de x para'), 'DE_PARA', '"de x para" vira DE_PARA');
+eq(normalizarTipoAjuste('Envio faltante com NF emitida'), 'BO_POS_NF', 'nome novo do envio faltante cai no mesmo tipo BO_POS_NF');
+eq(normalizarTipoAjuste('FALTANTE_NF'), 'BO_POS_NF', 'FALTANTE_NF (modelo novo) = BO_POS_NF');
+eq(normalizarTipoAjuste('B.O. pós-NF'), 'BO_POS_NF', 'B.O. pós-NF antigo continua aceito');
+const snapDePara = construirSnapshotPfas(pendAju, anaAju, { registros: [] }, mapaFamilias, { referencia: HOJE }, { registros: [
+  { tipo: 'DE_PARA', encomenda: '970001', pfa_antiga: '250001', pfa_nova: '250002', cliente: 'C', artigo: 'OIMCR24302',
+    cor_tam: 'PT M', qtde_total_pedido: 30, qtde_faltante: 12, motivo: 'Substituto', data_solicitacao: '2026-09-08', solicitante: 'E' },
+] }, mapaArtFamTeste);
+const linhaDePara = snapDePara.ajustes[0];
+eq(linhaDePara.perda_liquida, 0, 'DE_PARA com 12 trocados: perda zero');
+eq(linhaDePara.qtde_de_para, 12, 'quantidade substituída vem de qtde_faltante');
+eq(linhaDePara.de_para, true, 'marcado como DE-PARA');
 
 // Ajustes em aberto (regra confirmada com o usuário, 14/09/2026): só AJUSTE
 // SEM pfa_nova conta, e só quando o cruzamento por encomenda não acha uma
