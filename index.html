@@ -4083,9 +4083,10 @@ function linhaArvoreRessuprimento(opts) {
     : '<span class="toggle vazio">·</span>';
   return '<tr class="' + opts.classe + '">' +
     '<th class="' + (opts.indent || '') + '"><span class="desc">' + btn + '<span>' + opts.rotulo + '</span></span></th>' +
+    // Ordem pedida pelo usuário (23/09/2026): Qtde SKUs › Qtde itens › %.
+    '<td>' + fmtInt(opts.skus) + '</td>' +
     '<td>' + fmtInt(opts.qtd) + '</td>' +
     '<td>' + fmtPct(opts.pct) + '</td>' +
-    '<td>' + fmtInt(opts.skus) + '</td>' +
   '</tr>';
 }
 
@@ -4641,7 +4642,7 @@ function renderizarEstoqueOperacao(p) {
   });
   linhasArvore += '<tr class="total">' +
     '<th><span class="desc"><span class="toggle vazio">·</span><span>TOTAL GERAL</span></span></th>' +
-    '<td>' + fmtInt(totalGeral) + '</td><td>100,0%</td><td>' + fmtInt(skusGeral) + '</td>' +
+    '<td>' + fmtInt(skusGeral) + '</td><td>' + fmtInt(totalGeral) + '</td><td>100,0%</td>' +
   '</tr>';
 
   /* ---------- B.O. em endereço transitório/validação ----------
@@ -4874,13 +4875,13 @@ function renderizarEstoqueOperacao(p) {
       '</div>' +
       (resultadosArtigoRessuprimento === null
         ? '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
-            '<th class="esq">Descrição</th><th>Qtd</th><th>% do nível</th><th>SKUs</th>' +
+            '<th class="esq">Descrição</th><th>Qtde SKUs</th><th>Qtde itens</th><th>%</th>' +
           '</tr></thead><tbody>' + linhasArvore + '</tbody></table></div>'
         : '<div style="overflow-x:auto;margin-top:10px">' +
             (buscandoArtigoRessuprimento ? '<div class="aviso">Buscando…</div>' :
               !resultadosArtigoRessuprimento.length ? '<div class="aviso">Nenhum artigo bate com "' + escapar(buscaArtigoRessuprimento) + '".</div>' :
               '<table class="arvore"><thead><tr>' +
-                '<th class="esq">Marca › Família › Modelo › Cor › Tamanho</th><th>Qtd</th><th>% do nível</th><th>SKUs</th>' +
+                '<th class="esq">Marca › Família › Modelo › Cor › Tamanho</th><th>Qtde SKUs</th><th>Qtde itens</th><th>%</th>' +
               '</tr></thead><tbody>' + renderizarArvoreBuscaSaldoEndereco(resultadosArtigoRessuprimento, p) + '</tbody></table>' +
               (resultadosArtigoRessuprimento.length === window.LIMITE_BUSCA_SALDO_ENDERECO
                 ? '<p style="font-size:11px;color:var(--text-muted);margin-top:8px">Mostrando os ' +
@@ -5595,13 +5596,13 @@ async function exportarCSVRessuprimento() {
   if (!p) return;
   const arvore = arvoreFiltradaRessuprimento(p);
   const rotSeg = filtroSegmentoRessuprimento.size ? Array.from(filtroSegmentoRessuprimento).join('+') : 'Todos';
-  const linhas = [['Filtro', 'Segmento (filtro)', 'Nivel', 'Marca', 'Segmento', 'Familia', 'Qtd', 'SKUs']];
+  const linhas = [['Filtro', 'Segmento (filtro)', 'Nivel', 'Marca', 'Segmento', 'Familia', 'Qtde SKUs', 'Qtde itens']];
   arvore.forEach(function (m) {
-    linhas.push([filtroRessuprimento, rotSeg, '1', m.nome, '', '', m.qtd, m.skus]);
+    linhas.push([filtroRessuprimento, rotSeg, '1', m.nome, '', '', m.skus, m.qtd]);
     (m.segmentos || []).forEach(function (s) {
-      linhas.push([filtroRessuprimento, rotSeg, '2', m.nome, s.nome, '', s.qtd, s.skus]);
+      linhas.push([filtroRessuprimento, rotSeg, '2', m.nome, s.nome, '', s.skus, s.qtd]);
       (s.familias || []).forEach(function (f) {
-        linhas.push([filtroRessuprimento, rotSeg, '3', m.nome, s.nome, f.codigo + ' ' + f.nome, f.qtd, f.skus]);
+        linhas.push([filtroRessuprimento, rotSeg, '3', m.nome, s.nome, f.codigo + ' ' + f.nome, f.skus, f.qtd]);
       });
     });
   });
