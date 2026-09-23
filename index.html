@@ -4700,36 +4700,32 @@ function renderizarEstoqueOperacao(p) {
     }
     chipsClassif += '</div>';
 
-    /* ---------- filtro + busca + ordenação ---------- */
-    const buscaBO = filtroTextoValidacao.trim().toLowerCase();
-    let filtradasBO = filtroClassifValidacao.size
-      ? validacaoTudo.filter(function (v) { return filtroClassifValidacao.has(v.classificacao); })
-      : validacaoTudo;
-    if (buscaBO) {
-      // SKU e endereço entram já montados com o separador da coluna, pra
-      // busca copiada/colada da tabela achar a linha; volume também entra.
-      filtradasBO = filtradasBO.filter(function (v) { return alvoBuscaValidacao(v).indexOf(buscaBO) !== -1; });
-    }
+    /* ---------- filtro + busca + ordenação ----------
+       UMA LINHA POR VOLUME (pedido do usuário, 23/09/2026): cada volume tem
+       sua própria quantidade, data de última movimentação e quem movimentou,
+       e é pelo nº do volume que se pesquisa no GCI. Listar todos os volumes
+       dentro de uma célula só fazia uma linha com centenas de volumes esticar
+       a tabela inteira. Mesma lista do CSV (linhasVolumeValidacao). */
+    const linhasVolume = linhasVolumeValidacao(validacaoTudo);
     const sinalBO = ordemValidacao.direcao === 'asc' ? 1 : -1;
-    function chaveOrdemBO(v, campo) {
+    function chaveOrdemBO(r, campo) {
       switch (campo) {
-        case 'endereco': return v.rua.padStart(4, '0') + '|' + v.nivel.padStart(4, '0') + '|' + v.box.padStart(6, '0');
-        case 'classificacao': return v.classificacao || '';
-        case 'sku': return v.artigo_codigo + '/' + v.cor + '/' + v.tamanho;
-        case 'nome': return v.descricao || '';
-        case 'data': return v.ultima_mov || '0000'; // sem registro no Kardex vai pro fim (desc)
-        case 'login': return v.ultima_login || '';
-        case 'volume': return (v.volumes_det[0] && v.volumes_det[0].v) || '';
-        default: return v.qtd;
+        case 'endereco': return r.rua.padStart(4, '0') + '|' + r.nivel.padStart(4, '0') + '|' + r.box.padStart(6, '0');
+        case 'sku': return r.artigo_codigo + '/' + r.cor + '/' + r.tamanho;
+        case 'nome': return r.descricao || '';
+        case 'data': return r.data || '0000'; // sem registro no Kardex vai pro fim (desc)
+        case 'login': return r.login || '';
+        case 'volume': return r.volume || '';
+        default: return r.qtd;
       }
     }
-    filtradasBO = filtradasBO.slice().sort(function (a, b) {
+    const linhasOrdenadas = linhasVolume.slice().sort(function (a, b) {
       const ca = chaveOrdemBO(a, ordemValidacao.campo), cb = chaveOrdemBO(b, ordemValidacao.campo);
       return (ca < cb ? -1 : ca > cb ? 1 : 0) * sinalBO;
     });
 
-    const limiteAtual = Number.isFinite(limiteValidacao) ? limiteValidacao : filtradasBO.length;
-    const linhasCarregadas = filtradasBO.slice(0, limiteAtual);
+    const limiteAtual = Number.isFinite(limiteValidacao) ? limiteValidacao : linhasOrdenadas.length;
+    const linhasCarregadas = linhasOrdenadas.slice(0, limiteAtual);
 
     function setaOrdemBO(campo) {
       if (ordemValidacao.campo !== campo) return '';
@@ -4740,38 +4736,33 @@ function renderizarEstoqueOperacao(p) {
         'onclick="ordenarValidacao(\'' + campo + '\')" title="Ordenar por ' + rotulo + '">' + rotulo + setaOrdemBO(campo) + '</th>';
     }
 
-    const linhasBO = linhasCarregadas.map(function (v) {
-      // Volume: sempre o número completo (é com ele que se pesquisa no GCI),
-      // um por linha quando a linha tem mais de um — nunca "N volumes".
-      return '<tr><th class="centro">' + escapar(formatarEndereco(v.rua, v.nivel, v.box)) + '</th>' +
-        '<td class="centro">' + escapar(v.artigo_codigo) + '/' + escapar(v.cor) + '/' + escapar(v.tamanho) + '</td>' +
-        '<td class="centro">' + escapar(v.descricao) + '</td>' +
-        '<td>' + fmtInt(v.qtd) + '</td>' +
-        '<td class="centro" style="font-size:11px" title="' + escapar(v.ultima_nome || '') + '">' + escapar(v.ultima_login || '—') + '</td>' +
-        '<td class="centro" style="font-size:11px;font-family:monospace;line-height:1.5">' +
-          (v.volumes_det.length === 0 ? '—' : v.volumes_det.map(function (x) { return escapar(x.v); }).join('<br>')) +
-        '</td>' +
+    const linhasBO = linhasCarregadas.map(function (r) {
+      return '<tr><th class="centro">' + escapar(formatarEndereco(r.rua, r.nivel, r.box)) + '</th>' +
+        '<td class="centro">' + escapar(r.artigo_codigo) + '/' + escapar(r.cor) + '/' + escapar(r.tamanho) + '</td>' +
+        '<td class="centro">' + escapar(r.descricao) + '</td>' +
+        '<td>' + fmtInt(r.qtd) + '</td>' +
+        '<td class="centro" style="font-size:11px" title="' + escapar(r.nome || '') + '">' + escapar(r.login || '—') + '</td>' +
+        '<td class="centro" style="font-size:11px;font-family:monospace">' +
+          (r.volume ? escapar(r.volume) : '<span style="color:var(--text-muted)">sem nº de volume</span>') + '</td>' +
         '<td class="centro">' +
-          (v.ultima_mov ? formatarDataSimples(v.ultima_mov) + ' <span style="color:var(--text-muted)">(' + fmtInt(v.dias_ultima) + 'd)</span>'
+          (r.data ? formatarDataSimples(r.data) + ' <span style="color:var(--text-muted)">(' + fmtInt(r.dias) + 'd)</span>'
             : '<span style="color:var(--text-muted)" title="Nenhuma movimentação deste volume para este endereço nos Kardex já processados">sem registro no Kardex</span>') +
         '</td></tr>';
     }).join('');
 
     /* ---------- linha de TOTAL ----------
        Soma sempre o que bate com o filtro de classificação/busca inteiro
-       (filtradasBO) — NUNCA só o que está carregado na tela (linhasCarregadas,
-       limitado pelo seletor "Mostrar"). Pedido explícito do usuário,
-       05/09/2026: o total não pode mentir por causa do limite de exibição.
-       Quando o filtro sobra num único endereço físico, o rótulo mostra ESSE
-       endereço em vez de "TOTAL GERAL" — sinaliza que é o total daquele
-       endereço, não da tela inteira. */
-    const totalFiltradoQtd = filtradasBO.reduce(function (s, v) { return s + v.qtd; }, 0);
-    const enderecosFiltrados = new Set(filtradasBO.map(function (v) { return v.rua + '|' + v.nivel + '|' + v.box; }));
+       (linhasVolume) — NUNCA só o que está carregado na tela (limitado pelo
+       seletor "Mostrar"). Pedido explícito do usuário, 05/09/2026: o total
+       não pode mentir por causa do limite de exibição. Quando o filtro sobra
+       num único endereço físico, o rótulo mostra ESSE endereço. */
+    const totalFiltradoQtd = linhasVolume.reduce(function (s, r) { return s + r.qtd; }, 0);
+    const enderecosFiltrados = new Set(linhasVolume.map(function (r) { return r.rua + '|' + r.nivel + '|' + r.box; }));
     const rotuloTotalBO = enderecosFiltrados.size === 1
       ? formatarEndereco.apply(null, Array.from(enderecosFiltrados)[0].split('|'))
       : 'TOTAL GERAL';
     const linhaTotalBO = '<tr class="total"><th class="centro">' + escapar(rotuloTotalBO) + '</th>' +
-      '<td class="centro" colspan="2">' + fmtInt(enderecosFiltrados.size) + ' endereço(s) · ' + fmtInt(filtradasBO.length) + ' linha(s)</td>' +
+      '<td class="centro" colspan="2">' + fmtInt(enderecosFiltrados.size) + ' endereço(s) · ' + fmtInt(linhasVolume.length) + ' volume(s)</td>' +
       '<td>' + fmtInt(totalFiltradoQtd) + '</td>' +
       '<td class="centro">—</td><td class="centro">—</td><td class="centro">—</td></tr>';
 
@@ -4779,7 +4770,7 @@ function renderizarEstoqueOperacao(p) {
       '<div class="card">' +
         '<div class="section-title">Material parado em endereço transitório/validação — fora da capacidade</div>' +
         '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
-          'Cada linha é um endereço + SKU aguardando tratativa. "Última movimentação" vem do Kardex (último TL+ do volume para este endereço).</p>' +
+          'Cada linha é um volume parado aguardando tratativa. "Última movimentação" vem do Kardex (último TL+ do volume para este endereço).</p>' +
         (snapshotSemVolumes
           ? '<div class="aviso" style="margin-bottom:10px">Reprocesse <strong>Picking + Pulmão</strong> para trazer o nº do volume de cada linha — sem ele não dá pra cruzar a data real de entrada no endereço.</div>'
           : '') +
@@ -4798,7 +4789,7 @@ function renderizarEstoqueOperacao(p) {
         '<div class="bar-list-rua" style="margin-bottom:14px">' + barrasBO + '</div>' +
         chipsClassif +
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0">' +
-          '<input type="text" id="buscaValidacao" placeholder="Buscar (endereço, SKU, nome, qtde, classificação…)" ' +
+          '<input type="text" id="buscaValidacao" placeholder="Buscar (endereço, SKU, nome, volume, login…)" ' +
             'value="' + escapar(filtroTextoValidacao) + '" oninput="filtrarTextoValidacao(this.value)" ' +
             'style="padding:6px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);' +
             'border:1px solid var(--border);font-size:12px;flex:1 1 260px;max-width:360px">' +
@@ -4815,8 +4806,7 @@ function renderizarEstoqueOperacao(p) {
           '</span>' +
         '</div>' +
         '<p style="font-size:11px;color:var(--text-muted);margin-bottom:6px">' +
-          'Exibindo ' + fmtInt(linhasCarregadas.length) + ' de ' + fmtInt(filtradasBO.length) + ' linha(s)' +
-          (filtradasBO.length !== validacaoTudo.length ? ' (filtrado de ' + fmtInt(validacaoTudo.length) + ')' : '') + '.</p>' +
+          'Exibindo ' + fmtInt(linhasCarregadas.length) + ' de ' + fmtInt(linhasVolume.length) + ' volume(s).</p>' +
         '<div class="tabela-rolavel"><table class="arvore"><thead><tr>' +
           thOrdenavelBO('endereco', 'Endereço', 'centro') +
           thOrdenavelBO('sku', 'SKU', 'centro') + thOrdenavelBO('nome', 'Nome do produto', 'centro') +
@@ -5683,13 +5673,43 @@ function enriquecerValidacaoComKardex(lista) {
     });
   });
 }
-function alvoBuscaValidacao(v) {
-  return [
-    v.rua, v.nivel, v.box, formatarEndereco(v.rua, v.nivel, v.box), v.classificacao,
-    v.artigo_codigo, v.cor, v.tamanho, v.artigo_codigo + '/' + v.cor + '/' + v.tamanho,
-    v.descricao, v.qtd, fmtInt(v.qtd), v.ultima_mov ? formatarDataSimples(v.ultima_mov) : '',
-    v.ultima_login, v.ultima_nome, (v.volumes_det || []).map(function (x) { return x.v; }).join(' '),
-  ].join(' ').toLowerCase();
+/* Uma linha por VOLUME, já com filtro de classificação e busca aplicados —
+   base da tabela E do CSV, pra os dois mostrarem sempre a mesma coisa.
+   Saldo do endereço+SKU que não tem nº de volume no Pulmão vira uma linha
+   "sem nº de volume" com a diferença, pra soma bater com a quantidade real. */
+function linhasVolumeValidacao(enriquecidas) {
+  const itens = filtroClassifValidacao.size
+    ? enriquecidas.filter(function (v) { return filtroClassifValidacao.has(v.classificacao); })
+    : enriquecidas;
+  const hoje = Date.now();
+  const linhas = [];
+  itens.forEach(function (v) {
+    const base = { rua: v.rua, nivel: v.nivel, box: v.box, classificacao: v.classificacao,
+      artigo_codigo: v.artigo_codigo, cor: v.cor, tamanho: v.tamanho, descricao: v.descricao };
+    let somaVolumes = 0;
+    (v.volumes_det || []).forEach(function (vol) {
+      somaVolumes += vol.q || 0;
+      linhas.push(Object.assign({}, base, {
+        qtd: vol.q || 0, volume: vol.v, data: vol.entrada || null, hora: vol.hora,
+        dias: vol.entrada ? Math.max(0, Math.round((hoje - new Date(vol.entrada + 'T12:00:00').getTime()) / 86400000)) : null,
+        login: vol.login || '', nome: vol.nome || '',
+      }));
+    });
+    const resto = (v.qtd || 0) - somaVolumes;
+    if (resto > 0) {
+      linhas.push(Object.assign({}, base, { qtd: resto, volume: '', data: null, hora: null, dias: null, login: '', nome: '' }));
+    }
+  });
+  const busca = filtroTextoValidacao.trim().toLowerCase();
+  if (!busca) return linhas;
+  return linhas.filter(function (r) {
+    return [
+      r.rua, r.nivel, r.box, formatarEndereco(r.rua, r.nivel, r.box), r.classificacao,
+      r.artigo_codigo, r.cor, r.tamanho, r.artigo_codigo + '/' + r.cor + '/' + r.tamanho,
+      r.descricao, r.qtd, fmtInt(r.qtd), r.data ? formatarDataSimples(r.data) : '',
+      r.login, r.nome, r.volume,
+    ].join(' ').toLowerCase().indexOf(busca) !== -1;
+  });
 }
 
 /* Exporta a listagem de "B.O. em endereço transitório/validação" — ignora o
@@ -5699,36 +5719,16 @@ function alvoBuscaValidacao(v) {
 function exportarCSVValidacao() {
   const p = window._snapshotRessuprimento;
   if (!p || !(p.validacao || []).length) return;
-  const enriquecidas = enriquecerValidacaoComKardex(p.validacao);
-  let linhasFiltro = filtroClassifValidacao.size
-    ? enriquecidas.filter(function (v) { return filtroClassifValidacao.has(v.classificacao); })
-    : enriquecidas;
-  const busca = filtroTextoValidacao.trim().toLowerCase();
-  if (busca) {
-    // Mesmo alvo da busca na tela — exporta exatamente o que ela encontrou.
-    linhasFiltro = linhasFiltro.filter(function (v) { return alvoBuscaValidacao(v).indexOf(busca) !== -1; });
-  }
-  // Uma linha por VOLUME: é com o nº do volume que o time consulta e trata o
-  // material no sistema (pedido do usuário, 23/09/2026).
+  const linhasVol = linhasVolumeValidacao(enriquecerValidacaoComKardex(p.validacao));
   const linhas = [['Endereco', 'Classificacao', 'SKU', 'Nome do produto', 'Volume', 'QTDE do volume',
     'Ultima movimentacao', 'Hora', 'Dias desde a ultima movimentacao', 'Login que movimentou', 'Nome de quem movimentou']];
-  const hoje = Date.now();
-  linhasFiltro.forEach(function (v) {
-    const base = [formatarEndereco(v.rua, v.nivel, v.box), v.classificacao,
-      v.artigo_codigo + '/' + v.cor + '/' + v.tamanho, v.descricao];
-    if (!v.volumes_det.length) {
-      linhas.push(base.concat(['', v.qtd, 'sem registro no Kardex', '', '', '', '']));
-      return;
-    }
-    v.volumes_det.forEach(function (vol) {
-      const dias = vol.entrada ? Math.max(0, Math.round((hoje - new Date(vol.entrada + 'T12:00:00').getTime()) / 86400000)) : '';
-      const hora = vol.hora != null ? String(Math.floor(vol.hora / 60)).padStart(2, '0') + ':' + String(vol.hora % 60).padStart(2, '0') : '';
-      // ="..." = Excel lê o volume como texto e não vira 1,79E+17.
-      linhas.push(base.concat([
-        '="' + vol.v + '"', vol.q, vol.entrada || 'sem registro no Kardex', hora, dias,
-        vol.login, vol.nome,
-      ]));
-    });
+  linhasVol.forEach(function (r) {
+    const hora = r.hora != null ? String(Math.floor(r.hora / 60)).padStart(2, '0') + ':' + String(r.hora % 60).padStart(2, '0') : '';
+    // ="..." = Excel lê o volume como texto e não vira 1,79E+17.
+    linhas.push([formatarEndereco(r.rua, r.nivel, r.box), r.classificacao,
+      r.artigo_codigo + '/' + r.cor + '/' + r.tamanho, r.descricao,
+      r.volume ? '="' + r.volume + '"' : 'sem nº de volume', r.qtd,
+      r.data || 'sem registro no Kardex', hora, r.dias != null ? r.dias : '', r.login, r.nome]);
   });
   const csv = linhas.map(function (l) {
     return l.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(';');
