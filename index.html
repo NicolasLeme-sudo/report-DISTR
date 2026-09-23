@@ -491,6 +491,8 @@ tr.total > th, tr.total > td {
    listas grandes (ex.: B.O. em endereço transitório/validação) rolam dentro
    da própria caixa em vez de esticar a página inteira. Pedido do usuário,
    05/09/2026, no mesmo espírito do painel de Inventário. */
+.link-enderecos { margin-left: 10px; font-size: 10.5px; color: var(--accent); cursor: pointer; white-space: nowrap; opacity: .85; }
+.link-enderecos:hover { opacity: 1; text-decoration: underline; }
 .tabela-rolavel { max-height: 398px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
 .tabela-rolavel table.arvore thead th { position: sticky; top: 0; background: var(--bg-card); z-index: 1; }
 .tabela-rolavel table.arvore { border: none; }
@@ -4593,7 +4595,16 @@ function renderizarEstoqueOperacao(p) {
     '</div>';
   });
 
-  /* ---------- árvore Marca › Grupo › Família ---------- */
+  /* ---------- árvore Marca › Grupo › Família ----------
+     Segmento e família ganham "⬇ endereços": exporta os artigos daquele nó
+     com o endereço de cada um (pedido do usuário, 23/09/2026: validar
+     calçados Olympikus que apareciam no estoque sem ele reconhecer). */
+  exportEnderecosArvore = {};
+  function botaoEnderecos(id, rotulo, codigos) {
+    exportEnderecosArvore[id] = { rotulo: rotulo, codigos: codigos };
+    return ' <span class="link-enderecos" onclick="event.stopPropagation();exportarEnderecosArvore(\'' + escaparJs(id) + '\', this)" ' +
+      'title="Exportar CSV com os artigos e os endereços deste nível">⬇ endereços</span>';
+  }
   let linhasArvore = '';
   arvoreAtual.forEach(function (m) {
     if (m.qtd === 0) return;
@@ -4611,7 +4622,9 @@ function renderizarEstoqueOperacao(p) {
       const chaveS = chaveM + '|S|' + s.codigo;
       linhasArvore += linhaArvoreRessuprimento({
         classe: 'n2', chave: chaveS, temFilhos: (s.familias || []).length > 0, indent: 'ind-2',
-        rotulo: escapar(s.nome), qtd: s.qtd, pct: s.pct, skus: s.skus,
+        rotulo: escapar(s.nome) + botaoEnderecos(chaveS, m.nome + ' › ' + s.nome,
+          (s.familias || []).map(function (f) { return f.codigo; })),
+        qtd: s.qtd, pct: s.pct, skus: s.skus,
       });
       if (!abertosRessuprimento.has(chaveS)) return;
       (s.familias || []).forEach(function (f) {
@@ -4619,7 +4632,8 @@ function renderizarEstoqueOperacao(p) {
         linhasArvore += linhaArvoreRessuprimento({
           classe: 'n3', chave: chaveS + '|F|' + f.codigo, temFilhos: false, indent: 'ind-3',
           rotulo: '<span class="cod">' + escapar(f.codigo) + '</span>' + escapar(f.nome) +
-                  '<span class="seg">' + escapar(f.segmento) + '</span>',
+                  '<span class="seg">' + escapar(f.segmento) + '</span>' +
+                  botaoEnderecos(chaveS + '|F|' + f.codigo, m.nome + ' › ' + s.nome + ' › ' + f.codigo + ' ' + f.nome, [f.codigo]),
           qtd: f.qtd, pct: f.pct, skus: f.skus,
         });
       });
@@ -5606,6 +5620,71 @@ async function exportarCSVRessuprimento() {
    usuário, 15/09/2026: "quando eu pesquisar um artigo e exportar, quero um
    detalhado dos endereços pra consultar o saldo") — refaz a busca SEM o
    teto de 200 pra levar todo mundo que bateu, não só o que apareceu na tela. */
+let exportEnderecosArvore = {};
+/* Artigos + endereço de um nó da árvore Marca › Grupo › Família, direto de
+   ressuprimento_saldo_enderecos por família (busca exata, não o "contém" da
+   caixa de busca). Respeita o filtro Todos/Picking/Pulmão da tela. */
+async function exportarEnderecosArvore(id, el) {
+  const alvo = exportEnderecosArvore[id];
+  if (!alvo || !alvo.codigos.length) return;
+  const textoOriginal = el ? el.textContent : '';
+  if (el) el.textContent = '⏳ buscando…';
+  try {
+    const LOTE = 1000;
+    let dados = [];
+    for (let i = 0; i < alvo.codigos.length; i += 50) {
+      const fams = alvo.codigos.slice(i, i + 50);
+      let offset = 0;
+      while (true) {
+        const { data, error } = await supabaseClient.from('ressuprimento_saldo_enderecos')
+          .select('artigo_codigo, cor, tamanho, familia_codigo, rua, nivel, box, classificacao, qtd')
+          .in('familia_codigo', fams)
+          .order('rua').order('nivel').order('box')
+          .range(offset, offset + LOTE - 1);
+        if (error) throw error;
+        if (!data || !data.length) break;
+        dados = dados.concat(data);
+        if (data.length < LOTE) break;
+        offset += data.length;
+      }
+    }
+    if (filtroRessuprimento === 'picking') dados = dados.filter(function (r) { return r.classificacao === 'PICKING'; });
+    if (filtroRessuprimento === 'pulmao') dados = dados.filter(function (r) { return r.classificacao === 'PULMAO'; });
+    if (!dados.length) { alert('Nenhum endereço com saldo encontrado para ' + alvo.rotulo + '.'); return; }
+    // Descrição em lotes de artigos — a consulta vai no link, lista grande estoura.
+    const artigos = Array.from(new Set(dados.map(function (r) { return r.artigo_codigo; })));
+    const descr = new Map();
+    for (let i = 0; i < artigos.length; i += 150) {
+      const lote = artigos.slice(i, i + 150).map(function (a) { return { artigo_codigo: a }; });
+      const enr = await window.enriquecerDescricaoPorArtigo(supabaseClient, lote);
+      enr.forEach(function (r) { if (r.descricao) descr.set(r.artigo_codigo, r.descricao); });
+    }
+    const mapaFamiliaInfo = mapaFamiliasRessuprimento(window._snapshotRessuprimento || {});
+    const linhas = [['Nivel da arvore', 'Marca', 'Familia_Codigo', 'Familia_Nome', 'Artigo', 'Descricao', 'Cor', 'Tamanho',
+      'Endereco', 'Rua', 'Nivel', 'Box', 'Picking/Pulmao', 'Qtd']];
+    dados.forEach(function (r) {
+      const info = mapaFamiliaInfo.get(r.familia_codigo);
+      linhas.push([alvo.rotulo, info ? info.marcaNome : 'NÃO MAPEADA', r.familia_codigo, info ? info.nome : '',
+        r.artigo_codigo, descr.get(r.artigo_codigo) || '', r.cor, r.tamanho,
+        formatarEndereco(r.rua, r.nivel, r.box), r.rua, r.nivel, r.box,
+        r.classificacao === 'PICKING' ? 'Picking' : r.classificacao === 'PULMAO' ? 'Pulmão' : r.classificacao, r.qtd]);
+    });
+    const csv = linhas.map(function (l) {
+      return l.map(function (c) { return '"' + String(c === null || c === undefined ? '' : c).replace(/"/g, '""') + '"'; }).join(';');
+    }).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'enderecos-' + alvo.rotulo.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '') + '.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (err) {
+    console.error(err);
+    alert('Erro ao buscar os endereços: ' + (err.message || err));
+  } finally {
+    if (el) el.textContent = textoOriginal;
+  }
+}
+
 async function exportarCSVBuscaSaldoEndereco() {
   const termo = buscaArtigoRessuprimento.trim();
   if (!termo) return;
