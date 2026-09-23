@@ -835,7 +835,96 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     }),
     ressuprimento_por_segmento: ressuprimentoPorBucket,
     familias_nao_mapeadas: Array.from(familiasNaoMapeadas),
+    // Picking inclui os endereços de Picking que ficam dentro do Pulmão
+    // (20/70/80/81-02, apoio confiável) — continuam sendo posição de picking.
+    enderecos_ociosos: mapearEnderecosOciosos(
+      pickingReal.concat(pulmaoTudo.filter(function (r) { return r.origem !== 'pulmao' && r.apoio_confiavel; })),
+      pulmaoFisico),
   };
+}
+
+/* ============================================================================
+   ENDEREÇOS VAZIOS E "PICADOS" (< 10 peças) — pedido da gestão, 23/09/2026:
+   base pra avaliar compactar volumes picados em poucos endereços e liberar
+   posição.
+   - Picking: endereço ALOCADO (está no arquivo) com saldo físico zero
+     (disponível + cativado) = vazio; 1 a 9 peças = picado.
+   - Pulmão: o arquivo só lista volume existente, então vazio é INFERIDO —
+     box que existe na rua (aparece ocupado em qualquer nível dela) sem
+     volume neste nível. A união por rua acompanha a numeração real (ruas
+     1–7 usam 1..144; 10–14 só pares ou só ímpares). Só Pulmão físico (ruas
+     de trânsito/sinalização ficam fora).
+   Segmento do endereço vazio = bucket predominante (em peças) da RUA.
+   ============================================================================ */
+const LIMITE_PICADO = 10;
+function mapearEnderecosOciosos(pickingReal, pulmaoFisico) {
+  function agruparPorEndereco(lista) {
+    const m = new Map();
+    lista.forEach(function (r) {
+      const k = r.rua + '|' + r.nivel + '|' + r.box;
+      if (!m.has(k)) m.set(k, { rua: r.rua, nivel: r.nivel, box: r.box, qtd: 0, skus: new Set(), buckets: {} });
+      const e = m.get(k);
+      const q = (r.qtd || 0) + (r.qtd_cativado || 0);
+      e.qtd += q;
+      e.skus.add(r.artigo_codigo + '|' + r.cor + '|' + r.tamanho);
+      // Reclassificado do Picking (20/70/80/81-02) não carrega bucket pronto.
+      const b = r.bucket || classificarBucket(r.segmento, r.categoria);
+      e.buckets[b] = (e.buckets[b] || 0) + Math.max(q, 1);
+    });
+    return m;
+  }
+  function predominante(buckets) {
+    let melhor = null, v = -1;
+    Object.keys(buckets).forEach(function (b) { if (buckets[b] > v) { v = buckets[b]; melhor = b; } });
+    return melhor || 'outros';
+  }
+  function bucketPorRua(enderecos) {
+    const porRua = {};
+    enderecos.forEach(function (e) {
+      if (!porRua[e.rua]) porRua[e.rua] = {};
+      Object.keys(e.buckets).forEach(function (b) { porRua[e.rua][b] = (porRua[e.rua][b] || 0) + e.buckets[b]; });
+    });
+    const out = {};
+    Object.keys(porRua).forEach(function (r) { out[r] = predominante(porRua[r]); });
+    return out;
+  }
+  // Linhas guardadas como [rua, nivel, box, qtd, skus, segmento] — são
+  // ~10 mil endereços; objeto por linha triplicava o tamanho do snapshot.
+  const saida = { limite_picado: LIMITE_PICADO, colunas: ['rua', 'nivel', 'box', 'qtd', 'skus', 'segmento'],
+    picking: { vazios: [], picados: [] }, pulmao: { vazios: [], picados: [], vazios_inferidos: true } };
+
+  const endPick = agruparPorEndereco(pickingReal);
+  endPick.forEach(function (e) {
+    const linha = [e.rua, e.nivel, e.box, e.qtd, e.skus.size, predominante(e.buckets)];
+    if (e.qtd <= 0) saida.picking.vazios.push(linha);
+    else if (e.qtd < LIMITE_PICADO) saida.picking.picados.push(linha);
+  });
+
+  const endPulm = agruparPorEndereco(pulmaoFisico);
+  const segRuaPulm = bucketPorRua(endPulm);
+  const boxesPorRua = {}, niveisPorRua = {};
+  endPulm.forEach(function (e) {
+    (boxesPorRua[e.rua] = boxesPorRua[e.rua] || new Set()).add(e.box);
+    (niveisPorRua[e.rua] = niveisPorRua[e.rua] || new Set()).add(e.nivel);
+    if (e.qtd > 0 && e.qtd < LIMITE_PICADO) {
+      saida.pulmao.picados.push([e.rua, e.nivel, e.box, e.qtd, e.skus.size, predominante(e.buckets)]);
+    }
+  });
+  Object.keys(boxesPorRua).forEach(function (rua) {
+    niveisPorRua[rua].forEach(function (nivel) {
+      boxesPorRua[rua].forEach(function (box) {
+        if (!endPulm.has(rua + '|' + nivel + '|' + box)) {
+          saida.pulmao.vazios.push([rua, nivel, box, 0, 0, segRuaPulm[rua]]);
+        }
+      });
+    });
+  });
+  const ord = function (a, b) {
+    return (Number(a[0]) - Number(b[0])) || (Number(a[1]) - Number(b[1])) || (Number(a[2]) - Number(b[2]));
+  };
+  saida.picking.vazios.sort(ord); saida.picking.picados.sort(ord);
+  saida.pulmao.vazios.sort(ord); saida.pulmao.picados.sort(ord);
+  return saida;
 }
 
 /* ============================================================================

@@ -186,6 +186,30 @@ eq(a3Rua24.nivel, '1', 'linha de validação carrega nível');
 eq(a3Rua24.box, '1', 'linha de validação carrega box');
 
 /* -------------------------------------------------------------------------- */
+secao('endereços vazios e picados (< 10 pç) — 23/09/2026');
+(function () {
+  const pick = { registros: [
+    { familia_codigo: '101', artigo_codigo: 'P1', cor: 'PT', tamanho: '40', ean: 'E1', rua: '3', nivel: '1', box: '1', qtd: 0, qtd_cativado: 0, qtd_gap_reservado: 0 },
+    { familia_codigo: '101', artigo_codigo: 'P2', cor: 'PT', tamanho: '40', ean: 'E2', rua: '3', nivel: '1', box: '2', qtd: 4, qtd_cativado: 3, qtd_gap_reservado: 0 },
+    { familia_codigo: '101', artigo_codigo: 'P3', cor: 'PT', tamanho: '40', ean: 'E3', rua: '3', nivel: '1', box: '3', qtd: 40, qtd_cativado: 0, qtd_gap_reservado: 0 },
+    { familia_codigo: '101', artigo_codigo: 'P4', cor: 'PT', tamanho: '40', ean: 'E4', rua: '70', nivel: '1', box: '9', qtd: 0, qtd_cativado: 0, qtd_gap_reservado: 0 },
+  ], negativas_excluidas: 0, negativas_unidades: 0 };
+  const pulm = { registros: [
+    { familia_codigo: '101', artigo_codigo: 'U1', cor: 'PT', tamanho: '40', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '2', nivel: '8', box: '1', dt_cri: null, qtd: 100, codbar: '' },
+    { familia_codigo: '101', artigo_codigo: 'U2', cor: 'PT', tamanho: '40', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '2', nivel: '8', box: '3', dt_cri: null, qtd: 5, codbar: '' },
+    { familia_codigo: '101', artigo_codigo: 'U3', cor: 'PT', tamanho: '40', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '2', nivel: '9', box: '1', dt_cri: null, qtd: 50, codbar: '' },
+    { familia_codigo: '101', artigo_codigo: 'U4', cor: 'PT', tamanho: '40', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '500', nivel: '1', box: '1', dt_cri: null, qtd: 3, codbar: '' },
+  ], colisoes_volume: 0 };
+  const oc = construirSnapshotRessuprimento(pick, pulm, mapaFamilias, {}, { arquivo_picking: 'a', arquivo_pulmao: 'b' }).enderecos_ociosos;
+  const txt = function (l) { return l.map(function (e) { return e[0] + '-' + e[1] + '-' + e[2]; }).join(','); };
+  eq(txt(oc.picking.vazios), '3-1-1,70-1-9', 'Picking vazio = alocado com saldo zero (inclui rua 70, picking dentro do Pulmão)');
+  eq(txt(oc.picking.picados), '3-1-2', 'Picking picado soma disponível + cativado (4+3=7 < 10)');
+  eq(txt(oc.pulmao.vazios), '2-9-3', 'Pulmão vazio inferido: box 3 existe na rua 2 (nível 8) mas está sem volume no nível 9');
+  eq(txt(oc.pulmao.picados), '2-8-3', 'Pulmão picado: 5 pç; rua 500 (trânsito) fica fora');
+  eq(oc.picking.vazios[0][5], 'calcado', 'segmento do endereço vem do bucket da família');
+})();
+
+/* -------------------------------------------------------------------------- */
 secao('construirSaldoEnderecos — saldo físico por endereço, pro relatório de gap de estoque (10/09/2026)');
 // Reaproveita o mesmo picking/pulmão/mapaFamilias do teste de cima.
 const classifSaldo = classificarPickingEPulmao(picking, pulmao, mapaFamilias);

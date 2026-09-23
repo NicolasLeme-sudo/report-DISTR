@@ -2623,6 +2623,28 @@ function filaItensVisiveis() {
     return (!filtroHistDe || f.dia >= filtroHistDe) && (!filtroHistAte || f.dia <= filtroHistAte);
   });
 }
+function exportarPosicoesOciosas(lado, tipo) {
+  const p = window._snapshotRessuprimento;
+  const oc = p && p.enderecos_ociosos;
+  if (!oc) { alert('Reprocesse Picking + Pulmão para gerar esta exportação.'); return; }
+  const lados = lado ? [lado] : ['picking', 'pulmao'];
+  const linhas = [['Area', 'Endereco', 'Rua', 'Nivel', 'Box', 'Segmento', 'Pecas', 'SKUs', 'Observacao']];
+  lados.forEach(function (l) {
+    (oc[l][tipo] || []).forEach(function (e) {
+      linhas.push([l === 'picking' ? 'Picking' : 'Pulmao', formatarEndereco(e[0], e[1], e[2]), e[0], e[1], e[2],
+        ROT_BUCKET[e[5]] || e[5], e[3], e[4],
+        tipo === 'vazios' ? (l === 'pulmao' ? 'Vazio estimado (box sem volume)' : 'Alocado sem saldo') : 'Menos de ' + oc.limite_picado + ' pecas']);
+    });
+  });
+  const csv = linhas.map(function (r) {
+    return r.map(function (c) { return '"' + String(c == null ? '' : c).replace(/"/g, '""') + '"'; }).join(';');
+  }).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = (tipo === 'vazios' ? 'posicoes-livres-' + lado : 'enderecos-menos-de-' + oc.limite_picado + '-pecas') + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 function exportarCSVFila() {
   const itens = filaItensVisiveis();
   if (!itens || !itens.length) { alert('Nada na fila para exportar' + (itens ? ' neste recorte.' : ' — reprocesse o Kardex.')); return; }
@@ -4248,10 +4270,11 @@ function renderizarEstoqueOperacao(p) {
     const linha = arvore[secao];
     const cabecalho = '<div class="filtros" style="margin:14px 0 6px">' +
       '<span style="font-size:11px;font-weight:600;color:var(--text-label)">' + titulo + '</span>' +
-      '<span class="chip' + (modo === 'endereco' ? ' on' : '') +
-        '" onclick="alternarModoOcupacao(\'' + secao + '\',\'endereco\')">Endereços</span>' +
-      '<span class="chip' + (modo === 'itens' ? ' on' : '') +
-        '" onclick="alternarModoOcupacao(\'' + secao + '\',\'itens\')">Itens</span>' +
+      (secao === 'pulmao' ? '' :
+        '<span class="chip' + (modo === 'endereco' ? ' on' : '') +
+          '" onclick="alternarModoOcupacao(\'' + secao + '\',\'endereco\')">Endereços</span>' +
+        '<span class="chip' + (modo === 'itens' ? ' on' : '') +
+          '" onclick="alternarModoOcupacao(\'' + secao + '\',\'itens\')">Itens</span>') +
     '</div>';
     // Sem dado NÃO pode sumir da tela em silêncio (foi o que aconteceu ao ligar
     // "Itens" num snapshot antigo, 09/09/2026): a linha some inteira e parece
@@ -4276,8 +4299,64 @@ function renderizarEstoqueOperacao(p) {
         cardOcupacao(ROT_BUCKET.calcado, linha.calcado, unidade) +
       '</div>';
   }
+  // Pulmão só por endereço (23/09/2026): capacidade em peças no Pulmão é
+  // inviável de medir (quebra de pallet, tamanho/qtde por caixa) — a visão
+  // em Itens fica oculta até a gestão pedir de novo.
   const kpisOcupacao = linhaOcupacao('Picking', 'picking', modoOcupacaoPicking) +
-    linhaOcupacao('Pulmão', 'pulmao', modoOcupacaoPulmao);
+    linhaOcupacao('Pulmão', 'pulmao', 'endereco');
+
+  /* ---------- endereços vazios e picados (< 10 pç) — 23/09/2026 ----------
+     Base pra avaliar compactar volume "picado" em poucos endereços. Sempre
+     global (zona física), como a ocupação acima. */
+  let blocoOciosos = '';
+  const oc = p.enderecos_ociosos;
+  if (!oc) {
+    blocoOciosos = '<div class="card"><div class="section-title">Endereços vazios e com menos de 10 peças</div>' +
+      '<div class="aviso">Reprocesse <strong>Picking + Pulmão</strong> em Admin › Abastecimento para mapear os endereços vazios.</div></div>';
+  } else {
+    const porRuaSeg = new Map();
+    function acumular(lista, campo) {
+      lista.forEach(function (l) {
+        const k = l[0] + '|' + l[5];
+        if (!porRuaSeg.has(k)) porRuaSeg.set(k, { rua: l[0], seg: l[5], pv: 0, pp: 0, uv: 0, up: 0 });
+        porRuaSeg.get(k)[campo]++;
+      });
+    }
+    acumular(oc.picking.vazios, 'pv'); acumular(oc.picking.picados, 'pp');
+    acumular(oc.pulmao.vazios, 'uv'); acumular(oc.pulmao.picados, 'up');
+    const linhasOc = Array.from(porRuaSeg.values()).sort(function (a, b) {
+      return (Number(a.rua) - Number(b.rua)) || String(a.seg).localeCompare(String(b.seg));
+    });
+    const celula = function (n) { return '<td>' + (n ? fmtInt(n) : '<span style="color:var(--text-muted)">—</span>') + '</td>'; };
+    const tot = linhasOc.reduce(function (t, l) { t.pv += l.pv; t.pp += l.pp; t.uv += l.uv; t.up += l.up; return t; }, { pv: 0, pp: 0, uv: 0, up: 0 });
+    blocoOciosos = '<div class="card">' +
+      '<div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<span>Endereços vazios e com menos de ' + oc.limite_picado + ' peças</span>' +
+        '<span style="display:flex;gap:6px;flex-wrap:wrap">' +
+          '<button class="btn-mini" onclick="exportarPosicoesOciosas(\'picking\', \'vazios\')">⬇ Posições livres — Picking</button>' +
+          '<button class="btn-mini" onclick="exportarPosicoesOciosas(\'pulmao\', \'vazios\')">⬇ Posições livres — Pulmão</button>' +
+          '<button class="btn-mini" onclick="exportarPosicoesOciosas(null, \'picados\')">⬇ Endereços com &lt; ' + oc.limite_picado + ' pç</button>' +
+        '</span>' +
+      '</div>' +
+      '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Picking: endereço alocado com saldo zero (disponível + cativado). ' +
+        'Pulmão: posição <strong>estimada</strong> — box que existe na rua mas está sem volume naquele nível. Segmento = predominante do endereço (ou da rua, no vazio do Pulmão).</p>' +
+      '<div class="kpi-row">' +
+        '<div class="kpi"><div class="rot">Picking vazio</div><div class="val forte">' + fmtInt(tot.pv) + '</div><div class="sub">endereços alocados sem saldo</div></div>' +
+        '<div class="kpi"><div class="rot">Picking &lt; ' + oc.limite_picado + ' pç</div><div class="val forte" style="color:var(--amber)">' + fmtInt(tot.pp) + '</div><div class="sub">candidatos a compactar</div></div>' +
+        '<div class="kpi"><div class="rot">Pulmão vazio (estimado)</div><div class="val forte">' + fmtInt(tot.uv) + '</div><div class="sub">posições de porta-pallet livres</div></div>' +
+        '<div class="kpi"><div class="rot">Pulmão &lt; ' + oc.limite_picado + ' pç</div><div class="val forte" style="color:var(--amber)">' + fmtInt(tot.up) + '</div><div class="sub">candidatos a compactar</div></div>' +
+      '</div>' +
+      '<div class="tabela-rolavel" style="margin-top:12px"><table class="arvore"><thead><tr>' +
+        '<th class="centro">Rua</th><th class="centro">Segmento</th><th>Picking vazio</th><th>Picking &lt; ' + oc.limite_picado + '</th>' +
+        '<th>Pulmão vazio</th><th>Pulmão &lt; ' + oc.limite_picado + '</th></tr></thead><tbody>' +
+        linhasOc.map(function (l) {
+          return '<tr><th class="centro">' + escapar(l.rua) + '</th><td class="centro">' + escapar(ROT_BUCKET[l.seg] || l.seg) + '</td>' +
+            celula(l.pv) + celula(l.pp) + celula(l.uv) + celula(l.up) + '</tr>';
+        }).join('') +
+        '<tr class="total"><th class="centro">TOTAL</th><td class="centro">—</td>' + celula(tot.pv) + celula(tot.pp) + celula(tot.uv) + celula(tot.up) + '</tr>' +
+      '</tbody></table></div>' +
+    '</div>';
+  }
 
   const arvoreAtual = arvoreFiltradaRessuprimento(p);
   const totalGeral = arvoreAtual.reduce(function (s, m) { return s + m.qtd; }, 0);
@@ -4368,7 +4447,7 @@ function renderizarEstoqueOperacao(p) {
     validacaoTudo.forEach(function (v) {
       totalQtd += v.qtd;
       enderecosDistintos.add(v.rua + '|' + v.nivel + '|' + v.box);
-      if (!porRua.has(v.rua)) porRua.set(v.rua, { rua: v.rua, rotulo: v.classificacao, qtd: 0, enderecos: new Set() });
+      if (!porRua.has(v.rua)) porRua.set(v.rua, { rua: v.rua, rotulo: String(Number(v.rua)) === '98' ? 'Transitório - Armazenagem/Recebimento' : v.classificacao, qtd: 0, enderecos: new Set() });
       const g = porRua.get(v.rua);
       g.qtd += v.qtd; g.enderecos.add(v.rua + '|' + v.nivel + '|' + v.box);
     });
@@ -4556,6 +4635,7 @@ function renderizarEstoqueOperacao(p) {
     chipsSegmento +
     kpisSku +
     kpisOcupacao +
+    blocoOciosos +
     '<div class="grid2">' +
       '<div class="card">' +
         '<div class="section-title">Composição por marca — ' + ROT_FILTRO_RESSUP[filtroRessuprimento] + '</div>' +
@@ -5331,6 +5411,15 @@ async function exportarCSVBuscaSaldoEndereco() {
    15/09/2026 como se estivessem lá desde 2023 (achado pelo usuário,
    23/09/2026). Volume sem TL+ conhecido pra ESTE endereço fica sem data de
    entrada (null) — nunca cai de volta pra DT. CRI. */
+/* Dias úteis (seg–sex) entre a data e hoje, sem contar o próprio dia. */
+function diasUteisDesde(yyyymmdd) {
+  const p = String(yyyymmdd).split('-').map(Number);
+  const d = new Date(p[0], p[1] - 1, p[2], 12);
+  const h = new Date(); h.setHours(12, 0, 0, 0);
+  let n = 0;
+  while (d < h) { d.setDate(d.getDate() + 1); const w = d.getDay(); if (w !== 0 && w !== 6 && d <= h) n++; }
+  return n;
+}
 function enriquecerValidacaoComKardex(lista) {
   const entradas = (dadosMovimentacoes && dadosMovimentacoes.entradas_volume) || {};
   const n = function (x) { return String(Number(x) || 0); };
@@ -5345,7 +5434,17 @@ function enriquecerValidacaoComKardex(lista) {
       return { v: vol.v, q: vol.q, cri: vol.cri, entrada: dt, hora: bate ? e[4] : null, login: bate ? (e[5] || '') : '', nome: bate ? (e[6] || '') : '' };
     });
     const dias = entrada ? Math.max(0, Math.round((Date.now() - new Date(entrada + 'T12:00:00').getTime()) / 86400000)) : null;
+    /* Rua 98 é usada pelo recebimento E pelo estoque (23/09/2026): até 2 dias
+       úteis é fluxo normal de armazenagem; passou disso vira pendência
+       (normalmente falta de endereço livre no Pulmão). A classificação vira
+       o chip de filtro do card, então dá pra ver só um dos dois. */
+    let classificacao = v.classificacao;
+    if (String(Number(v.rua)) === '98') {
+      if (!entrada) classificacao = 'Rua 98 — sem data de entrada';
+      else classificacao = diasUteisDesde(entrada) <= 2 ? 'Rua 98 — em fluxo de armazenagem (até 2 dias úteis)' : 'Rua 98 — parado há mais de 2 dias úteis';
+    }
     return Object.assign({}, v, {
+      classificacao: classificacao,
       entrada: entrada, entrada_login: login, entrada_nome: nome, dias_parado: dias,
       volumes_det: volumes, volumes_sem_kardex: semKardex,
     });
