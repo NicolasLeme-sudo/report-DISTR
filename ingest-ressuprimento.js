@@ -63,9 +63,11 @@ Object.assign(CLASSIF_RUA_PULMAO, {
   '27':  { grupo: 'VALIDACAO', rotulo: 'Perca' },
   '98':  { grupo: 'VALIDACAO', rotulo: 'Transitório - Armazenagem/Ressuprimento' },
   // Rua 100 (23/09/2026, operação): material do RECEBIMENTO armazenado no
-  // chão, endereços criados porque faltou espaço no Pulmão. É estoque bom,
-  // não pendência — sai do card de material parado, mas também não é
-  // porta-pallet, então não entra na capacidade do Pulmão.
+  // chão, endereços criados porque faltou espaço no Pulmão. É estoque bom
+  // (conta como apoio confiável), mas provisório — por isso aparece no card
+  // de material parado pra acompanhamento (ver em_validacao logo abaixo,
+  // em classificarPickingEPulmao), e não entra na capacidade do Pulmão por
+  // não ser porta-pallet de verdade.
   '100': { grupo: 'ARMAZENAGEM_CHAO', rotulo: 'Recebimento armazenado no chão (provisório)' },
   '500': { grupo: 'VALIDACAO', rotulo: 'Baixar Ressuprimento' },
   '600': { grupo: 'VALIDACAO', rotulo: 'Subir Ressuprimento' },

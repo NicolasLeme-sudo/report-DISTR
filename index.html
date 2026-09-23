@@ -2582,7 +2582,14 @@ function alternarFiltroSegmentoRessuprimentoDia(seg) {
    ~10 linhas por vez e rola por dentro (ver .tabela-rolavel no CSS). */
 let filtroClassifValidacao = new Set();    // vazio = Todas | multi-seleção de classif_rotulo
 let filtroTextoValidacao = '';
-let limiteValidacao = 100;            // quantas linhas carregar na tabela (não afeta o CSV)
+// Default virou "Todos" (23/09/2026, achado real): com o corte em 100 e a
+// ordenação padrão por quantidade, uma classificação de volume baixo (ex.:
+// rua 100, "Recebimento armazenado no chão") ficava sempre fora das 100
+// primeiras linhas sempre que outra rua (ex.: 10, "Erro de Movimentação")
+// tinha mais peças — sumia da tabela sem nenhum aviso, mesmo contando certo
+// no total e na barra "por rua" acima. É um card de acompanhamento; card de
+// acompanhamento não pode esconder item por causa de paginação.
+let limiteValidacao = Infinity;       // quantas linhas carregar na tabela (não afeta o CSV)
 let ordemValidacao = { campo: 'qtd', direcao: 'desc' };
 // Ordenação da lista de barras "por rua" do B.O. em trânsito/validação
 // (06/09/2026) — 'rua' ordena numericamente pelo número da rua, 'qtd' pela
