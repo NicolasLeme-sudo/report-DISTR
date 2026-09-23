@@ -45,8 +45,14 @@
                         Conta no total de Pulmão, mas NÃO conta como apoio
                         confiável no cruzamento de ressuprimento (função
                         pulmaoApoioPorEan abaixo).
+
+   Prédio físico do Pulmão vai só até a rua 15 (confirmado pela operação,
+   23/09/2026) — dali pra cima é rua sistêmica (trânsito, validação, chão),
+   nunca porta-pallet de verdade. Por isso não entram aqui: já caem em
+   'NAO_MAPEADA' ou em algum grupo explícito acima, e nenhum dos dois grupos
+   conta na capacidade do Pulmão (só 'PULMAO' conta — ver pulmaoFisico).
    ============================================================================ */
-const RUAS_PULMAO_BOAS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '11', '12', '13', '14'];
+const RUAS_PULMAO_BOAS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '11', '12', '13', '14', '15'];
 const CLASSIF_RUA_PULMAO = {};
 RUAS_PULMAO_BOAS.forEach(function (r) { CLASSIF_RUA_PULMAO[r] = { grupo: 'PULMAO', rotulo: 'Pulmão' }; });
 Object.assign(CLASSIF_RUA_PULMAO, {

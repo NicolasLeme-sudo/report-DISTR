@@ -2730,6 +2730,33 @@ function avaliarDiasRessuprimento(dias) {
   return { fechados: fechados, suspeitos: suspeitos };
 }
 const abertosRessuprimento = new Set();
+// Árvore Rua › Classificação › Segmento do card "Endereços vazios e com
+// menos de N peças" (Estoque) — mesmo padrão de abertosRessuprimento acima.
+const abertosOciosos = new Set();
+function alternarNoOciosos(chave) {
+  if (abertosOciosos.has(chave)) abertosOciosos.delete(chave); else abertosOciosos.add(chave);
+  renderizarEstoqueOperacao();
+}
+function expandirTudoOciosos() {
+  const p = window._snapshotRessuprimento;
+  const oc = p && p.enderecos_ociosos;
+  if (!oc) return;
+  const listas = [
+    { chave: 'pv', lista: oc.picking.vazios },
+    { chave: 'pp', lista: oc.picking.picados },
+    { chave: 'uv', lista: oc.pulmao.vazios },
+    { chave: 'up', lista: oc.pulmao.picados },
+  ];
+  listas.forEach(function (c) {
+    c.lista.forEach(function (l) {
+      const rua = l[0];
+      const chaveR = 'OC|R|' + rua, chaveC = chaveR + '|C|' + c.chave;
+      abertosOciosos.add(chaveR); abertosOciosos.add(chaveC);
+    });
+  });
+  renderizarEstoqueOperacao();
+}
+function recolherTudoOciosos() { abertosOciosos.clear(); renderizarEstoqueOperacao(); }
 // Busca por artigo/SKU no card "Detalhamento — Marca › Grupo › Família"
 // (pedido do usuário, 15/09/2026, mesmo padrão da busca de Estoque) — troca
 // a árvore agregada por um detalhamento até o ENDEREÇO (rua-nível-box),
@@ -4399,25 +4426,72 @@ function renderizarEstoqueOperacao(p) {
     blocoOciosos = '<div class="card"><div class="section-title">Endereços vazios e com menos de 10 peças</div>' +
       '<div class="aviso">Reprocesse <strong>Picking + Pulmão</strong> em Admin › Abastecimento para mapear os endereços vazios.</div></div>';
   } else {
-    const porRuaSeg = new Map();
-    function acumular(lista, campo) {
-      lista.forEach(function (l) {
-        const k = l[0] + '|' + l[5];
-        if (!porRuaSeg.has(k)) porRuaSeg.set(k, { rua: l[0], seg: l[5], pv: 0, pp: 0, uv: 0, up: 0 });
-        porRuaSeg.get(k)[campo]++;
+    // Árvore Rua › Classificação › Segmento (pedido do usuário, 23/09/2026)
+    // em vez de tabela achatada com 4 colunas lado a lado — cada "gaveta" é
+    // Picking vazio / Picking < N / Pulmão vazio / Pulmão < N.
+    const CLASSIFS_OCIOSOS = [
+      { chave: 'pv', rotulo: 'Picking vazio', lista: oc.picking.vazios, cor: null },
+      { chave: 'pp', rotulo: 'Picking < ' + oc.limite_picado + ' pç', lista: oc.picking.picados, cor: '--amber' },
+      { chave: 'uv', rotulo: 'Pulmão vazio (estimado)', lista: oc.pulmao.vazios, cor: null },
+      { chave: 'up', rotulo: 'Pulmão < ' + oc.limite_picado + ' pç', lista: oc.pulmao.picados, cor: '--amber' },
+    ];
+    const ruas = new Map(); // rua -> { classifs: Map(chave -> { rotulo, cor, segs: Map(seg -> {end, pecas}), end, pecas }), end, pecas }
+    const tot = { pv: 0, pp: 0, uv: 0, up: 0 };
+    CLASSIFS_OCIOSOS.forEach(function (c) {
+      c.lista.forEach(function (l) {
+        const rua = l[0], seg = l[5], pecas = l[3];
+        tot[c.chave]++;
+        if (!ruas.has(rua)) ruas.set(rua, { classifs: new Map(), end: 0, pecas: 0 });
+        const r = ruas.get(rua);
+        r.end++; r.pecas += pecas;
+        if (!r.classifs.has(c.chave)) r.classifs.set(c.chave, { rotulo: c.rotulo, cor: c.cor, segs: new Map(), end: 0, pecas: 0 });
+        const cl = r.classifs.get(c.chave);
+        cl.end++; cl.pecas += pecas;
+        if (!cl.segs.has(seg)) cl.segs.set(seg, { end: 0, pecas: 0 });
+        const s = cl.segs.get(seg);
+        s.end++; s.pecas += pecas;
       });
-    }
-    acumular(oc.picking.vazios, 'pv'); acumular(oc.picking.picados, 'pp');
-    acumular(oc.pulmao.vazios, 'uv'); acumular(oc.pulmao.picados, 'up');
-    const linhasOc = Array.from(porRuaSeg.values()).sort(function (a, b) {
-      return (Number(a.rua) - Number(b.rua)) || String(a.seg).localeCompare(String(b.seg));
     });
-    const celula = function (n) { return '<td>' + (n ? fmtInt(n) : '<span style="color:var(--text-muted)">—</span>') + '</td>'; };
-    const tot = linhasOc.reduce(function (t, l) { t.pv += l.pv; t.pp += l.pp; t.uv += l.uv; t.up += l.up; return t; }, { pv: 0, pp: 0, uv: 0, up: 0 });
+    const ruasOrdenadas = Array.from(ruas.keys()).sort(function (a, b) { return Number(a) - Number(b); });
+    const totEnd = tot.pv + tot.pp + tot.uv + tot.up;
+    const totPecas = ruasOrdenadas.reduce(function (s, r) { return s + ruas.get(r).pecas; }, 0);
+
+    function linhaOciosos(nivel, chave, rotulo, endCount, pecasCount, temFilhos, cor) {
+      const aberto = temFilhos && abertosOciosos.has(chave);
+      const btn = temFilhos
+        ? '<span class="toggle" onclick="alternarNoOciosos(\'' + escaparJs(chave) + '\')">' + (aberto ? '−' : '+') + '</span>'
+        : '<span class="toggle vazio">·</span>';
+      return '<tr class="n' + nivel + '">' +
+        '<th class="ind-' + nivel + '"><span class="desc">' + btn + '<span' + (cor ? ' style="color:var(' + cor + ')"' : '') + '>' + rotulo + '</span></span></th>' +
+        '<td>' + fmtInt(endCount) + '</td>' +
+        '<td>' + (pecasCount ? fmtInt(pecasCount) : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
+      '</tr>';
+    }
+    let linhasArvoreOciosos = '';
+    ruasOrdenadas.forEach(function (rua) {
+      const r = ruas.get(rua);
+      const chaveR = 'OC|R|' + rua;
+      linhasArvoreOciosos += linhaOciosos(1, chaveR, 'Rua ' + rua, r.end, r.pecas, true, null);
+      if (!abertosOciosos.has(chaveR)) return;
+      CLASSIFS_OCIOSOS.forEach(function (c) {
+        const cl = r.classifs.get(c.chave);
+        if (!cl) return;
+        const chaveC = chaveR + '|C|' + c.chave;
+        linhasArvoreOciosos += linhaOciosos(2, chaveC, c.rotulo, cl.end, cl.pecas, true, c.cor);
+        if (!abertosOciosos.has(chaveC)) return;
+        Array.from(cl.segs.keys()).sort(function (a, b) { return String(ROT_BUCKET[a] || a).localeCompare(String(ROT_BUCKET[b] || b)); }).forEach(function (seg) {
+          const s = cl.segs.get(seg);
+          linhasArvoreOciosos += linhaOciosos(3, chaveC + '|S|' + seg, escapar(ROT_BUCKET[seg] || seg), s.end, s.pecas, false, null);
+        });
+      });
+    });
+
     blocoOciosos = '<div class="card">' +
       '<div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
         '<span>Endereços vazios e com menos de ' + oc.limite_picado + ' peças</span>' +
         '<span style="display:flex;gap:6px;flex-wrap:wrap">' +
+          '<button class="btn-mini" onclick="expandirTudoOciosos()">Expandir tudo</button>' +
+          '<button class="btn-mini" onclick="recolherTudoOciosos()">Recolher tudo</button>' +
           '<button class="btn-mini" onclick="exportarPosicoesOciosas(\'picking\', \'vazios\')">⬇ Posições livres — Picking</button>' +
           '<button class="btn-mini" onclick="exportarPosicoesOciosas(\'pulmao\', \'vazios\')">⬇ Posições livres — Pulmão</button>' +
           '<button class="btn-mini" onclick="exportarPosicoesOciosas(null, \'picados\')">⬇ Endereços com &lt; ' + oc.limite_picado + ' pç</button>' +
@@ -4432,13 +4506,9 @@ function renderizarEstoqueOperacao(p) {
         '<div class="kpi"><div class="rot">Pulmão &lt; ' + oc.limite_picado + ' pç</div><div class="val forte" style="color:var(--amber)">' + fmtInt(tot.up) + '</div><div class="sub">candidatos a compactar</div></div>' +
       '</div>' +
       '<div class="tabela-rolavel" style="margin-top:12px"><table class="arvore"><thead><tr>' +
-        '<th class="centro">Rua</th><th class="centro">Segmento</th><th>Picking vazio</th><th>Picking &lt; ' + oc.limite_picado + '</th>' +
-        '<th>Pulmão vazio</th><th>Pulmão &lt; ' + oc.limite_picado + '</th></tr></thead><tbody>' +
-        linhasOc.map(function (l) {
-          return '<tr><th class="centro">' + escapar(l.rua) + '</th><td class="centro">' + escapar(ROT_BUCKET[l.seg] || l.seg) + '</td>' +
-            celula(l.pv) + celula(l.pp) + celula(l.uv) + celula(l.up) + '</tr>';
-        }).join('') +
-        '<tr class="total"><th class="centro">TOTAL</th><td class="centro">—</td>' + celula(tot.pv) + celula(tot.pp) + celula(tot.uv) + celula(tot.up) + '</tr>' +
+        '<th class="esq">Rua › Classificação › Segmento</th><th>Endereços</th><th>Peças</th>' +
+      '</tr></thead><tbody>' + linhasArvoreOciosos +
+        '<tr class="total"><th class="esq">TOTAL</th><td>' + fmtInt(totEnd) + '</td><td>' + fmtInt(totPecas) + '</td></tr>' +
       '</tbody></table></div>' +
     '</div>';
   }
