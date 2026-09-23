@@ -2682,16 +2682,28 @@ function exportarCSVFila() {
   URL.revokeObjectURL(a.href);
 }
 
+/* Mesmo calendário do Report E-commerce (ingest.js, FERIADOS_2026) — feriado
+   nacional + municipal de Extrema/MG, sem ponto facultativo (a operação
+   trabalha normal nesses dias). Copiado de lá pra não duplicar a manutenção
+   em dois lugares de cabeça: se um mudar, o outro precisa ser atualizado
+   junto (pedido do usuário, 23/09/2026: "puxe de lá"). 18/09 é o aniversário
+   de Extrema remanejado de 16/09 (quarta) pra sexta este ano. */
+const FERIADOS_2026 = new Set([
+  '2026-01-01', '2026-04-18', '2026-04-21', '2026-05-01', '2026-05-22',
+  '2026-09-07', '2026-09-18', '2026-10-12', '2026-11-02', '2026-11-15',
+  '2026-11-20', '2026-12-25',
+]);
+
 /* Dias "fechados" e alerta de abastecimento incompleto (23/09/2026).
    A média por dia só considera dia 100% fechado e trabalhado: exclui hoje
-   (em andamento), domingo e o dia com turno faltando/muito abaixo do normal
-   — que quase sempre é Kardex exportado com a janela de datas errada (o T03
-   atravessa a meia-noite e quem extrai confunde o recorte). Turno
-   "esperado" = aparece em pelo menos metade dos dias úteis do intervalo;
-   "muito abaixo" = menos de 25% da mediana daquele turno. */
+   (em andamento), fim de semana, feriado e o dia com turno faltando/muito
+   abaixo do normal — que quase sempre é Kardex exportado com a janela de
+   datas errada (o T03 atravessa a meia-noite e quem extrai confunde o
+   recorte). Turno "esperado" = aparece em pelo menos metade dos dias úteis
+   do intervalo; "muito abaixo" = menos de 25% da mediana daquele turno. */
 function avaliarDiasRessuprimento(dias) {
   const hoje = hojeISO();
-  const util = function (d) { const w = new Date(d.dia + 'T12:00:00').getDay(); return w >= 1 && w <= 5; };
+  const util = function (d) { const w = new Date(d.dia + 'T12:00:00').getDay(); return w >= 1 && w <= 5 && !FERIADOS_2026.has(d.dia); };
   const uteis = dias.filter(function (d) { return util(d) && d.dia < hoje && pecasDoDia(d) > 0; });
   const esperados = [];
   const medianas = {};
