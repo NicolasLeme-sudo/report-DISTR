@@ -3216,24 +3216,60 @@ async function carregarPfas() {
   renderizarPfas();
 }
 
+/* ---------- filtros do Start Inicial: um botão por campo, popover pra marcar ----------
+   7 filtros (Marca/Segmento/FIFO/Etapa/Conferência/Situação/Origem) numa
+   linha só, cada um abrindo uma janela flutuante com os valores pra marcar,
+   em vez de todos os chips expandidos ocupando várias linhas (pedido do
+   usuário, 23/09/2026: "a tela está muito carregada de filtros"). */
+let filtroPopoverAberto = null; // nome do filtro aberto, ou null
+function limparTodosFiltrosPfa() {
+  [filtroMarcaPfa, filtroSegmentoPfa, filtroFifoPfa, filtroEtapaPfa,
+    filtroConfTabelaPfa, filtroSituacaoTabelaPfa, filtroOrigemTabelaPfa].forEach(function (s) { s.clear(); });
+  renderizarPfas();
+}
+function alternarPopoverFiltro(nome, ev) {
+  if (ev) ev.stopPropagation();
+  filtroPopoverAberto = (filtroPopoverAberto === nome) ? null : nome;
+  const scrollY = window.scrollY;
+  renderizarPfas();
+  window.scrollTo(0, scrollY);
+}
+function botaoFiltroPopover(nome, rotulo, set, opcoes, fn) {
+  const aberto = filtroPopoverAberto === nome;
+  const ativos = set.size;
+  const linhas = opcoes.map(function (o) {
+    return '<label style="display:flex;align-items:center;gap:8px;padding:5px 4px;font-size:12px;cursor:pointer;border-radius:5px" ' +
+      'onmouseover="this.style.background=\'var(--bg-input)\'" onmouseout="this.style.background=\'\'">' +
+      '<input type="checkbox" style="cursor:pointer" ' + (set.has(o.valor) ? 'checked' : '') +
+        ' onchange="' + fn + '(\'' + escaparJs(o.valor) + '\')">' +
+      '<span style="flex:1">' + escapar(o.rotulo) + '</span>' +
+    '</label>';
+  }).join('');
+  const popover = aberto
+    ? '<div style="position:fixed;inset:0;z-index:998" onclick="alternarPopoverFiltro(null)"></div>' +
+      '<div style="position:absolute;top:100%;left:0;margin-top:6px;z-index:999;min-width:220px;max-width:320px;' +
+        'max-height:320px;overflow-y:auto;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;' +
+        'box-shadow:0 8px 24px rgba(0,0,0,.35);padding:8px" onclick="event.stopPropagation()">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;padding:0 4px">' +
+          '<strong style="font-size:11px;color:var(--text-muted)">' + escapar(rotulo) + '</strong>' +
+          (ativos ? '<span style="font-size:11px;color:var(--red);cursor:pointer" onclick="' + fn + '(null)">Limpar</span>' : '') +
+        '</div>' +
+        (opcoes.length ? linhas : '<div style="font-size:11px;color:var(--text-muted);padding:4px">Sem opções neste recorte.</div>') +
+      '</div>'
+    : '';
+  return '<div style="position:relative;display:inline-block">' +
+    '<span class="chip' + (ativos ? ' on' : '') + '" style="cursor:pointer" onclick="alternarPopoverFiltro(\'' + nome + '\', event)">' +
+      escapar(rotulo) + (ativos ? ' (' + fmtInt(ativos) + ')' : '') + ' ▾</span>' +
+    popover +
+  '</div>';
+}
+
 function renderizarPfas() {
   if (!dadosPfas) return;
   const p = dadosPfas;
   const filtrados = pendentesFiltradosPfa();
 
   /* ---------- chips do topo ---------- */
-  function chipsSet(rotulo, set, opcoes, fn) {
-    let h = '<div class="filtros"><span class="rot-filtro">' + rotulo + '</span>' +
-      '<span class="chip' + (!set.size ? ' on' : '') + '" onclick="' + fn + '(null)">Todos</span>';
-    opcoes.forEach(function (o) {
-      h += '<span class="chip' + (set.has(o.valor) ? ' on' : '') + '" onclick="' + fn + '(\'' +
-        escaparJs(o.valor) + '\')">' + escapar(o.rotulo) + '</span>';
-    });
-    if (set.size) {
-      h += '<span class="chip" style="color:var(--red)" onclick="' + fn + '(null)">✕ Limpar filtro</span>';
-    }
-    return h + '</div>';
-  }
   // Opções saem do próprio snapshot (não de uma lista fixa): marca/segmento
   // novos aparecem sozinhos, sem precisar mexer no código.
   function opcoesDe(campo) {
@@ -3256,25 +3292,31 @@ function renderizarPfas() {
   // varia com o zoom da página, o que incomodou mais do que resolveu. Etapa
   // continua em linha própria, com destaque: é o filtro que mais muda a
   // leitura da tela inteira (funil, FIFO, coleta e tabela todos leem dele).
+  // Um botão por campo, numa linha só — cada um abre um popover pra marcar
+  // os valores (pedido do usuário, 23/09/2026). "✕ Limpar todos" só aparece
+  // quando pelo menos um dos 7 tem filtro ativo.
+  const filtrosAtivosTotal = filtroMarcaPfa.size + filtroSegmentoPfa.size + filtroFifoPfa.size +
+    filtroEtapaPfa.size + filtroConfTabelaPfa.size + filtroSituacaoTabelaPfa.size + filtroOrigemTabelaPfa.size;
   const chipsTopo =
-    '<div class="filtros-linha">' +
-      chipsSet('Marca', filtroMarcaPfa, opcoesDe('marca'), 'alternarMarcaPfa') +
-      chipsSet('Segmento', filtroSegmentoPfa,
+    '<div class="filtros-linha" style="align-items:flex-start">' +
+      botaoFiltroPopover('marca', 'Marca', filtroMarcaPfa, opcoesDe('marca'), 'alternarMarcaPfa') +
+      botaoFiltroPopover('segmento', 'Segmento', filtroSegmentoPfa,
         // Segmento em ordem alfabética (Marca continua por volume, que ali
         // ajuda a achar a marca grande primeiro).
         opcoesDe('segmento_macro').sort(function (a, b) { return ordemAlfabetica(a.rotulo, b.rotulo); }),
         'alternarSegmentoPfa') +
-      chipsSet('FIFO', filtroFifoPfa, (p.faixas_fifo || []).map(function (f) {
+      botaoFiltroPopover('fifo', 'FIFO', filtroFifoPfa, (p.faixas_fifo || []).map(function (f) {
         return { valor: f.chave, rotulo: f.rotulo };
       }), 'alternarFifoPfa') +
-    '</div>' +
-    '<div class="filtros-linha">' + chipsSet('Etapa', filtroEtapaPfa, (p.etapas || []).map(function (e) {
-      return { valor: e, rotulo: rotEtapaPfa(e) };
-    }), 'alternarEtapaPfa') + '</div>' +
-    '<div class="filtros-linha">' +
-      chipsConferencia(filtroConfTabelaPfa, 'alternarConfTabelaPfa') +
-      chipsSituacaoPfa(filtroSituacaoTabelaPfa, 'alternarSituacaoTabelaPfa') +
-      chipsOrigemPfa(filtroOrigemTabelaPfa, 'alternarOrigemTabelaPfa') +
+      botaoFiltroPopover('etapa', 'Etapa', filtroEtapaPfa, (p.etapas || []).map(function (e) {
+        return { valor: e, rotulo: rotEtapaPfa(e) };
+      }), 'alternarEtapaPfa') +
+      botaoFiltroPopover('conferencia', 'Conferência', filtroConfTabelaPfa, GRUPOS_CONFERENCIA, 'alternarConfTabelaPfa') +
+      botaoFiltroPopover('situacao', 'Situação PFA', filtroSituacaoTabelaPfa, SITUACOES_PFA, 'alternarSituacaoTabelaPfa') +
+      botaoFiltroPopover('origem', 'Origem', filtroOrigemTabelaPfa, ORIGENS_PFA, 'alternarOrigemTabelaPfa') +
+      (filtrosAtivosTotal
+        ? '<span class="chip" style="color:var(--red);cursor:pointer" onclick="limparTodosFiltrosPfa()">✕ Limpar todos</span>'
+        : '') +
     '</div>';
 
   /* ---------- KPIs ---------- */
@@ -3657,38 +3699,6 @@ function renderizarPfas() {
       '</div>';
   }
 
-  function chipsConferencia(set, fn) {
-    let h = '<div class="filtros" style="margin-bottom:0"><span class="rot-filtro">Conferência</span>' +
-      '<span class="chip' + (!set.size ? ' on' : '') + '" onclick="' + fn + '(null)">Todas</span>';
-    GRUPOS_CONFERENCIA.forEach(function (g) {
-      h += '<span class="chip' + (set.has(g.valor) ? ' on' : '') + '" onclick="' + fn + '(\'' +
-        escaparJs(g.valor) + '\')">' + escapar(g.rotulo) + '</span>';
-    });
-    if (set.size) h += '<span class="chip" style="color:var(--red)" onclick="' + fn + '(null)">✕ Limpar</span>';
-    return h + '</div>';
-  }
-
-  function chipsOrigemPfa(set, fn) {
-    let h = '<div class="filtros" style="margin-bottom:0"><span class="rot-filtro">Origem</span>' +
-      '<span class="chip' + (!set.size ? ' on' : '') + '" onclick="' + fn + '(null)">Todas</span>';
-    ORIGENS_PFA.forEach(function (o) {
-      h += '<span class="chip' + (set.has(o.valor) ? ' on' : '') + '" onclick="' + fn + '(\'' +
-        escaparJs(o.valor) + '\')">' + escapar(o.rotulo) + '</span>';
-    });
-    if (set.size) h += '<span class="chip" style="color:var(--red)" onclick="' + fn + '(null)">✕ Limpar</span>';
-    return h + '</div>';
-  }
-
-  function chipsSituacaoPfa(set, fn) {
-    let h = '<div class="filtros" style="margin-bottom:0"><span class="rot-filtro">Situação PFA</span>' +
-      '<span class="chip' + (!set.size ? ' on' : '') + '" onclick="' + fn + '(null)">Todas</span>';
-    SITUACOES_PFA.forEach(function (o) {
-      h += '<span class="chip' + (set.has(o.valor) ? ' on' : '') + '" onclick="' + fn + '(\'' +
-        escaparJs(o.valor) + '\')">' + escapar(o.rotulo) + '</span>';
-    });
-    if (set.size) h += '<span class="chip" style="color:var(--red)" onclick="' + fn + '(null)">✕ Limpar</span>';
-    return h + '</div>';
-  }
 
   /* ---------- tabela "PFAs mais antigas" ---------- */
   let linhasTabela = linhasTabelaPfa();
