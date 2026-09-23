@@ -4824,18 +4824,8 @@ function renderizarEstoqueOperacao(p) {
     chipsSegmento +
     kpisSku +
     kpisOcupacao +
-    '<div class="grid2">' +
-      '<div class="card">' +
-        '<div class="section-title">Composição por marca — ' + ROT_FILTRO_RESSUP[filtroRessuprimento] + '</div>' +
-        '<div class="barra-comp">' + barraMarca + '</div>' +
-        '<div class="legenda">' + legendaMarca + '</div>' +
-      '</div>' +
-      '<div class="card">' +
-        '<div class="section-title">Composição por segmento — ' + ROT_FILTRO_RESSUP[filtroRessuprimento] + '</div>' +
-        '<div class="bar-list">' + barrasSegmento + '</div>' +
-      '</div>' +
-    '</div>' +
-    blocoOciosos +
+    // Detalhamento logo abaixo da ocupação, antes dos gráficos de composição
+    // (pedido do usuário, 23/09/2026).
     '<div class="card">' +
       '<div class="section-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">' +
         '<span>Detalhamento — Marca › Grupo › Família (' + ROT_FILTRO_RESSUP[filtroRessuprimento] + ')</span>' +
@@ -4864,6 +4854,18 @@ function renderizarEstoqueOperacao(p) {
                   window.LIMITE_BUSCA_SALDO_ENDERECO + ' de maior quantidade — refine a busca pra ver o resto (o CSV não tem esse teto).</p>' : '')) +
           '</div>') +
     '</div>' +
+    '<div class="grid2">' +
+      '<div class="card">' +
+        '<div class="section-title">Composição por marca — ' + ROT_FILTRO_RESSUP[filtroRessuprimento] + '</div>' +
+        '<div class="barra-comp">' + barraMarca + '</div>' +
+        '<div class="legenda">' + legendaMarca + '</div>' +
+      '</div>' +
+      '<div class="card">' +
+        '<div class="section-title">Composição por segmento — ' + ROT_FILTRO_RESSUP[filtroRessuprimento] + '</div>' +
+        '<div class="bar-list">' + barrasSegmento + '</div>' +
+      '</div>' +
+    '</div>' +
+    blocoOciosos +
     blocoBO +
     '<div style="font-size:11px;color:var(--text-muted);margin-top:12px">' +
       'Picking: ' + escapar(p.arquivo_picking || '—') + ' · Pulmão: ' + escapar(p.arquivo_pulmao || '—') +
