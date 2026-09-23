@@ -4407,11 +4407,27 @@ function renderizarEstoqueOperacao(p) {
      Não usa a árvore por marca (que já pode estar recortada por segmento) nem teria sentido recortar
      pelo próprio filtro de segmento — vem pronto de por_segmento_macro_* (ingest-ressuprimento.js),
      sempre a visão completa do filtro Picking/Pulmão/Todos, pra dar contexto de onde o recorte
-     escolhido acima se encaixa no todo. */
-  const totalSegmento = segmentosDisponiveis.reduce(function (s, x) { return s + x.qtd; }, 0);
-  const maxSeg = segmentosDisponiveis.reduce(function (mx, s) { return Math.max(mx, s.qtd); }, 0);
+     escolhido acima se encaixa no todo.
+     CHUTEIRA e CHINELO entram somados dentro de CALÇADO NESTE GRÁFICO só
+     (pedido do usuário, 23/09/2026) — os dois são fatia pequena demais
+     (0,1% cada) pra pesar sozinhos aqui. O filtro "Segmento" dos chips
+     acima continua com os 6 baldes separados, pra quem quiser recortar só
+     chuteira ou só chinelo. */
+  const segmentosParaGrafico = (function () {
+    const fundidos = ['CHUTEIRA', 'CHINELO'];
+    const porNome = new Map();
+    segmentosDisponiveis.forEach(function (s) {
+      const alvo = fundidos.indexOf(s.nome) !== -1 ? 'CALÇADO' : s.nome;
+      if (!porNome.has(alvo)) porNome.set(alvo, { codigo: alvo, nome: alvo, qtd: 0, skus: 0 });
+      const g = porNome.get(alvo);
+      g.qtd += s.qtd; g.skus += s.skus;
+    });
+    return Array.from(porNome.values()).sort(function (a, b) { return b.qtd - a.qtd; });
+  })();
+  const totalSegmento = segmentosParaGrafico.reduce(function (s, x) { return s + x.qtd; }, 0);
+  const maxSeg = segmentosParaGrafico.reduce(function (mx, s) { return Math.max(mx, s.qtd); }, 0);
   let barrasSegmento = '';
-  segmentosDisponiveis.forEach(function (s) {
+  segmentosParaGrafico.forEach(function (s) {
     const larg = maxSeg > 0 ? s.qtd / maxSeg * 100 : 0;
     barrasSegmento += '<div class="bar-item' + (filtroSegmentoRessuprimento.has(s.codigo) ? ' on' : '') + '">' +
       '<div class="nome">' + escapar(s.nome) + '</div>' +
