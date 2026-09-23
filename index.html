@@ -2635,13 +2635,24 @@ function hojeISO() {
 }
 // "Fila em andamento": 'geral' = tudo que ainda está no corredor; 'periodo' =
 // só o que foi baixado dentro do intervalo de datas do card (23/09/2026).
+//
+// BUG achado 23/09/2026 (usuário reportou que o card "não filtra os dados
+// corretos"): esta função ignorava o chip de TURNO, que todo o resto do
+// card (Peças ressupridas, Movimentos, Composição por segmento) já respeita
+// — clicar num turno mudava tudo, menos a Fila. Quem tem 3 itens de 3 turnos
+// diferentes na fila via "Fila geral" com T01 selecionado esperava ver só o
+// do T01, mas continuava vendo os 3. Corrigido: os dois modos agora também
+// recortam por turno quando o filtro está ativo.
 let modoFilaRessuprimento = 'geral';
 function alternarModoFila(modo) { modoFilaRessuprimento = modo; renderizarRessuprimento(); }
 function filaItensVisiveis() {
   const m = dadosMovimentacoes;
   if (!m || !m.fila_itens) return null;
-  if (modoFilaRessuprimento !== 'periodo') return m.fila_itens;
-  return m.fila_itens.filter(function (f) {
+  const doTurno = filtroTurnoRessuprimento.size
+    ? m.fila_itens.filter(function (f) { return filtroTurnoRessuprimento.has(normalizarTurnoLegado(f.turno)); })
+    : m.fila_itens;
+  if (modoFilaRessuprimento !== 'periodo') return doTurno;
+  return doTurno.filter(function (f) {
     return (!filtroHistDe || f.dia >= filtroHistDe) && (!filtroHistAte || f.dia <= filtroHistAte);
   });
 }
@@ -5091,6 +5102,12 @@ function blocoMovimentacoes() {
     : '';
   const filaItens = filaItensVisiveis();
   const pecasFila = filaItens ? filaItens.reduce(function (s, f) { return s + f.qtd; }, 0) : null;
+  // Dias do item mais antigo ainda parado — o que realmente importa
+  // operacionalmente não é só "quantos", é "há quanto tempo o mais velho
+  // está preso" (pedido do usuário, 23/09/2026, junto com o ajuste da Fila).
+  const diaMaisAntigoFila = (filaItens && filaItens.length)
+    ? filaItens.reduce(function (min, f) { return f.dia < min ? f.dia : min; }, filaItens[0].dia)
+    : null;
   const chipsFila = '<div style="display:flex;gap:4px;flex-wrap:wrap;margin:6px 0 2px">' +
     '<span class="chip' + (modoFilaRessuprimento === 'geral' ? ' on' : '') + '" style="font-size:10px;padding:2px 8px" onclick="alternarModoFila(\'geral\')">Fila geral</span>' +
     '<span class="chip' + (modoFilaRessuprimento === 'periodo' ? ' on' : '') + '" style="font-size:10px;padding:2px 8px" onclick="alternarModoFila(\'periodo\')">Período filtrado</span>' +
@@ -5162,6 +5179,8 @@ function blocoMovimentacoes() {
       chipsFila +
       '<div class="sub">' + (pecasFila !== null
         ? fmtInt(filaItens.length) + ' baixa(s) do Pulmão ainda paradas no corredor' +
+          (diaMaisAntigoFila ? ' · mais antiga há ' + fmtInt(diasDesdeIso(diaMaisAntigoFila)) + ' dia(s)' : '') +
+          (filtroTurnoRessuprimento.size ? ' · ' + rotuloTurnosSelecionados(filtroTurnoRessuprimento) : '') +
           (modoFilaRessuprimento === 'periodo'
             ? ' · baixadas entre ' + (filtroHistDe ? formatarDataSimples(filtroHistDe) : '—') + ' e ' + (filtroHistAte ? formatarDataSimples(filtroHistAte) : '—')
             : ' (todo o último Kardex processado, sem recorte de período)')
