@@ -566,11 +566,8 @@ tr.total > th, tr.total > td {
 .loading-msg { color: var(--text-muted); font-size: 12px; padding: 20px 0; }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-/* Perdas (largo) + DE×PARA (estreito) lado a lado, no fim do Start Inicial. */
-.grid-perdas { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
 @media (max-width: 900px) {
   .grid2 { grid-template-columns: 1fr; }
-  .grid-perdas { grid-template-columns: 1fr; }
   .sidebar { display: none; }
   .topbar { left: 0; }
   .conteudo { margin-left: 0; }
@@ -3432,9 +3429,9 @@ function renderizarPfas() {
           }).join('') + '</tbody></table></div>' : '<div class="aviso">Nenhum ajuste encontrado para "' + escapar(filtroTextoPerdas) + '".</div>');
     }
 
-    const cardPerdas = '<div class="card" style="border-color:var(--red);margin:0">' +
+    const cardPerdas = '<div class="card" style="border-color:var(--amber);margin:0">' +
       '<div class="section-title" style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:10px">' +
-        '<span style="color:var(--red)">Perdas e ajustes do período</span>' +
+        '<span style="color:var(--amber)">Perdas e ajustes do período</span>' +
         '<div class="filtros" style="margin:0">' +
           chipPeriodo('semana', 'Esta semana') + chipPeriodo('mes', 'Este mês') + chipPeriodo('entre', 'De–até') +
           '<input type="date" value="' + escapar(periodoPerdasPfa.de || '') + '" ' +
@@ -3452,21 +3449,26 @@ function renderizarPfas() {
       '<p style="font-size:12px;color:var(--text-muted);margin:4px 0 12px">' + rotuloPeriodo + ' · ' +
         fmtInt(eventosTotal) + ' solicitação(ões) de ajuste de saldo lançada(s) a partir do e-mail do comercial.</p>' +
       '<div class="kpi-row">' +
-        '<div class="kpi" style="border-color:var(--red)">' +
-          '<div class="rot" style="color:var(--red)">Ajustes</div>' +
-          '<div class="val forte" style="color:var(--red)">' + fmtInt(ajusteBruto.perda) + ' pares</div>' +
+        '<div class="kpi" style="border-color:var(--amber)">' +
+          '<div class="rot" style="color:var(--amber)">Ajustes</div>' +
+          '<div class="val forte" style="color:var(--amber)">' + fmtInt(ajusteBruto.perda) + ' pares</div>' +
           '<div class="sub">' + fmtInt(ajusteBruto.eventos) + ' ajuste(s) · ' + fmtInt(ajusteBruto.pfas) + ' PFA(s)</div></div>' +
-        '<div class="kpi" style="border-color:var(--red)">' +
-          '<div class="rot" style="color:var(--red)">Envio de material faltante com NF emitida</div>' +
-          '<div class="val forte" style="color:var(--red)">' + fmtInt(faltanteNf.perda) + ' pares</div>' +
+        '<div class="kpi" style="border-color:var(--amber)" title="Artigo substituto enviado no lugar do cortado — não é perda, o cliente recebeu outro item no lugar.">' +
+          '<div class="rot" style="color:var(--amber)">DE×PARA</div>' +
+          '<div class="val forte" style="color:var(--amber)">' + fmtInt(dePara.length) + '</div>' +
+          '<div class="sub">' + fmtInt(deParaPfas) + ' PFA(s) · ' + fmtInt(deParaQtde) + ' pç substituídas' +
+            (deParaSemQtde ? ' (' + fmtInt(deParaSemQtde) + ' sem qtde informada)' : '') + '</div></div>' +
+        '<div class="kpi" style="border-color:var(--amber)">' +
+          '<div class="rot" style="color:var(--amber)">Envio de material faltante com NF emitida</div>' +
+          '<div class="val forte" style="color:var(--amber)">' + fmtInt(faltanteNf.perda) + ' pares</div>' +
           '<div class="sub">' + fmtInt(faltanteNf.pfas) + ' envio(s) · nota já emitida, sem correção possível</div></div>' +
-        '<div class="kpi" style="border-color:var(--red)">' +
-          '<div class="rot" style="color:var(--red)">Devolução por AD (100%)</div>' +
-          '<div class="val forte" style="color:var(--red)">' + fmtInt(adDevol.perda) + ' pares</div>' +
+        '<div class="kpi" style="border-color:var(--amber)">' +
+          '<div class="rot" style="color:var(--amber)">Devolução por AD (100%)</div>' +
+          '<div class="val forte" style="color:var(--amber)">' + fmtInt(adDevol.perda) + ' pares</div>' +
           '<div class="sub">' + fmtInt(adDevol.pfas) + ' cancelamento(s) · comercial recusou envio parcial</div></div>' +
-        '<div class="kpi" style="border-width:2px;border-color:var(--red)">' +
-          '<div class="rot" style="color:var(--red)">Perdas no período</div>' +
-          '<div class="val forte" style="color:var(--red)">' + fmtInt(perdasTotal) + ' pares</div>' +
+        '<div class="kpi" style="border-width:2px;border-color:var(--amber)">' +
+          '<div class="rot" style="color:var(--amber)">Perdas no período</div>' +
+          '<div class="val forte" style="color:var(--amber)">' + fmtInt(perdasTotal) + ' pares</div>' +
           '<div class="sub">' + fmtInt(eventosTotal) + ' solicitação(ões) · ' + rotuloPeriodo + '</div></div>' +
       '</div>' +
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px">' +
@@ -3476,7 +3478,7 @@ function renderizarPfas() {
           'border:1px solid var(--border);font-size:12px;flex:1 1 260px;max-width:360px">' +
       '</div>' +
       resultadoBusca +
-      '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Perda = quantidade faltante (cancelamento sem reposição conta 100%). DE×PARA fica no card ao lado e não conta como perda.' +
+      '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Perda = quantidade faltante (cancelamento sem reposição conta 100%). DE×PARA não conta como perda — é artigo substituto, não falta.' +
         (filtrosQueNaoValem ? ' <strong style="color:var(--amber)">FIFO, Etapa, Conferência, Situação e Origem não se aplicam aqui.</strong>' : '') +
         '</p>' +
       '<p style="font-size:11px;color:var(--text-muted);margin-top:4px">' +
@@ -3485,36 +3487,7 @@ function renderizarPfas() {
         '</p>' +
     '</div>';
 
-    // Top artigos trocados no DE×PARA do período — mostra as "gambiarras" de envio.
-    const porArtigoDePara = new Map();
-    dePara.forEach(function (a) {
-      const k = (a.artigo || '—') + ' ' + (a.cor_tam || '');
-      if (!porArtigoDePara.has(k)) porArtigoDePara.set(k, { rot: k.trim(), n: 0, q: 0 });
-      const g = porArtigoDePara.get(k); g.n++; g.q += a.qtde_de_para || 0;
-    });
-    const topDePara = Array.from(porArtigoDePara.values()).sort(function (a, b) { return b.n - a.n || b.q - a.q; }).slice(0, 8);
-    const maxDePara = topDePara.reduce(function (mx, g) { return Math.max(mx, g.n); }, 0);
-    const cardDePara = '<div class="card" style="border-color:var(--amber);margin:0">' +
-      '<div class="section-title" style="color:var(--amber)">DE×PARA — artigo substituto no envio</div>' +
-      '<p style="font-size:12px;color:var(--text-muted);margin:4px 0 12px">' + rotuloPeriodo + ' · tudo que foi sinalizado como DE×PARA. Não é perda: o cliente recebeu outro artigo no lugar.</p>' +
-      '<div class="kpi-row">' +
-        '<div class="kpi" style="border-color:var(--amber)"><div class="rot" style="color:var(--amber)">DE×PARA no período</div>' +
-          '<div class="val forte" style="color:var(--amber)">' + fmtInt(dePara.length) + '</div>' +
-          '<div class="sub">' + fmtInt(deParaPfas) + ' PFA(s)</div></div>' +
-        '<div class="kpi" style="border-color:var(--amber)"><div class="rot" style="color:var(--amber)">Peças substituídas</div>' +
-          '<div class="val forte" style="color:var(--amber)">' + fmtInt(deParaQtde) + '</div>' +
-          '<div class="sub">' + (deParaSemQtde ? fmtInt(deParaSemQtde) + ' linha(s) antigas sem quantidade informada' : 'tipo DE_PARA na planilha') + '</div></div>' +
-      '</div>' +
-      (topDePara.length
-        ? '<div class="bar-list" style="margin-top:12px">' + topDePara.map(function (g) {
-            return '<div class="bar-item"><div class="nome" title="' + escapar(g.rot) + '">' + escapar(g.rot) + '</div>' +
-              '<div class="trilho"><div class="preench" style="width:' + (maxDePara ? g.n / maxDePara * 100 : 0) + '%;background:var(--amber)"></div></div>' +
-              '<div class="num">' + fmtInt(g.n) + 'x' + (g.q ? ' · ' + fmtInt(g.q) + ' pç' : '') + '</div></div>';
-          }).join('') + '</div>'
-        : '<div class="aviso" style="margin-top:12px">Nenhum DE×PARA sinalizado no período.</div>') +
-    '</div>';
-
-    return '<div class="grid-perdas">' + cardPerdas + cardDePara + '</div>';
+    return cardPerdas;
   })();
 
   /* ---------- funil por etapa ---------- */

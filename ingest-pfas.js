@@ -302,6 +302,20 @@ function parsearPfasEmbarcadas(textoArquivo) {
    e-mail do comercial (ver especificação validada em 09/09/2026). */
 const TIPOS_AJUSTE_PFA = ['AJUSTE', 'DE_PARA', 'CANCELAMENTO', 'BO_POS_NF', 'AD_DEVOLUCAO'];
 
+/* Pendentes.txt guarda ENCOMENDA como "EBM - 13807658 (967708)" — o número
+   que interessa (o que aparece na coluna ENC do e-mail do comercial, e que a
+   planilha de Ajustes recebe puro) fica entre parênteses no FIM. Sem isso,
+   o cruzamento por encomenda pra achar a PFA nova (ver pfaNovaPorEncomenda
+   abaixo) nunca batia — comparava "967708" com o texto inteiro e nunca
+   reconhecia a PFA nova já criada no sistema (achado pelo usuário,
+   23/09/2026). Sem parênteses (planilha manual, que já grava só o número),
+   volta o texto como veio. */
+function extrairNumeroEncomenda(bruto) {
+  const s = String(bruto || '').trim();
+  const m = s.match(/\((\d+)\)\s*$/);
+  return m ? m[1] : s;
+}
+
 /* DE-PARA = artigo substituto enviado no lugar do cortado (pedido da gestão,
    23/09/2026: card próprio, separado dos ajustes brutos). Tipo DE_PARA na
    planilha: qtde_faltante = quantidade substituída, perda zero. Linhas
@@ -993,8 +1007,9 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
     // "em aberto".
     let pfaNovaPorEncomenda = null;
     if (a.tipo === 'AJUSTE' && !a.pfa_nova && a.encomenda) {
+      const numEncomendaAjuste = extrairNumeroEncomenda(a.encomenda);
       const achado = pendentesRegistros.find(function (r) {
-        return r.encomenda === a.encomenda && r.pfa !== a.pfa_antiga;
+        return extrairNumeroEncomenda(r.encomenda) === numEncomendaAjuste && r.pfa !== a.pfa_antiga;
       });
       if (achado) pfaNovaPorEncomenda = achado.pfa;
     }
@@ -1265,6 +1280,7 @@ async function processarAjustesPfa(supabaseClient, fileAjustes, onProgresso) {
 
 window.processarPfas = processarPfas;
 window.processarAjustesPfa = processarAjustesPfa;
+window.extrairNumeroEncomenda = extrairNumeroEncomenda;
 window.parsearPfasPendentes = parsearPfasPendentes;
 window.parsearPfasAnalitico = parsearPfasAnalitico;
 window.parsearPfasEmbarcadas = parsearPfasEmbarcadas;

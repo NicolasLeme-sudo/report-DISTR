@@ -496,6 +496,22 @@ const resolvidoPorEncomenda = snapAju.ajustes.find(function (a) { return a.pfa_a
 ok(!resolvidoPorEncomenda.em_aberto, 'mesma encomenda já tem outra PFA em Pendentes — comercial já criou, não fica "em aberto"');
 eq(resolvidoPorEncomenda.pfa_nova_por_encomenda, '244777', 'expõe qual PFA foi achada pelo cruzamento de encomenda');
 
+// Formato real de Pendentes.txt: ENCOMENDA vem "EBM - 13807658 (967708)", não
+// o número puro que o e-mail do comercial e a planilha de Ajustes usam — sem
+// extrair o número dos parênteses, o cruzamento acima nunca batia (achado
+// pelo usuário, 23/09/2026).
+eq(extrairNumeroEncomenda('EBM - 13807658 (967708)'), '967708', 'extrai o número de dentro dos parênteses');
+eq(extrairNumeroEncomenda('967708'), '967708', 'sem parênteses (planilha manual antiga) continua igual');
+const pendComParenteses = parsearPfasPendentes([CAB_PEND,
+  linhaPend('245900', '10/09', '102', '1', 'Nao disp. picking', '4', '25', 'EBM - 13807658 (967708)'),
+].join('\n'), HOJE);
+const snapEncomendaReal = construirSnapshotPfas(pendComParenteses, { registros: [] }, { registros: [] }, mapaFamilias, { referencia: HOJE }, { registros: [
+  { tipo: 'AJUSTE', encomenda: '967708', pfa_antiga: '241000', pfa_nova: null, cliente: 'C', artigo: 'A',
+    cor_tam: 'PT M', qtde_total_pedido: 10, qtde_faltante: 3, motivo: 'Ajuste', data_solicitacao: '2026-09-10', solicitante: 'E' },
+] }, mapaArtFamTeste);
+eq(snapEncomendaReal.ajustes[0].pfa_nova_por_encomenda, '245900',
+   'encomenda "967708" da planilha bate com "EBM - ... (967708)" de Pendentes — acha a PFA nova real');
+
 // PFA retrabalhada — dentro do SLA vs atrasada
 const pfaNovaNoPrazo = snapAju.pendentes.find(function (r) { return r.pfa === '242305'; });
 eq(pfaNovaNoPrazo.situacao_pfa, 'retrabalhada', 'importada hoje (0 dias úteis) — dentro do SLA de 1 dia útil');
