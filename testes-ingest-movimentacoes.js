@@ -53,6 +53,25 @@ console.log('\n=== entradas por volume — data de ENTRADA no endereço transit�
 })();
 
 /* ------------------------------------------------------------------ */
+console.log('\n=== fila em andamento — só o que AINDA está no corredor, não toda baixa do período ===');
+(function () {
+  function mov(vol, dia, minutos, destRua) {
+    return { volume: vol, dia: dia, minutos: minutos, turno: 'T01', artigo: 'A', descricao: '', cor: 'PT', tamanho: '40', qtd: 5, login: 'L', nome: 'N',
+      origem: { endereco: '02,08,001', rua: '02', zona: 'PULMAO' }, destino: { endereco: destRua + ',01,001', rua: destRua, zona: 'TRANSITO' } };
+  }
+  const movs = [mov('V1', '2026-09-10', 60, '500'), mov('V2', '2026-09-10', 60, '500'), mov('V3', '2026-09-10', 60, '98')];
+  const pernas = [
+    { tipo: 'TL+', volume: 'V1', dia: '2026-09-10', minutos: 60, endereco: '500,01,001' },
+    { tipo: 'TL+', volume: 'V2', dia: '2026-09-10', minutos: 60, endereco: '500,01,001' },
+    { tipo: 'TL+', volume: 'V2', dia: '2026-09-11', minutos: 30, endereco: '03,01,010' }, // V2 subiu pro Picking depois
+    { tipo: 'TL+', volume: 'V3', dia: '2026-09-10', minutos: 60, endereco: '98,01,001' },
+  ];
+  const fila = ctx.construirFilaItens(movs, pernas);
+  eq(fila.map(function (f) { return f.volume; }), ['V1'], 'só V1 continua no corredor: V2 subiu depois e a rua 98 não é fila');
+  eq(fila[0].hora, '01:00', 'hora formatada');
+})();
+
+/* ------------------------------------------------------------------ */
 console.log('\n=== classificarZona — nível manda, não a rua ===');
 eq(ctx.classificarZona('02', '01'), 'PICKING', 'rua 02 nível 01 -> Picking (estanteria)');
 eq(ctx.classificarZona('02', '07'), 'PICKING', 'rua 02 nível 07 -> Picking (último nível de estanteria)');

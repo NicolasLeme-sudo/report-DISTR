@@ -411,7 +411,8 @@ html { overflow-x: hidden; }
 }
 .barras-dia .pilha {
   display: flex; flex-direction: column-reverse;
-  border-radius: 3px; overflow: hidden; min-height: 2px;
+  /* Topo bem arredondado, base reta (pedido da gestão, 23/09/2026). */
+  border-radius: 8px 8px 3px 3px; overflow: hidden; min-height: 2px;
 }
 .barras-dia .valor-dia {
   /* Sibling do .pilha (não filho): .pilha tem overflow:hidden pra arredondar
@@ -2610,6 +2611,76 @@ function hojeISO() {
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
+// "Fila em andamento": 'geral' = tudo que ainda está no corredor; 'periodo' =
+// só o que foi baixado dentro do intervalo de datas do card (23/09/2026).
+let modoFilaRessuprimento = 'geral';
+function alternarModoFila(modo) { modoFilaRessuprimento = modo; renderizarRessuprimento(); }
+function filaItensVisiveis() {
+  const m = dadosMovimentacoes;
+  if (!m || !m.fila_itens) return null;
+  if (modoFilaRessuprimento !== 'periodo') return m.fila_itens;
+  return m.fila_itens.filter(function (f) {
+    return (!filtroHistDe || f.dia >= filtroHistDe) && (!filtroHistAte || f.dia <= filtroHistAte);
+  });
+}
+function exportarCSVFila() {
+  const itens = filaItensVisiveis();
+  if (!itens || !itens.length) { alert('Nada na fila para exportar' + (itens ? ' neste recorte.' : ' — reprocesse o Kardex.')); return; }
+  const linhas = [['Data da baixa', 'Hora', 'Turno', 'Artigo', 'Descricao', 'Cor', 'Tamanho', 'Qtde', 'Volume',
+    'Login', 'Nome', 'Origem (Pulmao)', 'Destino (corredor)', 'Dias no corredor']];
+  itens.slice().sort(function (a, b) { return a.dia < b.dia ? -1 : a.dia > b.dia ? 1 : (a.hora < b.hora ? -1 : 1); })
+    .forEach(function (f) {
+      linhas.push([f.dia, f.hora, f.turno, f.artigo, f.descricao, f.cor, f.tamanho, f.qtd, '="' + f.volume + '"',
+        f.login, f.nome, f.origem, f.destino, diasDesdeIso(f.dia)]);
+    });
+  const csv = linhas.map(function (l) {
+    return l.map(function (c) { return '"' + String(c == null ? '' : c).replace(/"/g, '""') + '"'; }).join(';');
+  }).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'fila-ressuprimento-' + modoFilaRessuprimento + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/* Dias "fechados" e alerta de abastecimento incompleto (23/09/2026).
+   A média por dia só considera dia 100% fechado e trabalhado: exclui hoje
+   (em andamento), domingo e o dia com turno faltando/muito abaixo do normal
+   — que quase sempre é Kardex exportado com a janela de datas errada (o T03
+   atravessa a meia-noite e quem extrai confunde o recorte). Turno
+   "esperado" = aparece em pelo menos metade dos dias úteis do intervalo;
+   "muito abaixo" = menos de 25% da mediana daquele turno. */
+function avaliarDiasRessuprimento(dias) {
+  const hoje = hojeISO();
+  const util = function (d) { const w = new Date(d.dia + 'T12:00:00').getDay(); return w >= 1 && w <= 5; };
+  const uteis = dias.filter(function (d) { return util(d) && d.dia < hoje && pecasDoDia(d) > 0; });
+  const esperados = [];
+  const medianas = {};
+  ORDEM_TURNO.forEach(function (t) {
+    const vals = uteis.map(function (d) { return (d.turnos[t] && d.turnos[t].pecas) || 0; }).filter(function (v) { return v > 0; }).sort(function (a, b) { return a - b; });
+    if (uteis.length && vals.length >= uteis.length / 2) {
+      esperados.push(t);
+      medianas[t] = vals[Math.floor(vals.length / 2)];
+    }
+  });
+  const suspeitos = [];
+  dias.forEach(function (d) {
+    if (!util(d) || d.dia >= hoje || pecasDoDia(d) <= 0) return;
+    const problemas = [];
+    esperados.forEach(function (t) {
+      const v = (d.turnos[t] && d.turnos[t].pecas) || 0;
+      if (!v) problemas.push(ROT_TURNO[t] + ' sem movimento');
+      else if (v < medianas[t] * 0.25) problemas.push(ROT_TURNO[t] + ' com ' + Math.round(v / medianas[t] * 100) + '% do normal');
+    });
+    if (problemas.length) suspeitos.push({ dia: d.dia, problemas: problemas });
+  });
+  const suspeitosSet = new Set(suspeitos.map(function (s) { return s.dia; }));
+  const fechados = dias.filter(function (d) {
+    const w = new Date(d.dia + 'T12:00:00').getDay();
+    return w !== 0 && d.dia < hoje && pecasDoDia(d) > 0 && !suspeitosSet.has(d.dia);
+  });
+  return { fechados: fechados, suspeitos: suspeitos };
+}
 const abertosRessuprimento = new Set();
 // Busca por artigo/SKU no card "Detalhamento — Marca › Grupo › Família"
 // (pedido do usuário, 15/09/2026, mesmo padrão da busca de Estoque) — troca
@@ -4729,7 +4800,25 @@ function blocoMovimentacoes() {
   const pecas = dias.reduce(function (s, d) { return s + pecasDoDia(d); }, 0);
   const movimentos = dias.reduce(function (s, d) { return s + movimentosDoDia(d); }, 0);
   const diasComMovimento = dias.filter(function (d) { return pecasDoDia(d) > 0; }).length;
-  const mediaDia = diasComMovimento > 0 ? pecas / diasComMovimento : 0;
+  const avaliacaoDias = avaliarDiasRessuprimento(dias);
+  const pecasFechados = avaliacaoDias.fechados.reduce(function (s, d) { return s + pecasDoDia(d); }, 0);
+  const mediaDia = avaliacaoDias.fechados.length > 0 ? pecasFechados / avaliacaoDias.fechados.length : 0;
+  const alertaAbastecimento = avaliacaoDias.suspeitos.length
+    ? '<div class="aviso erro" style="border-color:var(--red);color:var(--red);margin-bottom:10px">' +
+        '<strong>⚠ Kardex possivelmente abastecido com o período errado</strong> — ' +
+        avaliacaoDias.suspeitos.map(function (s) {
+          return formatarDataSimples(s.dia) + ' (' + diaSemanaAbrev(s.dia) + '): ' + s.problemas.join(', ');
+        }).join(' · ') +
+        '. Confira o recorte de datas da extração (o T03 atravessa a meia-noite) e reprocesse. Esses dias ficam fora da média.' +
+      '</div>'
+    : '';
+  const filaItens = filaItensVisiveis();
+  const pecasFila = filaItens ? filaItens.reduce(function (s, f) { return s + f.qtd; }, 0) : null;
+  const chipsFila = '<div style="display:flex;gap:4px;flex-wrap:wrap;margin:6px 0 2px">' +
+    '<span class="chip' + (modoFilaRessuprimento === 'geral' ? ' on' : '') + '" style="font-size:10px;padding:2px 8px" onclick="alternarModoFila(\'geral\')">Fila geral</span>' +
+    '<span class="chip' + (modoFilaRessuprimento === 'periodo' ? ' on' : '') + '" style="font-size:10px;padding:2px 8px" onclick="alternarModoFila(\'periodo\')">Período filtrado</span>' +
+    '<span class="chip" style="font-size:10px;padding:2px 8px" onclick="exportarCSVFila()" title="Exporta os itens da fila (volume, artigo, quem baixou, origem/destino)">⬇ CSV</span>' +
+  '</div>';
 
   /* ---------- chips de turno (multi-seleção, 05/09/2026) ---------- */
   let chipsTurno = '<div class="filtros">' +
@@ -4786,10 +4875,13 @@ function blocoMovimentacoes() {
       '<div class="sub">' + (movimentos > 0 ? fmtDec1(pecas / movimentos) + ' peças por movimento' : '—') + '</div></div>' +
     '<div class="kpi"><div class="rot">Média por dia</div>' +
       '<div class="val forte">' + fmtInt(mediaDia) + '</div>' +
-      '<div class="sub">peças/dia no período</div></div>' +
+      '<div class="sub">peças/dia sobre ' + fmtInt(avaliacaoDias.fechados.length) + ' dia(s) fechado(s) e trabalhado(s)</div></div>' +
     '<div class="kpi"><div class="rot">Fila em andamento</div>' +
-      '<div class="val forte" style="color:var(--amber)">' + (m ? fmtInt(m.total.pecas_em_transito) : '—') + '</div>' +
-      '<div class="sub">baixado do Pulmão, ainda no corredor no último Kardex processado</div></div>' +
+      '<div class="val forte" style="color:var(--amber)">' + (pecasFila !== null ? fmtInt(pecasFila) : '—') + '</div>' +
+      chipsFila +
+      '<div class="sub">' + (pecasFila !== null
+        ? fmtInt(filaItens.length) + ' baixa(s) do Pulmão ainda paradas no corredor (último Kardex)'
+        : 'reprocesse o Kardex para listar a fila por item') + '</div></div>' +
   '</div>';
 
   /* ---------- gráfico: barras por dia, empilhadas por turno ----------
@@ -4920,7 +5012,6 @@ function blocoMovimentacoes() {
     '</div>';
   } else {
     const d0 = plano.filter(function (p) { return p.status === 'D0'; });
-    const d1 = plano.filter(function (p) { return p.status === 'D-1'; });
     const naoRessup = plano.filter(function (p) { return p.status === 'planejado_nao_ressuprido'; });
     const aguardando = plano.filter(function (p) { return p.status === 'aguardando'; });
     const pecasSemPlano = semPlano.reduce(function (s, r) { return s + r.pecas; }, 0);
@@ -4939,7 +5030,8 @@ function blocoMovimentacoes() {
       return soma;
     }
     const pecasD0 = pecasUnicasPorFamiliaData(d0);
-    const pecasD1 = pecasUnicasPorFamiliaData(d1);
+    // Card "D-1 — adiantado" removido (23/09/2026): quem adiantaria seria o
+    // T03, que não recebe demanda (sem assistente no turno) — nunca acontece.
 
     // "Planejado, não ressuprido" nunca passou pelo Kardex, então p.pecas
     // aqui é sempre 0 (classificarPlanejamento não tem como saber quantos
@@ -4959,9 +5051,6 @@ function blocoMovimentacoes() {
       '<div class="kpi"><div class="rot">D0 — ressuprido no dia</div>' +
         '<div class="val forte" style="color:var(--olive)">' + fmtInt(pecasD0) + ' Peças</div>' +
         '<div class="sub">' + fmtInt(d0.length) + ' de ' + fmtInt(plano.length) + ' PFAs planejadas</div></div>' +
-      '<div class="kpi"><div class="rot">D-1 — adiantado</div>' +
-        '<div class="val forte" style="color:var(--accent)">' + fmtInt(pecasD1) + ' Peças</div>' +
-        '<div class="sub">' + fmtInt(d1.length) + ' PFAs ressupridas no dia anterior</div></div>' +
       '<div class="kpi"><div class="rot">Planejado, não ressuprido</div>' +
         '<div class="val forte" style="color:var(--red)">' + fmtInt(paresNaoRessup) + ' Peças</div>' +
         '<div class="sub">' + fmtInt(naoRessup.length) + ' PFAs' +
@@ -5089,7 +5178,7 @@ function blocoMovimentacoes() {
     blocoPlanejamento = '<div class="card">' +
       '<div class="section-title">Ressuprimento planejado × realizado — ' + escapar(periodo) + '</div>' +
       '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
-        'Cruza as PFAs do <strong>Admin › Planejamento</strong> com o Kardex: D0, D-1 (adiantado) e <span style="color:var(--amber)">sem planejamento</span>.' +
+        'Cruza as PFAs do <strong>Admin › Planejamento</strong> com o Kardex: D0 (ressuprido no dia), pendente e <span style="color:var(--amber)">sem planejamento</span>.' +
         (usaHistoricoPlano ? '' : ' Sem histórico neste intervalo — mostrando o último Kardex processado.') +
       '</p>' +
       kpisPlano +
@@ -5108,6 +5197,7 @@ function blocoMovimentacoes() {
     seletorIntervalo +
     chipsTurno +
     chipsSegmentoDia +
+    alertaAbastecimento +
     kpis +
     '<div class="barras-dia">' + barras + '</div>' +
     '<div class="legenda" style="margin-top:10px">' + legendaTurno + '</div>' +

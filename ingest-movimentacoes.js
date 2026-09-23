@@ -479,6 +479,31 @@ function calcularSemPlanejamento(pecasPorFamiliaDia, planejamento, mapaFamilias,
   return resultado;
 }
 
+/* Fila em andamento DE VERDADE: baixa Pulmão -> corredor cujo volume NÃO
+   mexeu mais depois (o último TL+ do volume no Kardex é essa mesma baixa).
+   `pecas_em_transito` soma TODAS as baixas do período — no Kardex real de
+   agosto/2026 eram 251.639 pç contra 10.818 ainda paradas no corredor —,
+   então o KPI "ainda no corredor" passa a ler daqui (23/09/2026). Lista
+   por item pra tela filtrar por período e exportar. */
+function construirFilaItens(movs, pernas) {
+  const ultimo = new Map();
+  pernas.forEach(function (p) {
+    if (p.tipo !== 'TL+' || !p.volume) return;
+    const a = ultimo.get(p.volume);
+    if (!a || p.dia > a.dia || (p.dia === a.dia && p.minutos > a.minutos)) ultimo.set(p.volume, p);
+  });
+  return movs.filter(ehBaixaPendente).filter(function (m) {
+    const u = ultimo.get(m.volume);
+    return u && u.dia === m.dia && u.minutos === m.minutos && u.endereco === m.destino.endereco;
+  }).map(function (m) {
+    return {
+      dia: m.dia, hora: String(Math.floor(m.minutos / 60)).padStart(2, '0') + ':' + String(m.minutos % 60).padStart(2, '0'),
+      turno: m.turno, artigo: m.artigo, descricao: m.descricao, cor: m.cor, tamanho: m.tamanho, qtd: m.qtd,
+      volume: m.volume, login: m.login, nome: m.nome, origem: m.origem.endereco, destino: m.destino.endereco,
+    };
+  });
+}
+
 function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFamilias, planejamento, mapaColaboradorTurno) {
   mapaArtigoFamilia = mapaArtigoFamilia || new Map();
   mapaFamilias = mapaFamilias || new Map();
@@ -702,6 +727,7 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
     // operação consiga bater o total do relatório com o que aparece aqui.
     descartados: casado.descartados,
     entradas_volume: construirEntradasPorVolume(parsed.pernas),
+    fila_itens: construirFilaItens(movs, parsed.pernas),
     ignoradas_outro_tipo: parsed.ignoradas_outro_tipo,
     ignoradas_data_invalida: parsed.ignoradas_data_invalida,
   };
@@ -912,3 +938,4 @@ window.calcularSemPlanejamento = calcularSemPlanejamento;
 window.familiaPadded = familiaPadded;
 window.construirEntradasPorVolume = construirEntradasPorVolume;
 window.mesclarEntradasPorVolume = mesclarEntradasPorVolume;
+window.construirFilaItens = construirFilaItens;
