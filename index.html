@@ -3110,11 +3110,43 @@ const ROT_TIPO_AJUSTE = {
   AJUSTE: 'Ajuste', DE_PARA: 'DE×PARA', CANCELAMENTO: 'Cancelamento',
   BO_POS_NF: 'Envio faltante c/ NF emitida', AD_DEVOLUCAO: 'Devolução por AD',
 };
-function alternarSegColeta(seg) {
-  segColetaAberto = (seg === null || segColetaAberto === seg) ? null : seg;
+// Posição do tooltip flutuante (viewport, position:fixed) — capturada no
+// clique, antes de refazer o HTML (o elemento clicado não sobrevive ao
+// re-render). null quando fechado.
+let segColetaTooltipPos = null;
+function alternarSegColeta(seg, ev) {
+  const fechando = seg === null || segColetaAberto === seg;
+  segColetaAberto = fechando ? null : seg;
+  if (!fechando && ev && ev.currentTarget) {
+    const r = ev.currentTarget.getBoundingClientRect();
+    segColetaTooltipPos = { top: r.bottom + 6, left: r.left };
+  } else {
+    segColetaTooltipPos = null;
+  }
   const scrollY = window.scrollY;
   renderizarPfas();
   window.scrollTo(0, scrollY);
+}
+/* Donut multi-segmento (mesmo traço em anel do "Backlog FIFO" do Report
+   E-commerce — path por arco, sem lib) — usado no tooltip de FIFO. */
+function donutMultiSegmento(segmentos, totalRotulo) {
+  const total = segmentos.reduce(function (s, f) { return s + f.valor; }, 0) || 1;
+  const cx = 60, cy = 60, r = 42, sw = 20;
+  let ang = -90, paths = '';
+  segmentos.forEach(function (f) {
+    if (f.valor <= 0) return;
+    const a = (f.valor / total) * 360, large = a > 180 ? 1 : 0;
+    const x1 = cx + r * Math.cos(ang * Math.PI / 180), y1 = cy + r * Math.sin(ang * Math.PI / 180);
+    const ae = ang + a;
+    const x2 = cx + r * Math.cos(ae * Math.PI / 180), y2 = cy + r * Math.sin(ae * Math.PI / 180);
+    paths += '<path d="M ' + x1.toFixed(2) + ' ' + y1.toFixed(2) + ' A ' + r + ' ' + r + ' 0 ' + large + ' 1 ' +
+      x2.toFixed(2) + ' ' + y2.toFixed(2) + '" fill="none" stroke="' + f.cor + '" stroke-width="' + sw + '"/>';
+    ang = ae;
+  });
+  return '<svg width="120" height="120" viewBox="0 0 120 120">' + paths +
+    '<text x="60" y="56" text-anchor="middle" font-size="17" font-weight="700" fill="var(--text)">' + fmtInt(total) + '</text>' +
+    '<text x="60" y="72" text-anchor="middle" font-size="9" fill="var(--text-muted)">' + escapar(totalRotulo || 'peças') + '</text>' +
+  '</svg>';
 }
 function filtrarTextoPerdas(t) {
   filtroTextoPerdas = t;
@@ -3551,7 +3583,7 @@ function renderizarPfas() {
     const larg = maxSegColeta > 0 ? e[1] / maxSegColeta * 100 : 0;
     const aberto = segColetaAberto === e[0];
     barrasSegColeta += '<div class="bar-item" style="cursor:pointer' + (aberto ? ';outline:1px solid var(--accent);border-radius:6px' : '') + '" ' +
-      'onclick="alternarSegColeta(\'' + escaparJs(e[0]) + '\')" title="Clique para ver por data de faturamento">' +
+      'onclick="alternarSegColeta(\'' + escaparJs(e[0]) + '\', event)" title="Clique para ver por data de faturamento e FIFO">' +
       '<div class="nome">' + (aberto ? '▾ ' : '▸ ') + escapar(e[0]) + '</div>' +
       '<div class="trilho"><div class="preench" style="width:' + larg + '%;background:var(--accent)"></div></div>' +
       '<div class="num">' + fmtInt(e[1]) + '</div>' +
@@ -3586,29 +3618,43 @@ function renderizarPfas() {
       pfasFaixaNf.get(f.chave).add(r.pfa);
       porDiaNf.set(r.data_nota, (porDiaNf.get(r.data_nota) || 0) + r.qtde);
     });
-    const maxNf = Array.from(porFaixaNf.values()).reduce(function (mx, v) { return Math.max(mx, v); }, 0);
-    const colunasNf = FAIXAS_NF.map(function (f) {
-      const v = porFaixaNf.get(f.chave) || 0;
+    // Pizza (donut) por faixa de FIFO — mesmo traço em anel do "Backlog
+    // FIFO" do Report E-commerce (pedido do usuário, 23/09/2026), dentro de
+    // um tooltip flutuante em vez de expandir a página.
+    const segmentosPizza = FAIXAS_NF.map(function (f) {
+      return { chave: f.chave, rotulo: f.rotulo, valor: porFaixaNf.get(f.chave) || 0, cor: 'var(' + (COR_FAIXA_FIFO[f.chave] || '--accent') + ')' };
+    });
+    const legendaPizza = segmentosPizza.map(function (f) {
       const npfas = pfasFaixaNf.has(f.chave) ? pfasFaixaNf.get(f.chave).size : 0;
-      return '<div class="col-dia" title="' + escapar(f.rotulo) + ' desde a NF · ' + fmtInt(v) + ' pç · ' + fmtInt(npfas) + ' PFA(s)">' +
-        '<div class="valor-dia">' + (v > 0 ? fmtInt(v) : '') + '</div>' +
-        '<div class="pilha" style="height:' + (maxNf ? v / maxNf * 100 : 0) + '%">' +
-          '<div class="seg" style="height:100%;background:var(' + (COR_FAIXA_FIFO[f.chave] || '--accent') + ')"></div>' +
-        '</div>' +
-        '<div class="rot-dia">' + escapar(f.rotulo) + '</div>' +
+      return '<div style="display:flex;align-items:center;gap:6px;font-size:11px;margin-bottom:4px">' +
+        '<span style="width:9px;height:9px;border-radius:50%;background:' + f.cor + ';flex-shrink:0"></span>' +
+        '<span style="flex:1">' + escapar(f.rotulo) + '</span>' +
+        '<b>' + fmtInt(f.valor) + '</b>' +
+        '<span style="color:var(--text-muted);width:34px;text-align:right">' + fmtInt(npfas) + ' PFA</span>' +
       '</div>';
     }).join('');
     const diasOrdenados = Array.from(porDiaNf.entries()).sort(function (a, b) { return a[0] < b[0] ? -1 : 1; });
-    detalheSegColeta = '<div style="margin-top:14px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input)">' +
-      '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px">' +
-        '<strong style="font-size:12px">' + escapar(segColetaAberto) + ' — dias desde a emissão da NF</strong>' +
-        '<span class="chip" onclick="alternarSegColeta(null)" style="cursor:pointer">✕ Fechar</span>' +
-      '</div>' +
-      '<div class="barras-dia">' + colunasNf + '</div>' +
-      '<p style="font-size:11px;color:var(--text-muted);margin-top:8px">Por data de NF: ' +
-        diasOrdenados.map(function (e) { return formatarDataSimples(e[0]) + ' (' + fmtInt(e[1]) + ' pç)'; }).join(' · ') +
-        (semData ? ' · sem data: ' + fmtInt(semData) + ' pç' : '') + '</p>' +
-    '</div>';
+    const posTooltip = segColetaTooltipPos || { top: 80, left: 80 };
+    detalheSegColeta =
+      // Fundo invisível cobrindo a tela inteira — clicar fora fecha o tooltip.
+      '<div style="position:fixed;inset:0;z-index:998" onclick="alternarSegColeta(null)"></div>' +
+      '<div style="position:fixed;top:' + posTooltip.top + 'px;left:' + posTooltip.left + 'px;z-index:999;' +
+        'background:var(--bg-card);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.35);' +
+        'padding:14px;width:280px;max-width:calc(100vw - 24px)" onclick="event.stopPropagation()">' +
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:10px">' +
+          '<strong style="font-size:12px">' + escapar(segColetaAberto) + '</strong>' +
+          '<span class="chip" onclick="alternarSegColeta(null)" style="cursor:pointer;font-size:10px">✕</span>' +
+        '</div>' +
+        '<p style="font-size:10.5px;color:var(--text-muted);margin:0 0 10px">Dias desde a emissão da NF (FIFO)</p>' +
+        '<div style="display:flex;align-items:center;gap:14px">' +
+          donutMultiSegmento(segmentosPizza, 'pç') +
+          '<div style="flex:1;min-width:0">' + legendaPizza + '</div>' +
+        '</div>' +
+        '<p style="font-size:10.5px;color:var(--text-muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">' +
+          '<strong>Por data de NF:</strong> ' +
+          diasOrdenados.map(function (e) { return formatarDataSimples(e[0]) + ' (' + fmtInt(e[1]) + ' pç)'; }).join(' · ') +
+          (semData ? ' · sem data: ' + fmtInt(semData) + ' pç' : '') + '</p>' +
+      '</div>';
   }
 
   function chipsConferencia(set, fn) {
