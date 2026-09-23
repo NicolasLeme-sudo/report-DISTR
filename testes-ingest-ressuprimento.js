@@ -202,7 +202,7 @@ secao('endereços vazios e picados (< 10 pç) — 23/09/2026');
   ], colisoes_volume: 0 };
   const oc = construirSnapshotRessuprimento(pick, pulm, mapaFamilias, {}, { arquivo_picking: 'a', arquivo_pulmao: 'b' }).enderecos_ociosos;
   const txt = function (l) { return l.map(function (e) { return e[0] + '-' + e[1] + '-' + e[2]; }).join(','); };
-  eq(txt(oc.picking.vazios), '3-1-1,70-1-9', 'Picking vazio = alocado com saldo zero (inclui rua 70, picking dentro do Pulmão)');
+  eq(txt(oc.picking.vazios), '3-1-1', 'Picking vazio = alocado com saldo zero; rua 70 (picking dentro do Pulmão) fica fora — acima da rua 15, prédio físico só vai até lá (pedido do usuário, 23/09/2026)');
   eq(txt(oc.picking.picados), '3-1-2', 'Picking picado soma disponível + cativado (4+3=7 < 10)');
   eq(txt(oc.pulmao.vazios), '2-9-3', 'Pulmão vazio inferido: box 3 existe na rua 2 (nível 8) mas está sem volume no nível 9');
   eq(txt(oc.pulmao.picados), '2-8-3', 'Pulmão picado: 5 pç; rua 500 (trânsito) fica fora');

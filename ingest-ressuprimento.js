@@ -807,6 +807,20 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     };
   });
 
+  /* Endereços vazios e material_por_rua são visões POR RUA — só fazem
+     sentido pra rua física de verdade. O prédio do Pulmão vai até a rua 15
+     (confirmado pela operação, 23/09/2026): tudo acima disso, incluindo o
+     que volta reclassificado do Picking (20/70/80/81-02, apoio confiável),
+     é rua sistêmica/corredor, não porta-pallet — desconsiderado aqui, ainda
+     que continue contando em outros lugares (ex.: apoio de ressuprimento,
+     material parado em trânsito). */
+  const LIMITE_RUA_FISICA = 15;
+  const dentroDaRuaFisica = function (r) { return Number(r.rua) <= LIMITE_RUA_FISICA; };
+  const pickingComApoio = pickingReal
+    .concat(pulmaoTudo.filter(function (r) { return r.origem !== 'pulmao' && r.apoio_confiavel; }))
+    .filter(dentroDaRuaFisica);
+  const pulmaoFisicoAteRua15 = pulmaoFisico.filter(dentroDaRuaFisica);
+
   return {
     versao: 1,
     gerado_em: new Date().toISOString(),
@@ -848,14 +862,11 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     familias_nao_mapeadas: Array.from(familiasNaoMapeadas),
     // Picking inclui os endereços de Picking que ficam dentro do Pulmão
     // (20/70/80/81-02, apoio confiável) — continuam sendo posição de picking.
-    enderecos_ociosos: mapearEnderecosOciosos(
-      pickingReal.concat(pulmaoTudo.filter(function (r) { return r.origem !== 'pulmao' && r.apoio_confiavel; })),
-      pulmaoFisico),
+    // Rua > 15 (físico ou reclassificado) fica de fora — ver dentroDaRuaFisica.
+    enderecos_ociosos: mapearEnderecosOciosos(pickingComApoio, pulmaoFisicoAteRua15),
     // Material dividido por rua — visão pedida antes da quebra Picking/Pulmão
     // (pedido do usuário, 23/09/2026: rua primeiro, depois picking×pulmão).
-    material_por_rua: materialPorRua(
-      pickingReal.concat(pulmaoTudo.filter(function (r) { return r.origem !== 'pulmao' && r.apoio_confiavel; })),
-      pulmaoFisico),
+    material_por_rua: materialPorRua(pickingComApoio, pulmaoFisicoAteRua15),
   };
 }
 
