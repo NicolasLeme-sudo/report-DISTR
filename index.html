@@ -1334,6 +1334,22 @@ tr.total > th, tr.total > td {
         <div class="log" id="logIngestAjustesPfa"></div>
       </div>
 
+      <div class="section-title" style="margin-top:24px">Validar e-mails do comercial (.msg)</div>
+      <div class="card">
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+          Salve do Outlook os e-mails <strong>"PFA COM DIVERGÊNCIA"</strong> e <strong>"NFs COM DIVERGÊNCIA"</strong>
+          (arrastar para uma pasta gera o .msg) e selecione todos de uma vez. O sistema lê a tabela de cada e-mail,
+          classifica o tipo (sem NF: AJUSTE, ou CANCELAMENTO quando falta o pedido inteiro; com NF: EMBARCAR vira
+          envio faltante com NF e DEVOLVER vira devolução por AD, pela instrução do comercial) e confere contra o último
+          Pendentes/Analítico: PFA existe, NF bate, FALTA TOTAL soma o pedido, linha já lançada antes.
+        </p>
+        <div class="dropzone" id="dropzoneEmailsAjustes">
+          <span id="dropzoneEmailsAjustesTexto">Clique para selecionar os e-mails (.msg) — pode selecionar vários</span>
+          <input type="file" id="inputEmailsAjustes" accept=".msg" multiple style="display:none">
+        </div>
+        <div id="resultadoEmailsAjustes" style="margin-top:12px"></div>
+      </div>
+
       <div class="section-title" style="margin-top:24px">Base de Ativos (turno real do colaborador)</div>
       <div class="card">
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
@@ -1407,6 +1423,7 @@ tr.total > th, tr.total > td {
 <script src="ingest-movimentacoes.js"></script>
 <script src="ingest-colaboradores.js"></script>
 <script src="ingest-pfas.js"></script>
+<script src="ingest-emails-ajustes.js"></script>
 <!-- SheetJS — só usado na tela de Admin, pra ler a base de Ativos (.xlsx) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <!-- ExcelJS — modelo de Ajustes de PFA (10/09/2026): SheetJS community não
@@ -5847,6 +5864,121 @@ async function exportarGapEstoqueAjustes() {
   } finally {
     btn.disabled = false;
     btn.textContent = rotuloOriginal;
+  }
+}
+
+/* ---------- Validar e-mails do comercial (.msg) — 23/09/2026 ----------
+   Parser em ingest-emails-ajustes.js. Nada é gravado sem clique: a
+   assistente confere a tabela, e grava (mesmo caminho da planilha manual,
+   processarAjustesPfa) ou baixa o .xlsx para revisar antes. */
+let linhasEmailsAjustes = [];
+document.getElementById('dropzoneEmailsAjustes').addEventListener('click', function () {
+  document.getElementById('inputEmailsAjustes').click();
+});
+document.getElementById('inputEmailsAjustes').addEventListener('change', async function (ev) {
+  const arquivos = Array.from(ev.target.files || []);
+  const alvo = document.getElementById('resultadoEmailsAjustes');
+  if (!arquivos.length) return;
+  document.getElementById('dropzoneEmailsAjustesTexto').textContent = '✓ ' + arquivos.length + ' e-mail(s) selecionado(s)';
+  alvo.innerHTML = '<div class="loading-msg">Lendo e-mails…</div>';
+  try {
+    const listas = [], falhas = [];
+    for (let i = 0; i < arquivos.length; i++) {
+      try {
+        const msg = window.lerMsg(await arquivos[i].arrayBuffer(), window.XLSX);
+        const linhas = window.interpretarEmailAjuste(msg).map(function (l) { return Object.assign(l, { _arquivo: arquivos[i].name, _ordem: i }); });
+        if (!linhas.length) falhas.push(arquivos[i].name + ' (nenhuma tabela de divergência reconhecida)');
+        listas.push(linhas);
+      } catch (e) { falhas.push(arquivos[i].name + ' (' + (e && e.message) + ')'); }
+    }
+    let snap = dadosPfas;
+    if (!snap) {
+      const r = await supabaseClient.from('dashboard_snapshots').select('payload').eq('pagina', 'pfas')
+        .order('gerado_em', { ascending: false }).limit(1);
+      snap = r.data && r.data[0] ? r.data[0].payload : null;
+    }
+    linhasEmailsAjustes = window.validarLinhasEmail(window.consolidarLinhasEmails(listas), snap);
+    renderizarEmailsAjustes(falhas, !snap);
+  } catch (e) {
+    alvo.innerHTML = '<div class="aviso erro">Erro ao ler os e-mails: ' + escapar(e && e.message ? e.message : String(e)) + '</div>';
+  }
+});
+function renderizarEmailsAjustes(falhas, semSnapshot) {
+  const L = linhasEmailsAjustes;
+  const alvo = document.getElementById('resultadoEmailsAjustes');
+  const prontas = L.filter(function (l) { return l.tipo && !l.ja_lancado; });
+  const comAlerta = L.filter(function (l) { return l.alertas.length; }).length;
+  const aguardando = L.filter(function (l) { return !l.tipo; }).length;
+  const jaLancadas = L.filter(function (l) { return l.ja_lancado; }).length;
+  const linhasHtml = L.map(function (l) {
+    const cor = l.alertas.length ? 'var(--red)' : !l.tipo ? 'var(--amber)' : l.ja_lancado ? 'var(--text-muted)' : 'var(--olive)';
+    return '<tr>' +
+      '<td class="centro" style="color:' + cor + ';font-weight:600">' + escapar(l.tipo ? (ROT_TIPO_AJUSTE[l.tipo] || l.tipo) : 'Sem instrução') + '</td>' +
+      '<td class="centro">' + escapar(l.nf || '—') + '</td><th class="centro">' + escapar(l.pfa) + '</th>' +
+      '<td class="centro">' + escapar(l.artigo) + '</td><td class="centro">' + escapar(l.cor + ' ' + l.tam) + '</td>' +
+      '<td>' + fmtInt(l.qtde_total_pedido || 0) + '</td><td>' + fmtInt(l.qtde_faltante || 0) + '</td>' +
+      '<td class="centro" style="font-size:11px">' + escapar(l.situacao) + '</td>' +
+      '<td class="centro" style="font-size:11px">' + escapar(l.status) + '</td>' +
+      '<td style="font-size:11px;color:var(--red);text-align:left">' + escapar(l.alertas.join(' · ')) +
+        (l.ja_lancado ? '<span style="color:var(--text-muted)">já lançado antes</span>' : '') + '</td>' +
+      '<td class="centro" style="font-size:11px">' + (l.data_solicitacao ? formatarDataSimples(l.data_solicitacao) : '—') + '</td>' +
+    '</tr>';
+  }).join('');
+  alvo.innerHTML =
+    (semSnapshot ? '<div class="aviso">Sem snapshot de PFAs ainda — a conferência contra Pendentes/Analítico ficou de fora.</div>' : '') +
+    (falhas.length ? '<div class="aviso" style="border-color:var(--amber)">Não reconhecido: ' + escapar(falhas.join('; ')) + '</div>' : '') +
+    '<div class="kpi-row">' +
+      '<div class="kpi"><div class="rot">Linhas lidas</div><div class="val forte">' + fmtInt(L.length) + '</div><div class="sub">' + fmtInt(new Set(L.map(function (l) { return l.pfa; })).size) + ' PFA(s)</div></div>' +
+      '<div class="kpi"><div class="rot">Prontas para lançar</div><div class="val forte" style="color:var(--olive)">' + fmtInt(prontas.length) + '</div><div class="sub">com tipo definido e ainda não lançadas</div></div>' +
+      '<div class="kpi"><div class="rot">Aguardando comercial</div><div class="val forte" style="color:var(--amber)">' + fmtInt(aguardando) + '</div><div class="sub">NF sem instrução EMBARCAR/DEVOLVER</div></div>' +
+      '<div class="kpi"><div class="rot">Com alerta</div><div class="val forte" style="color:var(--red)">' + fmtInt(comAlerta) + '</div><div class="sub">' + fmtInt(jaLancadas) + ' já lançada(s) antes</div></div>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0">' +
+      '<button class="btn-mini" onclick="baixarPlanilhaEmailsAjustes()"' + (prontas.length ? '' : ' disabled') + '>⬇ Planilha de ajustes (.xlsx) — ' + fmtInt(prontas.length) + ' linha(s)</button>' +
+      '<button class="btn-mini" id="btnGravarEmailsAjustes" onclick="gravarEmailsAjustes()"' + (prontas.length ? '' : ' disabled') + '>Gravar em Ajustes de PFA</button>' +
+    '</div>' +
+    '<div class="tabela-rolavel"><table class="arvore"><thead><tr>' +
+      '<th class="centro">Tipo</th><th class="centro">NF</th><th class="centro">PFA</th><th class="centro">Artigo</th><th class="centro">Cor/Tam</th>' +
+      '<th>Pedido</th><th>Faltante</th><th class="centro">Situação</th><th class="centro">Status</th><th>Validação</th><th class="centro">E-mail</th>' +
+    '</tr></thead><tbody>' + linhasHtml + '</tbody></table></div>' +
+    '<div class="log" id="logEmailsAjustes"></div>';
+}
+async function montarXlsxEmailsAjustes() {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Ajustes de PFA');
+  ws.columns = CABECALHO_MODELO_AJUSTES_PFA.map(function (chave) {
+    return { header: capitalizarPrimeiraLetra(chave), key: chave, width: Math.max(chave.length + 2, 13) };
+  });
+  linhasEmailsAjustes.filter(function (l) { return l.tipo && !l.ja_lancado; })
+    .forEach(function (l) { ws.addRow(window.linhaPlanilhaAjuste(l)); });
+  ws.getRow(1).font = { bold: true };
+  return wb.xlsx.writeBuffer();
+}
+async function baixarPlanilhaEmailsAjustes() {
+  const buffer = await montarXlsxEmailsAjustes();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  a.download = 'ajustes-pfa-dos-emails.xlsx';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+async function gravarEmailsAjustes() {
+  const prontas = linhasEmailsAjustes.filter(function (l) { return l.tipo && !l.ja_lancado; });
+  const comAlerta = prontas.filter(function (l) { return l.alertas.length; }).length;
+  if (!confirm('Gravar ' + prontas.length + ' linha(s) em Ajustes de PFA?' +
+    (comAlerta ? '\n\nAtenção: ' + comAlerta + ' delas têm alerta de validação.' : ''))) return;
+  const log = document.getElementById('logEmailsAjustes');
+  const escrever = function (m) { log.textContent += m + '\n'; };
+  const btn = document.getElementById('btnGravarEmailsAjustes');
+  btn.disabled = true;
+  try {
+    const buffer = await montarXlsxEmailsAjustes();
+    const arquivo = new File([buffer], 'ajustes-pfa-dos-emails.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    await window.processarAjustesPfa(supabaseClient, arquivo, escrever);
+    escrever('✔ Gravado — o Start Inicial já reflete os ajustes (reabra a aba se estiver aberta).');
+  } catch (e) {
+    escrever('ERRO: ' + (e && e.message ? e.message : String(e)));
+    btn.disabled = false;
   }
 }
 
