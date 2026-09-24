@@ -446,6 +446,9 @@ html { overflow-x: hidden; }
   margin-top: 5px; line-height: 1.5; font-variant-numeric: tabular-nums;
 }
 .barras-dia .rot-dia .dia-semana { text-transform: uppercase; letter-spacing: .02em; }
+/* FIFO do Start Inicial: rótulos maiores (pedido do usuário, 24/09/2026). */
+.barras-fifo .valor-dia { font-size: 14px; font-weight: 700; margin-bottom: 5px; }
+.barras-fifo .rot-dia { font-size: 13px; font-weight: 600; color: var(--text-label); margin-top: 7px; }
 
 .bar-item.on .trilho { box-shadow: 0 0 0 1px var(--accent) inset; }
 
@@ -593,7 +596,8 @@ tr.total > th, tr.total > td {
 .card-funil .bar-list-funil { flex: 1; row-gap: 0; grid-template-columns: max-content minmax(0, 1fr) 70px 48px; }
 .card-funil .bar-item-funil .trilho { height: 34px; border-radius: 4px; }
 .card-funil .bar-item-funil .preench { border-radius: 4px; }
-.card-funil .bar-item-funil .nome, .card-funil .bar-item-funil .num { font-size: 12px; }
+.card-funil .bar-item-funil .nome { font-size: 14px; }
+.card-funil .bar-item-funil .num { font-size: 13px; }
 .matriz-nf td.mz-clicavel { cursor: pointer; }
 .matriz-nf td.mz-clicavel:hover { outline: 1px solid var(--accent); }
 /* Detalhamento (largo) + Composição por segmento (estreito) na mesma linha. */
@@ -4200,7 +4204,7 @@ function renderizarPfas() {
         '<div class="section-title">FIFO — dias em aberto</div>' +
         '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Pares por faixa de idade ' +
           '(data de importação da PFA).</p>' +
-        '<div class="barras-dia">' + barrasFifo + '</div>' +
+        '<div class="barras-dia barras-fifo">' + barrasFifo + '</div>' +
       '</div>' +
     '</div>' +
     '<div class="card">' +
