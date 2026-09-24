@@ -49,6 +49,14 @@ eq(pPos.registros[0].qtd, 12, 'qtd positiva não é afetada');
 eq(pPos.registros[0].qtd_gap_reservado, 0, 'sem gap quando não é negativo');
 eq(pPos.negativas_excluidas, 0, 'nenhuma linha negativa contada');
 
+const pCatNeg = parsearPicking(arquivoPicking([linhaPicking('01', '01', '001', '3', '-3')]));
+eq(pCatNeg.registros[0].qtd_cativado, 0, 'cativado negativo também zera (não anula o disponível)');
+eq(pCatNeg.registros[0].qtd, 3, 'disponível positivo continua');
+eq(pCatNeg.registros[0].qtd_gap_reservado, 3, 'cativado negativo vai pro gap');
+const pAmbosNeg = parsearPicking(arquivoPicking([linhaPicking('01', '01', '001', '-2', '-4')]));
+eq(pAmbosNeg.negativas_excluidas, 1, 'linha com os dois negativos conta uma vez só');
+eq(pAmbosNeg.negativas_unidades, 6, 'unidades somam os dois (2+4)');
+
 /* -------------------------------------------------------------------------- */
 secao('parsearPicking — qtde_cativado (10ª coluna) é lida, não descartada');
 const pCativado = parsearPicking(arquivoPicking([linhaPicking('01', '01', '001', '20', '7')]));

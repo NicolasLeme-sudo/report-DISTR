@@ -1412,9 +1412,9 @@ tr.total > th, tr.total > td {
           <div>
             <label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Turno (linhas de 2 campos)</label>
             <select id="turnoPlanejamentoPfa" style="padding:7px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)">
-              <option value="T01">T01 (05:00–14:47)</option>
-              <option value="T02">T02 (14:48–00:15)</option>
-              <option value="T03">T03 (00:16–04:59)</option>
+              <option value="T01">T01 (05:00–14:48)</option>
+              <option value="T02">T02 (14:48–00:16)</option>
+              <option value="T03">T03 (20:20–04:48)</option>
             </select>
           </div>
           <div>
@@ -4917,7 +4917,9 @@ function renderizarEstoqueOperacao(p) {
    tela mostra o que existir.
    ============================================================ */
 const ROT_TURNO = { T01: 'T01', T02: 'T02', T03: 'T03' };
-const JANELA_TURNO = { T01: '05:00–14:47', T02: '14:48–00:15', T03: '00:16–04:59' };
+// Horário oficial de cada turno (operação, 24/09/2026). O turno de cada
+// movimento vem da base de Ativos; o horário aqui é só informativo.
+const JANELA_TURNO = { T01: '05:00–14:48', T02: '14:48–00:16', T03: '20:20–04:48' };
 const COR_TURNO = { T01: '--accent', T02: '--brand-miz', T03: '--olive' };
 const ORDEM_TURNO = ['T01', 'T02', 'T03'];
 /* Rótulo pra exibir um conjunto de turnos selecionados num título/legenda

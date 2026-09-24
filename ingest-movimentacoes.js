@@ -69,9 +69,15 @@ const RUAS_FORA_DA_FILA = { 98: 1, 100: 1 };
 /* ============================================================================
    TURNOS — gabarito da operação
    ============================================================================
-   T01      05:00–14:47
-   T02      14:48–00:15   <- absorve o antigo bloco "sobreposto" (20:00–00:15)
-   T03      00:16–04:59
+   Horário oficial (operação, 24/09/2026):
+   T01      05:00–14:48
+   T02      14:48–00:16
+   T03      20:20–04:48   (sobrepõe o fim do T02)
+
+   Janela usada SÓ como fallback por horário, quando o login não está na
+   base de Ativos (~11% dos movimentos): T01 05:00–14:47, T02 14:48–00:15,
+   T03 00:16–04:59. Como T02 e T03 se sobrepõem entre 20:20 e 00:16, o
+   horário sozinho não separa os dois — nessa faixa o chute é T02.
 
    Até 04/09/2026 o bloco 20:00–00:15 era um balde à parte ("T02/T03") porque
    o Kardex não diz a qual turno o operador pertence. Isso mudou: agora dá
@@ -82,9 +88,9 @@ const RUAS_FORA_DA_FILA = { 98: 1, 100: 1 };
    quando é chute, o bloco 20:00–00:15 chuta T02.
    ============================================================================ */
 const TURNOS = [
-  { id: 'T01', rotulo: 'T01', janela: '05:00–14:47' },
-  { id: 'T02', rotulo: 'T02', janela: '14:48–00:15' },
-  { id: 'T03', rotulo: 'T03', janela: '00:16–04:59' },
+  { id: 'T01', rotulo: 'T01', janela: '05:00–14:48' },
+  { id: 'T02', rotulo: 'T02', janela: '14:48–00:16' },
+  { id: 'T03', rotulo: 'T03', janela: '20:20–04:48' },
 ];
 
 function turnoDe(minutosDoDia) {
@@ -164,6 +170,11 @@ function parsearKardex(textoArquivo) {
   let idx = null;
   const periodo = { de: null, ate: null };
   let ignoradasOutroTipo = 0;
+  // Contagem por TIPO_MOVTO (24/09/2026): só TL+/TL- entram no cálculo, mas
+  // os outros tipos (recebimento, ajuste etc.) ficam contados — inclusive
+  // quantos caem na rua 98 e com login — pra saber como o recebimento chega
+  // lá e se dá pra usar a data/usuário dele.
+  const tiposMovimento = {};
   let ignoradasDataInvalida = 0;
 
   for (let i = 0; i < linhas.length; i++) {
@@ -184,6 +195,12 @@ function parsearKardex(textoArquivo) {
     if (p.length < 10) continue;
 
     const tipo = (p[idx.tipo] || '').trim().toUpperCase();
+    const endTipo = (p[idx.endereco] || '').trim().split(',');
+    const tm = tiposMovimento[tipo || '(vazio)'] || (tiposMovimento[tipo || '(vazio)'] = { linhas: 0, na_rua_98: 0, com_volume: 0, com_login: 0 });
+    tm.linhas++;
+    if (Number(endTipo[0]) === 98) tm.na_rua_98++;
+    if ((p[idx.volume] || '').trim()) tm.com_volume++;
+    if (idx.login !== undefined && (p[idx.login] || '').trim()) tm.com_login++;
     if (tipo !== 'TL+' && tipo !== 'TL-') { ignoradasOutroTipo++; continue; }
 
     const dh = parsearDataHora(p[idx.data]);
@@ -225,6 +242,7 @@ function parsearKardex(textoArquivo) {
     pernas: pernas,
     periodo: periodo,
     ignoradas_outro_tipo: ignoradasOutroTipo,
+    tipos_movimento: tiposMovimento,
     ignoradas_data_invalida: ignoradasDataInvalida,
   };
 }
@@ -257,17 +275,32 @@ function construirEntradasPorVolume(pernas) {
   return saida;
 }
 
-/* Junta o mapa do Kardex anterior com o novo: o novo manda (é mais recente),
-   mas volumes que não aparecem nele continuam valendo — o Kardex é por
-   período, então um volume que entrou na rua 500 no mês passado e não mexeu
-   mais não some do cruzamento só porque o arquivo novo não o cobre. Volume
-   que o arquivo novo mostra saindo pra rua não rastreada é removido. */
+/* Junta o mapa acumulado com o Kardex novo, por volume, valendo SEMPRE o
+   TL+ mais recente — não a ordem de upload. Antes "o novo mandava": subir
+   um Kardex antigo depois de um recente (carga histórica mês a mês, pedido
+   do usuário em 24/09/2026) sobrescreveria datas novas com velhas, ou
+   apagaria volumes que ainda estão parados. Agora:
+   - volume sem TL+ no arquivo novo: continua como estava;
+   - TL+ do arquivo novo mais recente que o acumulado: vale o novo — se o
+     destino é rua rastreada, grava; se não é (saiu pro Pulmão/Picking),
+     remove;
+   - TL+ do arquivo novo mais antigo que o acumulado: ignora. */
 function mesclarEntradasPorVolume(anterior, pernas, novo) {
   const resultado = Object.assign({}, anterior || {});
-  const movidos = new Set();
-  pernas.forEach(function (p) { if (p.tipo === 'TL+' && p.volume) movidos.add(p.volume); });
-  movidos.forEach(function (v) { delete resultado[v]; });
-  return Object.assign(resultado, novo);
+  const ultimoNovo = new Map();
+  pernas.forEach(function (p) {
+    if (p.tipo !== 'TL+' || !p.volume) return;
+    const a = ultimoNovo.get(p.volume);
+    if (!a || p.dia > a.dia || (p.dia === a.dia && p.minutos > a.minutos)) ultimoNovo.set(p.volume, p);
+  });
+  ultimoNovo.forEach(function (p, volume) {
+    const ant = resultado[volume];
+    const antMaisRecente = ant && (ant[3] > p.dia || (ant[3] === p.dia && Number(ant[4]) > p.minutos));
+    if (antMaisRecente) return;
+    if (novo && novo[volume]) resultado[volume] = novo[volume];
+    else delete resultado[volume];
+  });
+  return resultado;
 }
 
 /* ============================================================================
@@ -730,6 +763,7 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
     entradas_volume: construirEntradasPorVolume(parsed.pernas),
     fila_itens: construirFilaItens(movs, parsed.pernas),
     ignoradas_outro_tipo: parsed.ignoradas_outro_tipo,
+    tipos_movimento: parsed.tipos_movimento || {},
     ignoradas_data_invalida: parsed.ignoradas_data_invalida,
   };
 }

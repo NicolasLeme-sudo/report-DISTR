@@ -50,6 +50,20 @@ console.log('\n=== entradas por volume — data de ENTRADA no endereço transit�
   ok(!('V2' in mesclado), 'V2 do Kardex anterior é removido: o novo mostra ele saindo pra rua não rastreada');
   eq(mesclado.V9, anterior.V9, 'V9 (sem movimento no Kardex novo) continua valendo do anterior');
   eq(mesclado.V1[3], '2026-09-15', 'V1 vem do Kardex novo');
+
+  // Carga histórica fora de ordem: subir um Kardex ANTIGO depois do recente
+  // não pode sobrescrever a data nova nem apagar volume que continua parado.
+  const acumulado = { V1: ['500', '3', '3', '2026-09-15', 480, 'B', 'Bia'], V5: ['98', '1', '1', '2026-09-20', 100, 'Z', ''] };
+  const pernasAntigas = [
+    { tipo: 'TL+', volume: 'V1', rua: '99', nivel: '01', box: '001', dia: '2026-06-01', minutos: 600, login: 'A', nome: 'Ana' },
+    { tipo: 'TL+', volume: 'V5', rua: '02', nivel: '08', box: '010', dia: '2026-06-05', minutos: 60, login: 'C', nome: '' },
+    { tipo: 'TL+', volume: 'V7', rua: '98', nivel: '98', box: '098', dia: '2026-06-07', minutos: 60, login: 'D', nome: '' },
+  ];
+  const mAntigo = ctx.construirEntradasPorVolume(pernasAntigas);
+  const aposHistorico = ctx.mesclarEntradasPorVolume(acumulado, pernasAntigas, mAntigo);
+  eq(aposHistorico.V1[3], '2026-09-15', 'Kardex antigo não sobrescreve data mais recente');
+  ok('V5' in aposHistorico, 'Kardex antigo não apaga volume que se moveu depois');
+  eq(aposHistorico.V7 && aposHistorico.V7[3], '2026-06-07', 'volume que só aparece no histórico ganha a data');
 })();
 
 /* ------------------------------------------------------------------ */

@@ -266,7 +266,16 @@ function parsearPicking(textoArquivo) {
     // gabarito da planilha de análise da gestão: "Soma de Qtde cativada e no
     // estoque"), mas fica em campo separado pra nunca esconder a diferença
     // entre "disponível" e "cativado".
-    const qtdCativado = window.numeroBR(p[9]);
+    let qtdCativado = window.numeroBR(p[9]);
+    // Cativado negativo tem o mesmo problema do disponível negativo: somado,
+    // podia zerar um endereço que tem material e fazê-lo contar como vazio.
+    // Mesmo tratamento: zera e guarda no gap (24/09/2026).
+    if (qtdCativado < 0) {
+      if (qtdGapReservado === 0) negativasExcluidas++; // linha ainda não contada pelo disponível
+      qtdGapReservado += Math.abs(qtdCativado);
+      negativasUnidades += Math.abs(qtdCativado);
+      qtdCativado = 0;
+    }
 
     registros.push({
       familia_codigo: window.familiaCanonica(p[1]),
