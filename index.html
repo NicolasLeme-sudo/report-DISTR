@@ -447,6 +447,7 @@ html { overflow-x: hidden; }
 }
 .barras-dia .rot-dia .dia-semana { text-transform: uppercase; letter-spacing: .02em; }
 /* FIFO do Start Inicial: rótulos maiores (pedido do usuário, 24/09/2026). */
+.barras-fifo { height: 170px; }
 .barras-fifo .valor-dia { font-size: 14px; font-weight: 700; margin-bottom: 5px; }
 .barras-fifo .rot-dia { font-size: 13px; font-weight: 600; color: var(--text-label); margin-top: 7px; }
 
@@ -594,7 +595,8 @@ tr.total > th, tr.total > td {
 .grid-start { display: grid; grid-template-columns: 1fr 1fr; column-gap: 16px; }
 .grid-start > .card-funil { grid-column: 2; grid-row: 1 / span 2; display: flex; flex-direction: column; }
 .card-funil .bar-list-funil { flex: 1; row-gap: 0; grid-template-columns: max-content minmax(0, 1fr) 70px 48px; }
-.card-funil .bar-item-funil .trilho { height: 34px; border-radius: 4px; }
+.card-funil .bar-item-funil .trilho { height: 30px; border-radius: 4px; }
+.card-funil .sep-funil { grid-column: 1 / -1; height: 1px; background: rgba(41, 122, 223, .45); }
 .card-funil .bar-item-funil .preench { border-radius: 4px; }
 .card-funil .bar-item-funil .nome { font-size: 14px; }
 .card-funil .bar-item-funil .num { font-size: 13px; }
@@ -3920,6 +3922,9 @@ function renderizarPfas() {
   (p.etapas || []).forEach(function (e) {
     const g = porEtapa.get(e) || (ORDEM_ETAPA_TELA.indexOf(e) !== -1 ? { pares: 0, pfas: 0 } : null);
     if (!g) return;
+    // Linha azul discreta separando as etapas, do nome até a coluna de PFAs
+    // (pedido do usuário, 24/09/2026).
+    if (nEtapasFunil > 0) barrasEtapa += '<div class="sep-funil"></div>';
     nEtapasFunil++;
     totalParesEtapa += g.pares; totalPfasEtapa += g.pfas;
     const larg = maxEtapa > 0 ? g.pares / maxEtapa * 100 : 0;
@@ -4198,7 +4203,8 @@ function renderizarPfas() {
         '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Pares por etapa, picking → ' +
           'expedição · ' + fmtInt(filtrados.length) + ' PFAs no recorte. ' +
           '"04 - Material em Personalização" = Leitura expedição de cliente que personaliza.</p>' +
-        '<div class="bar-list-funil" style="grid-template-rows:auto repeat(' + nEtapasFunil + ', minmax(44px, 1fr)) auto">' + barrasEtapa + '</div>' +
+        '<div class="bar-list-funil" style="grid-template-rows:auto minmax(38px, 1fr)' +
+          ' repeat(' + Math.max(nEtapasFunil - 1, 0) + ', 1px minmax(38px, 1fr)) auto">' + barrasEtapa + '</div>' +
       '</div>' +
       '<div class="card">' +
         '<div class="section-title">FIFO — dias em aberto</div>' +
