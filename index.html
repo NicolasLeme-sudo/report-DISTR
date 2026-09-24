@@ -3106,6 +3106,7 @@ let filtroEtapaPfa = new Set();
 // gestão) e filtram a tela inteira, não só a tabela.
 let filtroConfTabelaPfa = new Set();
 let filtroOrigemTabelaPfa = new Set();
+let filtroNfPfa = new Set();   // 'sim' | 'nao' — "NF Emitida?" (24/09/2026)
 let filtroSituacaoTabelaPfa = new Set();
 let segColetaAberto = null;   // segmento clicado em "Com nota, aguardando coleta"
 let filtroTextoPerdas = '';   // busca de PFA/NF/artigo no card de Perdas
@@ -3258,6 +3259,15 @@ function ehClientePersona(nome) {
    situação do arquivo em situacao_arquivo e sempre parte dela. */
 function aplicarEtapaPersona(p) {
   if (!p) return;
+  // Data da NF de cada PFA (a mais antiga no Analítico/aguardando coleta) —
+  // coluna "Data NF" da tabela e filtro "NF Emitida?" (24/09/2026).
+  const notaPfa = new Map();
+  (p.aguardando_coleta || []).forEach(function (r) {
+    if (!r.data_nota) return;
+    const atual = notaPfa.get(r.pfa);
+    if (!atual || r.data_nota < atual) notaPfa.set(r.pfa, r.data_nota);
+  });
+  (p.pendentes || []).forEach(function (r) { r.data_nota = notaPfa.get(r.pfa) || null; });
   (p.pendentes || []).forEach(function (r) {
     if (r.situacao_arquivo === undefined) r.situacao_arquivo = r.situacao;
     r.situacao = r.situacao_arquivo === 'Leitura expedicao' && ehClientePersona(r.cliente_nome)
@@ -3334,10 +3344,11 @@ function passaFiltrosPfaLinha(r) {
   if (!passaConferenciaPfa(r)) return false;
   if (filtroOrigemTabelaPfa.size && !filtroOrigemTabelaPfa.has(classificarOrigemPfa(r))) return false;
   if (filtroSituacaoTabelaPfa.size && !filtroSituacaoTabelaPfa.has(grupoSituacaoPfa(r.situacao_pfa))) return false;
+  if (filtroNfPfa.size && !filtroNfPfa.has(r.data_nota ? 'sim' : 'nao')) return false;
   return true;
 }
 function filtrosPfaLinhaAtivos() {
-  return filtroConfTabelaPfa.size > 0 || filtroOrigemTabelaPfa.size > 0 || filtroSituacaoTabelaPfa.size > 0;
+  return filtroConfTabelaPfa.size > 0 || filtroOrigemTabelaPfa.size > 0 || filtroSituacaoTabelaPfa.size > 0 || filtroNfPfa.size > 0;
 }
 
 /* Origem do pedido — não vem pronta em nenhum arquivo, é inferida do nome do
@@ -3392,6 +3403,7 @@ function alternarEtapaPfa(v) { alternarFiltroSetPfa(filtroEtapaPfa, v); }
 function alternarConfTabelaPfa(v) { alternarFiltroSetPfa(filtroConfTabelaPfa, v); }
 function alternarOrigemTabelaPfa(v) { alternarFiltroSetPfa(filtroOrigemTabelaPfa, v); }
 function alternarSituacaoTabelaPfa(v) { alternarFiltroSetPfa(filtroSituacaoTabelaPfa, v); }
+function alternarNfPfa(v) { alternarFiltroSetPfa(filtroNfPfa, v); }
 
 /* ---------- período do grupo "Perdas e ajustes" ---------- */
 function alternarPeriodoPerdasPfa(modo) {
@@ -3584,7 +3596,7 @@ async function carregarPfas() {
 let filtroPopoverAberto = null; // nome do filtro aberto, ou null
 function limparTodosFiltrosPfa() {
   [filtroMarcaPfa, filtroSegmentoPfa, filtroFifoPfa, filtroEtapaPfa,
-    filtroConfTabelaPfa, filtroSituacaoTabelaPfa, filtroOrigemTabelaPfa].forEach(function (s) { s.clear(); });
+    filtroConfTabelaPfa, filtroSituacaoTabelaPfa, filtroOrigemTabelaPfa, filtroNfPfa].forEach(function (s) { s.clear(); });
   renderizarPfas();
 }
 function alternarPopoverFiltro(nome, ev) {
@@ -3664,7 +3676,7 @@ function renderizarPfas() {
   // os valores (pedido do usuário, 23/09/2026). "✕ Limpar todos" só aparece
   // quando pelo menos um dos 7 tem filtro ativo.
   const filtrosAtivosTotal = filtroMarcaPfa.size + filtroSegmentoPfa.size + filtroFifoPfa.size +
-    filtroEtapaPfa.size + filtroConfTabelaPfa.size + filtroSituacaoTabelaPfa.size + filtroOrigemTabelaPfa.size;
+    filtroEtapaPfa.size + filtroConfTabelaPfa.size + filtroSituacaoTabelaPfa.size + filtroOrigemTabelaPfa.size + filtroNfPfa.size;
   const chipsTopo =
     '<div class="filtros-linha" style="align-items:flex-start">' +
       botaoFiltroPopover('marca', 'Marca', filtroMarcaPfa, opcoesDe('marca'), 'alternarMarcaPfa') +
@@ -3673,15 +3685,16 @@ function renderizarPfas() {
         // ajuda a achar a marca grande primeiro).
         opcoesDe('segmento_macro').sort(function (a, b) { return ordemAlfabetica(a.rotulo, b.rotulo); }),
         'alternarSegmentoPfa') +
-      botaoFiltroPopover('fifo', 'FIFO', filtroFifoPfa, (p.faixas_fifo || []).map(function (f) {
+      botaoFiltroPopover('fifo', 'Data FIFO', filtroFifoPfa, (p.faixas_fifo || []).map(function (f) {
         return { valor: f.chave, rotulo: f.rotulo };
       }), 'alternarFifoPfa') +
-      botaoFiltroPopover('etapa', 'Etapa', filtroEtapaPfa, (p.etapas || []).map(function (e) {
+      botaoFiltroPopover('etapa', 'Etapa Operacional', filtroEtapaPfa, (p.etapas || []).map(function (e) {
         return { valor: e, rotulo: rotEtapaPfa(e) };
       }), 'alternarEtapaPfa') +
-      botaoFiltroPopover('conferencia', 'Conferência', filtroConfTabelaPfa, GRUPOS_CONFERENCIA, 'alternarConfTabelaPfa') +
+      botaoFiltroPopover('conferencia', 'Status Conferência', filtroConfTabelaPfa, GRUPOS_CONFERENCIA, 'alternarConfTabelaPfa') +
       botaoFiltroPopover('situacao', 'Situação PFA', filtroSituacaoTabelaPfa, SITUACOES_PFA, 'alternarSituacaoTabelaPfa') +
-      botaoFiltroPopover('origem', 'Origem', filtroOrigemTabelaPfa, ORIGENS_PFA, 'alternarOrigemTabelaPfa') +
+      botaoFiltroPopover('origem', 'Destino', filtroOrigemTabelaPfa, ORIGENS_PFA, 'alternarOrigemTabelaPfa') +
+      botaoFiltroPopover('nf', 'NF Emitida?', filtroNfPfa, [{ valor: 'sim', rotulo: 'Sim' }, { valor: 'nao', rotulo: 'Não' }], 'alternarNfPfa') +
       (filtrosAtivosTotal
         ? '<span class="chip" style="color:var(--red);cursor:pointer" onclick="limparTodosFiltrosPfa()">✕ Limpar todos</span>'
         : '') +
@@ -3902,7 +3915,7 @@ function renderizarPfas() {
       '</div>' +
       resultadoBusca +
       '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Perda = quantidade faltante (cancelamento sem reposição conta 100%). DE×PARA não conta como perda — é artigo substituto, não falta.' +
-        (filtrosQueNaoValem ? ' <strong style="color:var(--amber)">FIFO, Etapa, Conferência, Situação e Origem não se aplicam aqui.</strong>' : '') +
+        (filtrosQueNaoValem ? ' <strong style="color:var(--amber)">Data FIFO, Etapa Operacional, Status Conferência, Situação, Destino e NF Emitida? não se aplicam aqui.</strong>' : '') +
         '</p>' +
       '<p style="font-size:11px;color:var(--text-muted);margin-top:4px">' +
         '<strong>Gap de estoque (.xlsx)</strong>: cruza os ajustes com o saldo físico do último Picking/Pulmão. ' +
@@ -4039,6 +4052,7 @@ function renderizarPfas() {
       case 'etapa': d = (p.etapas || []).indexOf(a.situacao) - (p.etapas || []).indexOf(b.situacao); break;
       case 'conferencia': d = (a.conferencia_lidos / (a.conferencia_total || 1)) - (b.conferencia_lidos / (b.conferencia_total || 1)); break;
       case 'pares': d = a.pares - b.pares; break;
+      case 'nf': d = String(a.data_nota || '').localeCompare(String(b.data_nota || '')); break;
       default: d = (a.dias_abertos || 0) - (b.dias_abertos || 0);
     }
     return mult * d;
@@ -4081,7 +4095,8 @@ function renderizarPfas() {
         c.rotulo + ' · ' + fmtInt(r.conferencia_lidos) + '/' + fmtInt(r.conferencia_total) + '</span></td>' +
       '<td class="centro">' + situacaoHtml + '</td>' +
       '<td>' + fmtInt(r.pares) + '</td>' +
-      '<td>' + (r.data_importacao ? formatarDataSimples(r.data_importacao) : '—') + '</td></tr>';
+      '<td style="white-space:nowrap">' + (r.data_importacao ? formatarDataSimples(r.data_importacao) : '—') + '</td>' +
+      '<td style="white-space:nowrap">' + (r.data_nota ? formatarDataSimples(r.data_nota) : '—') + '</td></tr>';
   }).join('');
   const totalTabela = linhasTabela.reduce(function (s, r) { return s + r.pares; }, 0);
   // Data da PFA mais antiga no recorte — mesma métrica que ordena a coluna
@@ -4092,7 +4107,8 @@ function renderizarPfas() {
   const linhaTotal = '<tr class="total"><th class="centro">TOTAL</th>' +
     '<td class="centro" colspan="3">' + fmtInt(linhasTabela.length) + ' PFA(s) no recorte</td>' +
     '<td class="centro">—</td><td class="centro">—</td><td>' + fmtInt(totalTabela) + '</td>' +
-    '<td>' + (maisAntigaTabela.data ? formatarDataSimples(maisAntigaTabela.data) : '—') + '</td></tr>';
+    '<td>' + (maisAntigaTabela.data ? formatarDataSimples(maisAntigaTabela.data) : '—') + '</td>' +
+    '<td>' + fmtInt(linhasTabela.filter(function (r) { return r.data_nota; }).length) + ' c/ NF</td></tr>';
 
   /* ---------- avisos ---------- */
   let avisos = '';
@@ -4248,7 +4264,7 @@ function renderizarPfas() {
         thPfa('pfa', 'PFA', 'centro') + thPfa('cliente', 'Cliente', 'centro') +
         thPfa('marca', 'Marca / Segmento', 'centro') + thPfa('etapa', 'Etapa atual', 'centro') +
         thPfa('conferencia', 'Conferência', 'centro') + '<th class="centro">Situação</th>' +
-        thPfa('pares', 'Pares') + thPfa('dias', 'Data') +
+        thPfa('pares', 'Pares') + thPfa('dias', 'Data PFA') + thPfa('nf', 'Data NF') +
       '</tr></thead><tbody>' + linhasHtml + linhaTotal + '</tbody></table></div>' +
       '<p style="font-size:11px;color:var(--text-muted);margin-top:10px"><strong>Conferência</strong>: Não iniciada · Parcial · Completa ' +
         '(volumes lidos × total da PFA). Parcial parada 3+ dias vira <strong style="color:var(--red)">Parcial (rastreio)</strong>.</p>' +
@@ -4264,13 +4280,13 @@ function exportarCSVPfas() {
   const linhas = linhasTabelaPfa();
   const saida = [['PFA', 'Data importacao', 'Dias em aberto', 'Etapa', 'Cliente', 'Marca', 'Segmento',
     'Familia', 'Transportadora', 'Cluster', 'Volumes', 'Pares', 'Conferencia', 'Volumes lidos', 'Volumes total',
-    'Situacao PFA']];
+    'Situacao PFA', 'Data NF']];
   linhas.forEach(function (r) {
     saida.push([r.pfa, r.data_importacao || '', r.dias_abertos === null ? '' : r.dias_abertos,
       rotEtapaPfa(r.situacao), r.cliente_nome, r.marca, r.segmento_macro, r.familia_codigo,
       r.transportadora_nome, r.cluster, r.qt_volumes, r.pares,
       ROT_CONFERENCIA[r.conferencia].rotulo, r.conferencia_lidos, r.conferencia_total,
-      (ROT_SITUACAO_PFA[r.situacao_pfa] || ROT_SITUACAO_PFA.normal).rotulo]);
+      (ROT_SITUACAO_PFA[r.situacao_pfa] || ROT_SITUACAO_PFA.normal).rotulo, r.data_nota || '']);
   });
   const csv = saida.map(function (l) {
     return l.map(function (c) { return '"' + String(c === null || c === undefined ? '' : c).replace(/"/g, '""') + '"'; }).join(';');
