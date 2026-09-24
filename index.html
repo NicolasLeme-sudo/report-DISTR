@@ -649,6 +649,8 @@ tr.total > th, tr.total > td {
 .matriz-nf td.mz-vazio { color: var(--text-muted); font-weight: 400; }
 .matriz-nf td.mz-tot { background: var(--bg-input); }
 .matriz-nf tr.mz-total th, .matriz-nf tr.mz-total td { border-top: 1px solid var(--border); font-weight: 700; background: var(--bg-input); }
+.matriz-nf tr.mz-subtotal th, .matriz-nf tr.mz-subtotal td { font-weight: 700; background: var(--accent-soft); color: var(--text); }
+.matriz-nf tr.mz-data th { padding-left: 18px; color: var(--text-muted); font-size: 11.5px; }
 @media (max-width: 900px) {
   .grid2, .grid-det, .grid-start { grid-template-columns: 1fr; }
   .grid-start > .card-funil { grid-column: auto; grid-row: auto; }
@@ -4340,7 +4342,20 @@ function renderizarPfas() {
     '<div style="overflow-x:auto"><table class="matriz-nf"><thead><tr><th class="esq">Data da nota</th>' +
       colsMatriz.map(function (c) { return '<th>' + c.rotulo + '</th>'; }).join('') + '<th>Total</th></tr></thead><tbody>' +
       linhaMatriz('Sem nota fiscal', ['SEM']) +
-      datasNotaMz.map(function (d) { return linhaMatriz(formatarDataSimples(d), [d], true); }).join('') +
+      // Subtotal "Com NF emitida" = soma de todas as datas (pedido do usuário,
+      // 24/09/2026); as datas ficam logo abaixo, recuadas, como detalhe.
+      (datasNotaMz.length
+        ? '<tr class="mz-subtotal"><th class="esq">Com NF emitida</th>' +
+            colsMatriz.map(function (c) {
+              const v = valorCelula(celulasDe(datasNotaMz, c.chave));
+              return v ? '<td class="mz-clicavel" title="Clique para ver por dias desde a emissão da NF" ' +
+                'onclick="alternarSegColeta(\'' + escaparJs(c.chave) + '\', event)">' + fmtInt(v) + '</td>' : '<td class="mz-vazio">—</td>';
+            }).join('') +
+            '<td>' + fmtInt(valorCelula(celulasDe(datasNotaMz, null))) + '</td></tr>'
+        : '') +
+      datasNotaMz.map(function (d) {
+        return linhaMatriz(formatarDataSimples(d), [d], true).replace('<tr><th class="esq">', '<tr class="mz-data"><th class="esq">↳ ');
+      }).join('') +
       '<tr class="mz-total"><th class="esq">Total</th>' +
         colsMatriz.map(function (c) { return '<td>' + fmtInt(valorCelula(celulasDe(todasLinhasMz, c.chave))) + '</td>'; }).join('') +
         '<td>' + fmtInt(valorCelula(celulasDe(todasLinhasMz, null))) + '</td></tr>' +
