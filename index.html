@@ -3451,7 +3451,11 @@ function alternarSegColeta(seg, ev) {
   segColetaAberto = fechando ? null : seg;
   if (!fechando && ev && ev.currentTarget) {
     const r = ev.currentTarget.getBoundingClientRect();
-    segColetaTooltipPos = { top: r.bottom + 6, left: r.left };
+    // Posição RELATIVA ao card da Matriz (tooltip é absolute dentro dele):
+    // rolar a página leva o tooltip junto com o card, não grudado na tela.
+    const card = ev.currentTarget.closest('.card');
+    const c = card ? card.getBoundingClientRect() : { top: 0, left: 0, width: window.innerWidth };
+    segColetaTooltipPos = { top: r.bottom - c.top + 6, left: Math.max(8, Math.min(r.left - c.left, c.width - 290)) };
   } else {
     segColetaTooltipPos = null;
   }
@@ -4005,7 +4009,7 @@ function renderizarPfas() {
     detalheSegColeta =
       // Fundo invisível cobrindo a tela inteira — clicar fora fecha o tooltip.
       '<div style="position:fixed;inset:0;z-index:998" onclick="alternarSegColeta(null)"></div>' +
-      '<div style="position:fixed;top:' + posTooltip.top + 'px;left:' + posTooltip.left + 'px;z-index:999;' +
+      '<div style="position:absolute;top:' + posTooltip.top + 'px;left:' + posTooltip.left + 'px;z-index:999;' +
         'background:var(--bg-card);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.35);' +
         'padding:14px;width:280px;max-width:calc(100vw - 24px)" onclick="event.stopPropagation()">' +
         '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:10px">' +
@@ -4166,7 +4170,7 @@ function renderizarPfas() {
       '<td class="mz-tot">' + fmtInt(valorCelula(celulasDe(linhas, null))) + '</td></tr>';
   };
   const todasLinhasMz = ['SEM'].concat(datasNotaMz);
-  const blocoMatrizNf = '<div class="card">' +
+  const blocoMatrizNf = '<div class="card" style="position:relative">' +
     '<div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
       '<span>Matriz — Nota fiscal × Segmento</span>' +
       '<div class="filtros" style="margin:-8px 0 -6px">' +
