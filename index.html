@@ -6020,7 +6020,8 @@ function blocoMovimentacoes() {
       'Último Kardex processado: ' + escapar(m.arquivo || '—') + ' · descartados como fiscal/importação: ' +
       fmtInt(m.descartados.fiscal_mesmo_endereco) + ' pares de mesmo endereço, ' +
       fmtInt(m.descartados.sem_volume) + ' sem volume, ' +
-      fmtInt(m.descartados.sem_par_exato) + ' pernas sem par no período.' +
+      fmtInt(m.descartados.sem_par_exato) + ' pernas sem par no período' +
+      (m.descartados.rua_crossdocking ? ', ' + fmtInt(m.descartados.rua_crossdocking) + ' da rua 20 (crossdocking)' : '') + '.' +
       (m.resolucao_turno ? ' Turno real (base de Ativos): ' + fmtInt(m.resolucao_turno.por_cadastro) +
         ' movimento(s); presumido pelo horário: ' + fmtInt(m.resolucao_turno.por_horario) + '.' : '') +
     '</div>' : '') +

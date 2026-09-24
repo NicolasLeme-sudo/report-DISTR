@@ -158,6 +158,15 @@ eq(casado.movimentos[0].origem.zona, 'PULMAO', 'origem do movimento é a ponta T
 eq(casado.movimentos[0].destino.zona, 'PICKING', 'destino do movimento é a ponta TL+ (nível 01 = Picking)');
 eq(casado.movimentos[0].turno, 'T01', 'movimento das 10:00 cai no T01');
 
+console.log('\n=== rua 20 (crossdocking) não é ressuprimento ===');
+const casadoRua20 = ctx.casarMovimentos(ctx.parsearKardex([
+  'VULSP|MOVIMENTOS|de:03/08/2026|ate:31/08/2026', CAB,
+  linha('A5', 'PTO', '40', '05/08/26 10:00', 'TL-', 'R5', '4,000', ' 02,08,005', 'V005', 'EX1', 'OPERADOR 1'),
+  linha('A5', 'PTO', '40', '05/08/26 10:00', 'TL+', 'R5', '4,000', ' 20,01,001', 'V005', 'EX1', 'OPERADOR 1'),
+].join('\r\n')).pernas);
+eq(casadoRua20.movimentos.length, 0, 'Pulmão -> rua 20 não vira movimento (rua 20 caía como "Picking" pelo nível)');
+eq(casadoRua20.descartados.rua_crossdocking, 1, 'e é contado à parte');
+
 /* ------------------------------------------------------------------ */
 console.log('\n=== dois saltos NÃO contam a mesma peça duas vezes ===');
 const arquivoDoisSaltos = [

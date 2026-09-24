@@ -66,6 +66,12 @@ function classificarZona(rua, nivel) {
 // 100 (23/09/2026): recebimento armazenado no chão, não é corredor de ressuprimento.
 const RUAS_FORA_DA_FILA = { 98: 1, 100: 1 };
 
+/* Rua 20 = CROSSDOCKING do recebimento, sem estoque físico (usuário,
+   24/09/2026). Pelo nível ela caía como "Picking", e o que entrava nela
+   contava como ressuprido — movimento com qualquer ponta na rua 20 é
+   descartado (contado em descartados.rua_crossdocking). */
+const RUAS_CROSSDOCKING = { 20: 1 };
+
 /* ============================================================================
    TURNOS — gabarito da operação
    ============================================================================
@@ -325,7 +331,7 @@ function casarMovimentos(pernas) {
   });
 
   const movimentos = [];
-  let semParExato = 0, fiscalMesmoEndereco = 0, semVolume = 0;
+  let semParExato = 0, fiscalMesmoEndereco = 0, semVolume = 0, ruaCrossdocking = 0;
 
   grupos.forEach(function (g) {
     if (g.length !== 2) { semParExato += g.length; return; }
@@ -337,6 +343,7 @@ function casarMovimentos(pernas) {
     if (saida.endereco === entrada.endereco) { fiscalMesmoEndereco++; return; }
     // Sem volume = ajuste fiscal / importação de material (regra da operação).
     if (!saida.volume || !entrada.volume) { semVolume++; return; }
+    if (RUAS_CROSSDOCKING[Number(saida.rua) || 0] || RUAS_CROSSDOCKING[Number(entrada.rua) || 0]) { ruaCrossdocking++; return; }
 
     movimentos.push({
       artigo: entrada.artigo,
@@ -361,6 +368,7 @@ function casarMovimentos(pernas) {
       sem_par_exato: semParExato,
       fiscal_mesmo_endereco: fiscalMesmoEndereco,
       sem_volume: semVolume,
+      rua_crossdocking: ruaCrossdocking,
     },
   };
 }
