@@ -585,6 +585,16 @@ tr.total > th, tr.total > td {
 .loading-msg { color: var(--text-muted); font-size: 12px; padding: 20px 0; }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.matriz-nf { width: 100%; border-collapse: separate; border-spacing: 2px; font-variant-numeric: tabular-nums; }
+.matriz-nf thead th { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-label); font-weight: 600; padding: 6px 8px; text-align: center; }
+.matriz-nf th.esq { text-align: left; }
+.matriz-nf tbody th { font-size: 12px; font-weight: 500; padding: 8px; white-space: nowrap; }
+.matriz-nf td { font-size: 12.5px; font-weight: 700; text-align: center; padding: 8px 6px; border-radius: 4px; }
+.matriz-nf td.mz-cel { color: #fff; }
+.matriz-nf td.mz-vazio { color: var(--text-muted); font-weight: 400; }
+.matriz-nf td.mz-tot { background: var(--bg-input); }
+.matriz-nf tr.mz-grupo th { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-label); font-weight: 600; padding: 10px 8px 4px; }
+.matriz-nf tr.mz-total th, .matriz-nf tr.mz-total td { border-top: 1px solid var(--border); font-weight: 700; background: var(--bg-input); }
 @media (max-width: 900px) {
   .grid2 { grid-template-columns: 1fr; }
   .sidebar { display: none; }
@@ -3353,6 +3363,14 @@ function botaoFiltroPopover(nome, rotulo, set, opcoes, fn) {
   '</div>';
 }
 
+let modoMatrizNf = 'pecas';
+function alternarModoMatrizNf(modo) {
+  modoMatrizNf = modo;
+  const scrollY = window.scrollY;
+  renderizarPfas();
+  window.scrollTo(0, scrollY);
+}
+
 function renderizarPfas() {
   if (!dadosPfas) return;
   const p = dadosPfas;
@@ -3865,16 +3883,105 @@ function renderizarPfas() {
       escapar(p.familias_nao_mapeadas.join(', ')) + '.</div>';
   }
 
+  /* ---------- Matriz Nota fiscal × Segmento (pedido do usuário, 24/09/2026) ----------
+     Mesma base do Funil (PFAs em tela no Pendentes, com os filtros do topo).
+     Linha = situação da nota: "Sem nota fiscal" ou a DATA DA NOTA, cruzando a
+     PFA com o que já foi faturado (aguardando coleta). Coluna = segmento,
+     com Chinelo e Chuteira dentro de Calçados. Dois modos: peças (pares da
+     PFA em tela) ou quantidade de PFAs distintas — as duas tabelas da
+     planilha da operação, no formato da matrizNf do report de produtividade. */
+  const notaPorPfa = new Map();
+  (p.aguardando_coleta || []).forEach(function (r) {
+    if (!r.data_nota) return;
+    const atual = notaPorPfa.get(r.pfa);
+    if (!atual || r.data_nota < atual) notaPorPfa.set(r.pfa, r.data_nota);
+  });
+  const COLS_MATRIZ_NF = [
+    { chave: 'ACESSÓRIO', rotulo: 'Acessórios' }, { chave: 'CALÇADO', rotulo: 'Calçados' },
+    { chave: 'MEIA', rotulo: 'Meias' }, { chave: 'VESTUÁRIO', rotulo: 'Vestuários' },
+  ];
+  const colunaMatrizNf = function (seg) {
+    if (seg === 'CHINELO' || seg === 'CHUTEIRA' || seg === 'CALÇADO') return 'CALÇADO';
+    return COLS_MATRIZ_NF.some(function (c) { return c.chave === seg; }) ? seg : 'OUTROS';
+  };
+  const matrizNf = new Map(); // linha -> col -> { pecas, pfas:Set }
+  const celulaMatrizNf = function (linha, col) {
+    if (!matrizNf.has(linha)) matrizNf.set(linha, new Map());
+    const m = matrizNf.get(linha);
+    if (!m.has(col)) m.set(col, { pecas: 0, pfas: new Set() });
+    return m.get(col);
+  };
+  let temOutrosMatriz = false;
+  filtrados.forEach(function (r) {
+    const linha = notaPorPfa.get(r.pfa) || 'SEM';
+    const col = colunaMatrizNf(r.segmento_macro);
+    if (col === 'OUTROS') temOutrosMatriz = true;
+    const c = celulaMatrizNf(linha, col);
+    c.pecas += r.pares || 0; c.pfas.add(r.pfa);
+  });
+  const colsMatriz = COLS_MATRIZ_NF.concat(temOutrosMatriz ? [{ chave: 'OUTROS', rotulo: 'Outros' }] : []);
+  const datasNotaMz = Array.from(matrizNf.keys()).filter(function (k) { return k !== 'SEM'; }).sort();
+  const emPecasMz = modoMatrizNf === 'pecas';
+  const valorCelula = function (lista) {
+    if (emPecasMz) return lista.reduce(function (a, c) { return a + c.pecas; }, 0);
+    const u = new Set(); lista.forEach(function (c) { c.pfas.forEach(function (x) { u.add(x); }); }); return u.size;
+  };
+  const celulasDe = function (linhas, col) {
+    const out = [];
+    linhas.forEach(function (l) { const m = matrizNf.get(l); if (!m) return; (col ? [col] : Array.from(m.keys())).forEach(function (k) { if (m.get(k)) out.push(m.get(k)); }); });
+    return out;
+  };
+  let maxCelula = 0;
+  ['SEM'].concat(datasNotaMz).forEach(function (l) { colsMatriz.forEach(function (c) { maxCelula = Math.max(maxCelula, valorCelula(celulasDe([l], c.chave))); }); });
+  const tdHeat = function (v) {
+    if (!v) return '<td class="mz-vazio">—</td>';
+    const a = maxCelula > 0 ? 0.18 + 0.72 * (v / maxCelula) : 0.18;
+    return '<td class="mz-cel" style="background:rgba(47,111,208,' + a.toFixed(2) + ')">' + fmtInt(v) + '</td>';
+  };
+  const linhaMatriz = function (rotulo, linhas) {
+    return '<tr><th class="esq">' + rotulo + '</th>' +
+      colsMatriz.map(function (c) { return tdHeat(valorCelula(celulasDe(linhas, c.chave))); }).join('') +
+      '<td class="mz-tot">' + fmtInt(valorCelula(celulasDe(linhas, null))) + '</td></tr>';
+  };
+  const todasLinhasMz = ['SEM'].concat(datasNotaMz);
+  const blocoMatrizNf = '<div class="card">' +
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:12px">' +
+      '<div><div class="kicker" style="color:var(--text-muted)">' + (emPecasMz ? 'Peças' : 'PFAs') + ' em tela por nota fiscal e segmento</div>' +
+        '<div style="font-size:14px;font-weight:700">Matriz Nota fiscal × Segmento</div></div>' +
+      '<div class="filtros" style="margin:0">' +
+        '<span class="chip' + (emPecasMz ? ' on' : '') + '" onclick="alternarModoMatrizNf(\'pecas\')">Peças</span>' +
+        '<span class="chip' + (!emPecasMz ? ' on' : '') + '" onclick="alternarModoMatrizNf(\'pfas\')">Qtde PFAs</span>' +
+      '</div>' +
+    '</div>' +
+    '<div style="overflow-x:auto"><table class="matriz-nf"><thead><tr><th class="esq">Nota fiscal</th>' +
+      colsMatriz.map(function (c) { return '<th>' + c.rotulo + '</th>'; }).join('') + '<th>Total</th></tr></thead><tbody>' +
+      linhaMatriz('Sem nota fiscal', ['SEM']) +
+      (datasNotaMz.length ? '<tr class="mz-grupo"><th class="esq" colspan="' + (colsMatriz.length + 2) + '">Data da nota</th></tr>' : '') +
+      datasNotaMz.map(function (d) { return linhaMatriz(formatarDataSimples(d), [d]); }).join('') +
+      '<tr class="mz-total"><th class="esq">Total</th>' +
+        colsMatriz.map(function (c) { return '<td>' + fmtInt(valorCelula(celulasDe(todasLinhasMz, c.chave))) + '</td>'; }).join('') +
+        '<td>' + fmtInt(valorCelula(celulasDe(todasLinhasMz, null))) + '</td></tr>' +
+    '</tbody></table></div>' +
+    '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">PFAs em tela (Pendentes, com os filtros do topo). ' +
+      'Data da nota = já faturada, aguardando coleta. Calçados inclui chinelos e chuteiras.' +
+      (emPecasMz ? '' : ' Totais contam cada PFA uma vez.') + '</p>' +
+  '</div>';
+
   document.getElementById('start-conteudo').innerHTML =
     avisos +
     '<div class="kicker">Abastecimento — PFAs em tela</div>' +
     chipsTopo +
     kpis +
-    '<div class="card">' +
-      '<div class="section-title">Funil — PFAs pendentes por etapa</div>' +
-      '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Pares por etapa, picking → ' +
-        'expedição · ' + fmtInt(filtrados.length) + ' PFAs no recorte.</p>' +
-      '<div class="bar-list-funil">' + barrasEtapa + '</div>' +
+    // Matriz Nota fiscal × Segmento à esquerda, Funil à direita (pedido do
+    // usuário, 24/09/2026).
+    '<div class="grid2">' +
+      blocoMatrizNf +
+      '<div class="card">' +
+        '<div class="section-title">Funil — PFAs pendentes por etapa</div>' +
+        '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Pares por etapa, picking → ' +
+          'expedição · ' + fmtInt(filtrados.length) + ' PFAs no recorte.</p>' +
+        '<div class="bar-list-funil">' + barrasEtapa + '</div>' +
+      '</div>' +
     '</div>' +
     '<div class="grid2">' +
       '<div class="card">' +
