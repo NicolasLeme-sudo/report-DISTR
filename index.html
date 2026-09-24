@@ -621,7 +621,12 @@ tr.total > th, tr.total > td {
   margin-bottom: 2px; border-radius: 6px; cursor: default; }
 #card-composicao .leg-comp.ativo { background: var(--bg-input); font-weight: 700; }
 .det-rolagem thead th { position: sticky; top: 0; z-index: 1; background: var(--bg-card); }
-.filtros-mini .chip { padding: 2px 9px; font-size: 10.5px; }
+.filtros-mini .chip { padding: 2px 8px; font-size: 10.5px; }
+/* Títulos da linha Detalhamento + Composição com a mesma altura: as linhas
+   amarelas ficam alinhadas. */
+.grid-det .section-title { min-height: 38px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.titulo-comp { flex-wrap: nowrap; }
+.titulo-comp-texto { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .matriz-nf { width: 100%; border-collapse: separate; border-spacing: 2px; font-variant-numeric: tabular-nums; }
 .matriz-nf thead th { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-label); font-weight: 600; padding: 6px 8px; text-align: center; }
 .matriz-nf th.esq { text-align: left; }
@@ -2719,9 +2724,11 @@ function htmlComposicaoSegmento(p) {
   const totalComp = segmentosComp.reduce(function (a, x) { return a + x.valor; }, 0);
   compSegAtual = { segs: segmentosComp, total: totalComp };
   return '<div class="card" id="card-composicao">' +
-    '<div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
-      '<span>Composição por segmento — ' + ROT_FILTRO_RESSUP[filtroRessuprimento] + '</span>' +
-    '<div class="filtros filtros-mini" style="margin:-4px 0">' +
+    // Filtro ao lado do título (não embaixo) pra linha amarela alinhar com a
+    // do Detalhamento (pedido do usuário, 24/09/2026).
+    '<div class="section-title titulo-comp">' +
+      '<span class="titulo-comp-texto" title="Recorte: ' + ROT_FILTRO_RESSUP[filtroRessuprimento] + '">Composição por segmento</span>' +
+    '<div class="filtros filtros-mini" style="margin:0;flex-wrap:nowrap">' +
       '<span class="chip' + (!filtroMarcaCompRessup ? ' on' : '') + '" onclick="alternarMarcaCompRessup(null)">Todas</span>' +
       MARCAS_COMP.map(function (m) {
         return '<span class="chip' + (filtroMarcaCompRessup === m.codigo ? ' on' : '') + '" onclick="alternarMarcaCompRessup(\'' + m.codigo + '\')" title="' + m.codigo + '">' + m.rotulo + '</span>';
@@ -5337,13 +5344,13 @@ function renderizarEstoqueOperacao(p) {
     // (pedido do usuário, 23/09/2026).
     '<div class="grid-det">' +
     '<div class="card card-det">' +
-      '<div class="section-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">' +
-        '<span>Detalhamento — Marca › Grupo › Família (' + ROT_FILTRO_RESSUP[filtroRessuprimento] + ')</span>' +
-        '<span>' +
+      '<div class="section-title" style="flex-wrap:wrap;gap:10px">' +
+        '<span class="titulo-comp-texto">Detalhamento — Marca › Grupo › Família (' + ROT_FILTRO_RESSUP[filtroRessuprimento] + ')</span>' +
+        '<span style="display:flex;align-items:center;gap:4px;flex-shrink:0">' +
           '<input type="text" id="buscaArtigoRessuprimento" placeholder="Buscar artigo, cor, tamanho, família…" ' +
             'value="' + escapar(buscaArtigoRessuprimento) + '" oninput="filtrarArtigoRessuprimento(this.value)" ' +
-            'style="padding:6px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);' +
-            'border:1px solid var(--border);font-size:12px;width:240px;margin-right:8px">' +
+            'style="padding:5px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);' +
+            'border:1px solid var(--border);font-size:12px;width:190px;margin-right:4px">' +
           '<button class="btn-mini" onclick="expandirTudoRessuprimento()">Expandir tudo</button> ' +
           '<button class="btn-mini" onclick="recolherTudoRessuprimento()">Recolher tudo</button> ' +
           '<button class="btn-mini" onclick="exportarCSVRessuprimento()">⬇ CSV</button>' +
