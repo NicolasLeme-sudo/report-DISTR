@@ -607,7 +607,14 @@ tr.total > th, tr.total > td {
 .matriz-nf td.mz-clicavel { cursor: pointer; }
 .matriz-nf td.mz-clicavel:hover { outline: 1px solid var(--accent); }
 /* Detalhamento (largo) + Composição por segmento (estreito) na mesma linha. */
-.grid-det { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); gap: 16px; align-items: start; }
+.grid-det { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 420px); gap: 16px; align-items: stretch; }
+/* Detalhamento: altura = a do card ao lado; expandido, rola por dentro. */
+.card-det { display: flex; flex-direction: column; }
+.card-det .section-title { flex-shrink: 0; }
+.det-rolagem { flex: 1 1 0; min-height: 176px; overflow: auto; }
+#card-composicao { display: flex; flex-direction: column; }
+#card-composicao > .corpo-comp { flex: 1; display: flex; align-items: center; gap: 14px; }
+.det-rolagem thead th { position: sticky; top: 0; z-index: 1; background: var(--bg-card); }
 .filtros-mini .chip { padding: 2px 9px; font-size: 10.5px; }
 .matriz-nf { width: 100%; border-collapse: separate; border-spacing: 2px; font-variant-numeric: tabular-nums; }
 .matriz-nf thead th { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-label); font-weight: 600; padding: 6px 8px; text-align: center; }
@@ -2672,9 +2679,64 @@ const FAIXAS_PARADO = [
 let filtroMarcaCompRessup = null;
 function alternarMarcaCompRessup(marca) {
   filtroMarcaCompRessup = filtroMarcaCompRessup === marca ? null : marca;
-  const scrollY = window.scrollY;
-  renderizarEstoqueOperacao();
-  window.scrollTo(0, scrollY);
+  // Redesenha SÓ o card da pizza — re-renderizar a tela inteira (tabela de
+  // volumes com milhares de linhas) travava o clique.
+  const card = document.getElementById('card-composicao');
+  if (card && window._snapshotRessuprimento) card.outerHTML = htmlComposicaoSegmento(window._snapshotRessuprimento);
+}
+function htmlComposicaoSegmento(p) {
+  /* ---------- composição por segmento (pizza) com filtro de marca ----------
+     Substitui os gráficos de barra por marca e por segmento (pedido do
+     usuário, 24/09/2026): uma pizza por segmento, recortável por marca
+     (OLY/MIZ/UA) nos chips do próprio card. Usa a árvore completa do filtro
+     Picking/Pulmão/Todos — não o recorte de segmento dos chips do topo, senão
+     a pizza mostraria só a fatia já escolhida. CHUTEIRA e CHINELO somam em
+     CALÇADO (mesma regra do gráfico antigo, 23/09/2026). */
+  const MARCAS_COMP = [{ codigo: 'OLYMPIKUS', rotulo: 'OLY' }, { codigo: 'MIZUNO', rotulo: 'MIZ' }, { codigo: 'UNDER ARMOUR', rotulo: 'UA' }];
+  const segmentosComp = (function () {
+    const porNome = new Map();
+    ((p && p['arvore_' + filtroRessuprimento]) || []).forEach(function (m) {
+      if (filtroMarcaCompRessup && m.codigo !== filtroMarcaCompRessup) return;
+      (m.segmentos || []).forEach(function (sg) {
+        (sg.familias || []).forEach(function (f) {
+          let nome = f.segmento_macro || 'OUTROS';
+          if (nome === 'CHUTEIRA' || nome === 'CHINELO') nome = 'CALÇADO';
+          porNome.set(nome, (porNome.get(nome) || 0) + (f.qtd || 0));
+        });
+      });
+    });
+    return Array.from(porNome.entries())
+      .map(function (e) { return { rotulo: e[0], valor: e[1], cor: 'var(' + (COR_SEGMENTO_COMP[e[0]] || '--gelo') + ')' }; })
+      .filter(function (x) { return x.valor > 0; })
+      .sort(function (x, y) { return y.valor - x.valor; });
+  })();
+  const totalComp = segmentosComp.reduce(function (a, x) { return a + x.valor; }, 0);
+  return '<div class="card" id="card-composicao">' +
+    '<div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+      '<span>Composição por segmento — ' + ROT_FILTRO_RESSUP[filtroRessuprimento] + '</span>' +
+    '<div class="filtros filtros-mini" style="margin:-4px 0">' +
+      '<span class="chip' + (!filtroMarcaCompRessup ? ' on' : '') + '" onclick="alternarMarcaCompRessup(null)">Todas</span>' +
+      MARCAS_COMP.map(function (m) {
+        return '<span class="chip' + (filtroMarcaCompRessup === m.codigo ? ' on' : '') + '" onclick="alternarMarcaCompRessup(\'' + m.codigo + '\')" title="' + m.codigo + '">' + m.rotulo + '</span>';
+      }).join('') +
+    '</div></div>' +
+    // Horizontal (24/09/2026): rosca à esquerda, legenda à direita — o card
+    // fica com a altura do Detalhamento recolhido, sem vão.
+    (totalComp
+      ? '<div class="corpo-comp">' +
+        '<div style="flex-shrink:0">' + donutMultiSegmento(segmentosComp, 'itens', 120) + '</div>' +
+        '<div style="flex:1;min-width:0">' +
+        segmentosComp.map(function (x) {
+          return '<div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:6px">' +
+            '<span style="width:10px;height:10px;border-radius:50%;background:' + x.cor + ';flex-shrink:0"></span>' +
+            '<span style="flex:1">' + escapar(x.rotulo) + '</span><b>' + fmtInt(x.valor) + '</b>' +
+            '<span style="color:var(--text-muted);width:48px;text-align:right">' + fmtPct(x.valor / totalComp * 100) + '</span>' +
+          '</div>';
+        }).join('') +
+        '</div></div>'
+      : '<div class="aviso">Sem material para essa marca no recorte.</div>') +
+  '</div>';
+
 }
 const COR_SEGMENTO_COMP = { 'VESTUÁRIO': '--accent', 'MEIA': '--olive', 'ACESSÓRIO': '--amber', 'CALÇADO': '--laranja' };
 let ruaBOAberta = null;
@@ -4923,51 +4985,7 @@ function renderizarEstoqueOperacao(p) {
   const totalGeral = arvoreAtual.reduce(function (s, m) { return s + m.qtd; }, 0);
   const skusGeral = arvoreAtual.reduce(function (s, m) { return s + m.skus; }, 0);
 
-  /* ---------- composição por segmento (pizza) com filtro de marca ----------
-     Substitui os gráficos de barra por marca e por segmento (pedido do
-     usuário, 24/09/2026): uma pizza por segmento, recortável por marca
-     (OLY/MIZ/UA) nos chips do próprio card. Usa a árvore completa do filtro
-     Picking/Pulmão/Todos — não o recorte de segmento dos chips do topo, senão
-     a pizza mostraria só a fatia já escolhida. CHUTEIRA e CHINELO somam em
-     CALÇADO (mesma regra do gráfico antigo, 23/09/2026). */
-  const MARCAS_COMP = [{ codigo: 'OLYMPIKUS', rotulo: 'OLY' }, { codigo: 'MIZUNO', rotulo: 'MIZ' }, { codigo: 'UNDER ARMOUR', rotulo: 'UA' }];
-  const segmentosComp = (function () {
-    const porNome = new Map();
-    ((p && p['arvore_' + filtroRessuprimento]) || []).forEach(function (m) {
-      if (filtroMarcaCompRessup && m.codigo !== filtroMarcaCompRessup) return;
-      (m.segmentos || []).forEach(function (sg) {
-        (sg.familias || []).forEach(function (f) {
-          let nome = f.segmento_macro || 'OUTROS';
-          if (nome === 'CHUTEIRA' || nome === 'CHINELO') nome = 'CALÇADO';
-          porNome.set(nome, (porNome.get(nome) || 0) + (f.qtd || 0));
-        });
-      });
-    });
-    return Array.from(porNome.entries())
-      .map(function (e) { return { rotulo: e[0], valor: e[1], cor: 'var(' + (COR_SEGMENTO_COMP[e[0]] || '--gelo') + ')' }; })
-      .filter(function (x) { return x.valor > 0; })
-      .sort(function (x, y) { return y.valor - x.valor; });
-  })();
-  const totalComp = segmentosComp.reduce(function (a, x) { return a + x.valor; }, 0);
-  const blocoComposicao = '<div class="card">' +
-    '<div class="section-title">Composição por segmento — ' + ROT_FILTRO_RESSUP[filtroRessuprimento] + '</div>' +
-    '<div class="filtros filtros-mini" style="margin-bottom:10px">' +
-      '<span class="chip' + (!filtroMarcaCompRessup ? ' on' : '') + '" onclick="alternarMarcaCompRessup(null)">Todas</span>' +
-      MARCAS_COMP.map(function (m) {
-        return '<span class="chip' + (filtroMarcaCompRessup === m.codigo ? ' on' : '') + '" onclick="alternarMarcaCompRessup(\'' + m.codigo + '\')" title="' + m.codigo + '">' + m.rotulo + '</span>';
-      }).join('') +
-    '</div>' +
-    (totalComp
-      ? '<div style="display:flex;justify-content:center;margin:4px 0 12px">' + donutMultiSegmento(segmentosComp, 'itens', 150) + '</div>' +
-        segmentosComp.map(function (x) {
-          return '<div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:6px">' +
-            '<span style="width:10px;height:10px;border-radius:50%;background:' + x.cor + ';flex-shrink:0"></span>' +
-            '<span style="flex:1">' + escapar(x.rotulo) + '</span><b>' + fmtInt(x.valor) + '</b>' +
-            '<span style="color:var(--text-muted);width:48px;text-align:right">' + fmtPct(x.valor / totalComp * 100) + '</span>' +
-          '</div>';
-        }).join('')
-      : '<div class="aviso">Sem material para essa marca no recorte.</div>') +
-  '</div>';
+  const blocoComposicao = htmlComposicaoSegmento(p);
 
   /* ---------- árvore Marca › Grupo › Família ----------
      Segmento e família ganham "⬇ endereços": exporta os artigos daquele nó
@@ -5267,7 +5285,7 @@ function renderizarEstoqueOperacao(p) {
     // Detalhamento logo abaixo da ocupação, antes dos gráficos de composição
     // (pedido do usuário, 23/09/2026).
     '<div class="grid-det">' +
-    '<div class="card">' +
+    '<div class="card card-det">' +
       '<div class="section-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">' +
         '<span>Detalhamento — Marca › Grupo › Família (' + ROT_FILTRO_RESSUP[filtroRessuprimento] + ')</span>' +
         '<span>' +
@@ -5280,8 +5298,10 @@ function renderizarEstoqueOperacao(p) {
           '<button class="btn-mini" onclick="exportarCSVRessuprimento()">⬇ CSV</button>' +
         '</span>' +
       '</div>' +
+      // Tabela rola por dentro do card (altura = a da Composição ao lado).
+      '<div class="det-rolagem">' +
       (resultadosArtigoRessuprimento === null
-        ? '<div style="overflow-x:auto"><table class="arvore"><thead><tr>' +
+        ? '<div><table class="arvore"><thead><tr>' +
             '<th class="esq">Descrição</th><th>Qtde SKUs</th><th>Qtde itens</th><th>%</th>' +
           '</tr></thead><tbody>' + linhasArvore + '</tbody></table></div>'
         : '<div style="overflow-x:auto;margin-top:10px">' +
@@ -5294,6 +5314,7 @@ function renderizarEstoqueOperacao(p) {
                 ? '<p style="font-size:11px;color:var(--text-muted);margin-top:8px">Mostrando os ' +
                   window.LIMITE_BUSCA_SALDO_ENDERECO + ' de maior quantidade — refine a busca pra ver o resto (o CSV não tem esse teto).</p>' : '')) +
           '</div>') +
+      '</div>' +
     '</div>' +
       blocoComposicao +
     '</div>' +
