@@ -55,6 +55,7 @@
   --gelo:        #93A5B8;
   --laranja:     #E8830D;
   --roxo:        #A77BEA;
+  --verde-escuro: #2E8B3E;
   --brand-miz:   #DFBD41;
   --brand-oly:   #297ADF;
   --brand-ua:    #C8102E;
@@ -81,6 +82,7 @@
   --gelo:        #8FA3B8;
   --laranja:     #C26A00;
   --roxo:        #7C4DC4;
+  --verde-escuro: #237A33;
   --brand-miz:   #B8940A;
   --brand-oly:   #1A6FC4;
   --brand-ua:    #C0392B;
@@ -3279,12 +3281,12 @@ const ETAPAS_FLUXO_COLETA = ['Em picking'];
    material anda da esquerda (ainda nem liberado) pra direita (só falta a
    nota). Vermelho fica reservado pro fim da fila, que é onde parar dói mais. */
 const COR_ETAPA_PFA = {
-  'Nao disp. picking': '--gelo',
-  'Disp. p/ picking': '--accent',
-  'Em picking': '--olive',
-  'Gerar Nota Fiscal': '--red',
-  'Material em personalizacao': '--roxo',
-  'Leitura expedicao': '--amber',
+  'Nao disp. picking': '--red',
+  'Disp. p/ picking': '--gelo',
+  'Em picking': '--verde-escuro',
+  'Gerar Nota Fiscal': '--laranja',
+  'Material em personalizacao': '--amber',
+  'Leitura expedicao': '--accent',
 };
 const COR_FAIXA_FIFO = { '0-2': '--olive', '3-5': '--olive', '6-10': '--amber', '11+': '--red' };
 
