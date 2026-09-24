@@ -2621,20 +2621,57 @@ const FAIXAS_PARADO = [
   { chave: '6-10', rotulo: '6–10 dias', ate: 10 }, { chave: '11+', rotulo: '11+ dias', ate: Infinity },
 ];
 let ruaBOAberta = null;
-let ruaBOTooltipPos = null;
-function alternarRuaBO(rua, ev) {
-  const fechando = rua === null || ruaBOAberta === rua;
-  ruaBOAberta = fechando ? null : rua;
-  if (!fechando && ev && ev.currentTarget) {
-    const r = ev.currentTarget.getBoundingClientRect();
-    ruaBOTooltipPos = { top: Math.min(r.bottom + 6, window.innerHeight - 380), left: Math.min(Math.max(ev.clientX - 140, 12), window.innerWidth - 300) };
-  } else {
-    ruaBOTooltipPos = null;
-  }
-  const scrollY = window.scrollY;
-  renderizarEstoqueOperacao();
-  window.scrollTo(0, scrollY);
+// Ruas do último render (preenchido em renderizarEstoqueOperacao) — o clique
+// na barra monta o tooltip direto no DOM, sem re-renderizar a tela inteira
+// (a tabela de volumes tem milhares de linhas e o re-render dava delay).
+let ruasBOAtual = [];
+function fecharTooltipRuaBO() {
+  const t = document.getElementById('tooltip-rua-bo');
+  if (t) t.remove();
+  ruaBOAberta = null;
 }
+function alternarRuaBO(rua, ev) {
+  // Rua vem como texto do onclick e pode ser número no payload — compara como texto.
+  const fechando = rua === null || String(ruaBOAberta) === String(rua);
+  fecharTooltipRuaBO();
+  if (fechando) return;
+  const ruaAberta = ruasBOAtual.find(function (r) { return String(r.rua) === String(rua); });
+  if (!ruaAberta) return;
+  ruaBOAberta = rua;
+  let pos = { top: 80, left: 80 };
+  if (ev && ev.currentTarget) {
+    const r = ev.currentTarget.getBoundingClientRect();
+    pos = { top: Math.max(12, Math.min(r.bottom + 6, window.innerHeight - 380)), left: Math.min(Math.max(ev.clientX - 140, 12), window.innerWidth - 300) };
+  }
+  const segs = FAIXAS_PARADO.map(function (f) {
+    return { chave: f.chave, rotulo: f.rotulo, valor: ruaAberta.faixas[f.chave] || 0, cor: 'var(' + COR_FAIXA_FIFO[f.chave] + ')' };
+  }).concat([{ chave: 'sem', rotulo: 'Sem registro', valor: ruaAberta.sem, cor: 'var(--text-muted)' }]);
+  const legenda = segs.map(function (f) {
+    return '<div style="display:flex;align-items:center;gap:6px;font-size:11px;margin-bottom:4px">' +
+      '<span style="width:9px;height:9px;border-radius:50%;background:' + f.cor + ';flex-shrink:0"></span>' +
+      '<span style="flex:1">' + escapar(f.rotulo) + '</span><b>' + fmtInt(f.valor) + '</b>' +
+      '<span style="color:var(--text-muted);width:44px;text-align:right">' + fmtPct(ruaAberta.qtd ? f.valor / ruaAberta.qtd * 100 : 0) + '</span>' +
+    '</div>';
+  }).join('');
+  const el = document.createElement('div');
+  el.id = 'tooltip-rua-bo';
+  el.innerHTML =
+    '<div style="position:fixed;inset:0;z-index:998" onclick="alternarRuaBO(null)"></div>' +
+    '<div style="position:fixed;top:' + pos.top + 'px;left:' + pos.left + 'px;z-index:999;' +
+      'background:var(--bg-card);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.35);' +
+      'padding:14px;width:280px;max-width:calc(100vw - 24px)" onclick="event.stopPropagation()">' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:10px">' +
+        '<strong style="font-size:12px">' + escapar('Rua ' + ruaAberta.rua + ' — ' + ruaAberta.rotulo) + '</strong>' +
+        '<span class="chip" onclick="alternarRuaBO(null)" style="cursor:pointer;font-size:10px">✕</span>' +
+      '</div>' +
+      '<p style="font-size:10.5px;color:var(--text-muted);margin:0 0 10px">Dias desde a última movimentação (FIFO)</p>' +
+      '<div style="display:flex;justify-content:center">' + donutMultiSegmento(segs, 'pç') + '</div>' +
+      '<div style="margin-top:10px">' + legenda + '</div>' +
+    '</div>';
+  document.body.appendChild(el);
+}
+// Tooltip é fixo na tela — fecha ao rolar pra não ficar solto longe da barra.
+window.addEventListener('scroll', function () { if (ruaBOAberta !== null) fecharTooltipRuaBO(); }, { passive: true });
 // Ordenação da lista de barras "por rua" do B.O. em trânsito/validação
 // (06/09/2026) — 'rua' ordena numericamente pelo número da rua, 'qtd' pela
 // quantidade parada ali. Independente de ordemValidacao acima, que ordena a
@@ -4417,6 +4454,7 @@ function ajustarTabelas5Linhas(raiz) {
 function renderizarEstoqueOperacao(p) {
   p = p || window._snapshotRessuprimento;
   if (!p) return;
+  fecharTooltipRuaBO();
 
   /* ---------- avisos ---------- */
   let avisos = '';
@@ -4859,34 +4897,7 @@ function renderizarEstoqueOperacao(p) {
       '<span style="color:var(--text-muted)">· dias desde a última movimentação · clique na barra para ver por FIFO</span>' +
     '</div>';
 
-    let tooltipRuaBO = '';
-    const ruaAberta = ruaBOAberta !== null ? ruas.find(function (r) { return r.rua === ruaBOAberta; }) : null;
-    if (ruaAberta) {
-      const segs = FAIXAS_PARADO.map(function (f) {
-        return { chave: f.chave, rotulo: f.rotulo, valor: ruaAberta.faixas[f.chave] || 0, cor: 'var(' + COR_FAIXA_FIFO[f.chave] + ')' };
-      }).concat([{ chave: 'sem', rotulo: 'Sem registro', valor: ruaAberta.sem, cor: 'var(--text-muted)' }]);
-      const legenda = segs.map(function (f) {
-        return '<div style="display:flex;align-items:center;gap:6px;font-size:11px;margin-bottom:4px">' +
-          '<span style="width:9px;height:9px;border-radius:50%;background:' + f.cor + ';flex-shrink:0"></span>' +
-          '<span style="flex:1">' + escapar(f.rotulo) + '</span><b>' + fmtInt(f.valor) + '</b>' +
-          '<span style="color:var(--text-muted);width:44px;text-align:right">' + fmtPct(ruaAberta.qtd ? f.valor / ruaAberta.qtd * 100 : 0) + '</span>' +
-        '</div>';
-      }).join('');
-      const pos = ruaBOTooltipPos || { top: 80, left: 80 };
-      tooltipRuaBO =
-        '<div style="position:fixed;inset:0;z-index:998" onclick="alternarRuaBO(null)"></div>' +
-        '<div style="position:fixed;top:' + pos.top + 'px;left:' + pos.left + 'px;z-index:999;' +
-          'background:var(--bg-card);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.35);' +
-          'padding:14px;width:280px;max-width:calc(100vw - 24px)" onclick="event.stopPropagation()">' +
-          '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:10px">' +
-            '<strong style="font-size:12px">' + escapar('Rua ' + ruaAberta.rua + ' — ' + ruaAberta.rotulo) + '</strong>' +
-            '<span class="chip" onclick="alternarRuaBO(null)" style="cursor:pointer;font-size:10px">✕</span>' +
-          '</div>' +
-          '<p style="font-size:10.5px;color:var(--text-muted);margin:0 0 10px">Dias desde a última movimentação (FIFO)</p>' +
-          '<div style="display:flex;justify-content:center">' + donutMultiSegmento(segs, 'pç') + '</div>' +
-          '<div style="margin-top:10px">' + legenda + '</div>' +
-        '</div>';
-    }
+    ruasBOAtual = ruas;
     function setaOrdemBarrasBO(campo) {
       if (ordemBarrasBO.campo !== campo) return '';
       return ' <span style="font-size:9px">' + (ordemBarrasBO.direcao === 'asc' ? '▲' : '▼') + '</span>';
@@ -5018,7 +5029,7 @@ function renderizarEstoqueOperacao(p) {
         '</div>' +
         chipsOrdemBarrasBO +
         '<div class="bar-list-rua" style="margin-bottom:14px">' + barrasBO + '</div>' +
-        legendaBarrasBO + tooltipRuaBO +
+        legendaBarrasBO +
         chipsClassif +
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0">' +
           '<input type="text" id="buscaValidacao" placeholder="Buscar (endereço, SKU, nome, volume, login…)" ' +
