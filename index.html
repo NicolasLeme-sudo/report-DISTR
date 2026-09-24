@@ -3389,7 +3389,12 @@ function aplicarEtapaPersona(p) {
     const atual = notaPfa.get(r.pfa);
     if (!atual || r.data_nota < atual) notaPfa.set(r.pfa, r.data_nota);
   });
-  (p.pendentes || []).forEach(function (r) { r.data_nota = notaPfa.get(r.pfa) || null; });
+  // Pendentes (NOTA FISCAL + DT. NF) é a fonte principal; Analítico cobre
+  // snapshot antigo / PFA sem data no Pendentes (mescla, 24/09/2026).
+  (p.pendentes || []).forEach(function (r) {
+    r.data_nota = r.data_nota_pendentes || notaPfa.get(r.pfa) || null;
+    r.fonte_nota = r.data_nota_pendentes ? 'pendentes' : (r.data_nota ? 'analitico' : null);
+  });
   // Snapshot processado antes de 24/09/2026 leu o Analítico ao contrário
   // (volume no arquivo = lido; na verdade é o que AINDA NÃO passou na
   // esteira). conferencia_lidos desses snapshots é a contagem de pendentes —
@@ -3861,12 +3866,9 @@ function renderizarPfas() {
      aparecem em Pendentes, e não batia com a Matriz. Data da NF = a mais
      antiga da PFA no Analítico. Chinelo/Chuteira entram em CALÇADO, igual à
      Matriz. */
+  // Data da NF por PFA: já mesclada Pendentes + Analítico em aplicarEtapaPersona.
   const notaPorPfa = new Map();
-  (p.aguardando_coleta || []).forEach(function (r) {
-    if (!r.data_nota) return;
-    const atual = notaPorPfa.get(r.pfa);
-    if (!atual || r.data_nota < atual) notaPorPfa.set(r.pfa, r.data_nota);
-  });
+  (p.pendentes || []).forEach(function (r) { if (r.data_nota) notaPorPfa.set(r.pfa, r.data_nota); });
   const comNotaEmTela = filtrados.filter(function (r) { return notaPorPfa.has(r.pfa); }).map(function (r) {
     const seg = r.segmento_macro === 'CHINELO' || r.segmento_macro === 'CHUTEIRA' ? 'CALÇADO' : r.segmento_macro;
     return { pfa: r.pfa, segmento_macro: seg, qtde: r.pares || 0, data_nota: notaPorPfa.get(r.pfa) };
@@ -3966,6 +3968,7 @@ function renderizarPfas() {
     const buscaP = filtroTextoPerdas.trim().toLowerCase();
     // Ajuste não guarda a NF — vem do Analítico (com nota), pela PFA antiga.
     const notaPorPfa = new Map();
+    (p.pendentes || []).forEach(function (r) { if (r.nota_fiscal) notaPorPfa.set(r.pfa, r.nota_fiscal); });
     (p.aguardando_coleta || []).concat(p.aguardando_nf || []).forEach(function (r) {
       if (r.nota && !notaPorPfa.has(r.pfa)) notaPorPfa.set(r.pfa, r.nota);
     });

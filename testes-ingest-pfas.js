@@ -742,6 +742,22 @@ eq(snapV1.pendentes[0].conferencia, 'nao_iniciada', 'V1: o "1 lido" antigo era 1
 eq(snapV1.pendentes[0].conferencia_lidos + '/' + snapV1.pendentes[0].conferencia_total, '0/1', 'razão 0/1');
 
 /* -------------------------------------------------------------------------- */
+secao('NF e data da NF vêm do Pendentes (NOTA FISCAL + DT. NF) — 24/09/2026');
+const pendNf = parsearPfasPendentes([
+  'ESTAB|PRE-FATURA|DATA|CLIENTE|DESCRICAO|FAM|ENCOMENDA|TRS 1PERC|DESCRICAO|TRS 2PERC|DESCRICAO|EXP|QT.VOL.|SITUACAO|DATA|NOTA FISCAL|DT. NF|VL.PND|VL.INC|VL.CLT|VL.EXP|PARES|BOX|PERS|DT.AGE.ENTREGA INICIO|DT.AGE.ENTREGA FIM|HORA AGE. INICIO|HORA AGE. FIM|DT.LIB.NF INICIO|DT.LIB.NF FIM|CLUSTER|VOLUMES PENDENTES DE COLETA',
+  'DISTR|242126|15/09|CL-29854-|MUNDIAL COM DE ART ESP E CALCADOS LTDA ME|060|EBM - 13542771 (879198)|90834|DISPLAN ENCOMENDAS URGENTES LTDA|||ROD|1|Leitura expedicao|15/09|1-1-217831|15/09/26|0|0|0|1|20|5|N|        |        |     |     |        |        |79   |1',
+  'DISTR|242085|01/09|CL-38792-38792|M. CRISTINA DE SOUZA|103|EBM - 13806151 (967368)|90830|VITORIA PROVEDORA LOGISTICA LTDA|||ROD|1|Em picking|03/09|  -  -         |        |0|1|0|0|28|4|N|        |        |     |     |        |        |10   |1',
+].join('\r\n'), '2026-09-24');
+const nf1 = pendNf.registros.find(function (r) { return r.pfa === '242126'; });
+const nf2 = pendNf.registros.find(function (r) { return r.pfa === '242085'; });
+eq(nf1.nota_fiscal, '1-1-217831', 'NOTA FISCAL lida como está no arquivo');
+eq(nf1.data_nota, '2026-09-15', 'DT. NF 15/09/26 vira 2026-09-15');
+eq(nf2.nota_fiscal, null, '"  -  -  " = sem NF');
+eq(nf2.data_nota, null, 'sem NF, sem data');
+const snapNf = construirSnapshotPfas(pendNf, { registros: [] }, { registros: [] }, mapaFamilias, { referencia: '2026-09-24' });
+eq(snapNf.pendentes.find(function (r) { return r.pfa === '242126'; }).data_nota_pendentes, '2026-09-15', 'data da NF chega no snapshot');
+
+/* -------------------------------------------------------------------------- */
 secao('diasUteisEntre — pula sábado e domingo');
 eq(diasUteisEntre('2026-09-08', '2026-09-08'), 0, 'mesma data, zero dias úteis');
 eq(diasUteisEntre('2026-09-03', '2026-09-08'), 3, 'qui 03/09 → ter 08/09 = 3 dias úteis (sex, seg, ter — fim de semana fora)');

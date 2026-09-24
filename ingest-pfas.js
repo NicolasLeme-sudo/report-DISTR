@@ -108,6 +108,14 @@ function dataDDMMComAno(txt, hojeISO) {
   return ano + '-' + String(mes).padStart(2, '0') + '-' + String(dia).padStart(2, '0');
 }
 
+/* "DD/MM/AA" (ou DD/MM/AAAA) → "AAAA-MM-DD" — DT. NF do Pendentes. */
+function dataDDMMAA(txt) {
+  const m = String(txt || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+  if (!m) return null;
+  const ano = m[3].length === 2 ? '20' + m[3] : m[3];
+  return ano + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+}
+
 /* "DD/MM/AAAA" → "AAAA-MM-DD". Devolve null pro campo vazio/inválido em vez
    de inventar data — quem chama decide o que fazer com a ausência. */
 function dataDDMMAAAA(txt) {
@@ -222,7 +230,12 @@ function parsearPfasPendentes(textoArquivo, referenciaISO) {
         const d = dataDDMMComAno(p[14], hoje);
         return d ? diasEntre(d, hoje) : null;
       })(),
-      nota_fiscal: (p[15] || '').trim(),
+      // NOTA FISCAL ("1-1-217831", ou "  -  -  " sem nota) e DT. NF
+      // ("24/09/26") — fonte principal da NF da PFA em tela (24/09/2026): o
+      // Analítico só lista volume que ainda não passou na esteira, então
+      // PFA conferida e faturada some dele e perdia a data da nota.
+      nota_fiscal: /\d/.test(p[15] || '') ? (p[15] || '').trim() : null,
+      data_nota: /\d/.test(p[15] || '') ? dataDDMMAA(p[16]) : null,
       pares: window.numeroBR(p[21]),
       box: (p[22] || '').trim(),
       personalizado: (p[23] || '').trim().toUpperCase() === 'S',
@@ -801,6 +814,8 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
       qt_volumes: r.qt_volumes,
       pares: r.pares,
       personalizado: r.personalizado,
+      nota_fiscal: r.nota_fiscal || null,
+      data_nota_pendentes: r.data_nota || null,
       conferencia: conf.status,
       conferencia_lidos: conf.volumes_lidos,
       conferencia_total: conf.volumes_total,

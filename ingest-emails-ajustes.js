@@ -222,11 +222,27 @@ function consolidarLinhasEmails(listas) {
 
 /* Validação contra o último snapshot de PFAs (pendentes + analítico com
    nota). Cada linha ganha `alertas` (lista de textos) — nada é bloqueado. */
+/* Número da NF comparável entre as fontes: Pendentes traz "1-1-217831"
+   (estab-série-número), Analítico e e-mail trazem só "217831". */
+function numeroNf(nf) {
+  const partes = String(nf == null ? '' : nf).trim().split('-');
+  const n = partes[partes.length - 1].replace(/\D/g, '').replace(/^0+/, '');
+  return n || null;
+}
 function validarLinhasEmail(linhas, snapshotPfas) {
   const pend = new Map(), notaPorPfa = new Map(), pfasComNota = new Map();
-  ((snapshotPfas && snapshotPfas.pendentes) || []).forEach(function (r) { pend.set(String(r.pfa), r); });
+  ((snapshotPfas && snapshotPfas.pendentes) || []).forEach(function (r) {
+    pend.set(String(r.pfa), r);
+    // NF do Pendentes (24/09/2026) — cobre PFA faturada que já saiu do Analítico.
+    if (r.nota_fiscal) {
+      notaPorPfa.set(String(r.pfa), numeroNf(r.nota_fiscal));
+      pfasComNota.set(String(r.pfa), r.pares || 0);
+    }
+  });
   ((snapshotPfas && snapshotPfas.aguardando_coleta) || []).forEach(function (r) {
-    if (r.nota) { notaPorPfa.set(String(r.pfa), String(r.nota)); pfasComNota.set(String(r.pfa), (pfasComNota.get(String(r.pfa)) || 0) + (r.qtde || 0)); }
+    if (!r.nota || notaPorPfa.has(String(r.pfa))) return;
+    notaPorPfa.set(String(r.pfa), numeroNf(r.nota));
+    pfasComNota.set(String(r.pfa), (pfasComNota.get(String(r.pfa)) || 0) + (r.qtde || 0));
   });
   const jaLancados = new Set(((snapshotPfas && snapshotPfas.ajustes) || []).map(function (a) {
     return [a.pfa_antiga, a.artigo, (a.cor_tam || '').replace(/\s+/g, ' ').trim()].join('|');
@@ -241,8 +257,8 @@ function validarLinhasEmail(linhas, snapshotPfas) {
     else if (l.qtde_total_pedido != null && l.qtde_faltante > l.qtde_total_pedido) alertas.push('falta maior que o pedido');
     if (l.nf) {
       const nfSnap = notaPorPfa.get(String(l.pfa));
-      if (!nfSnap) alertas.push('PFA não está em "com nota, aguardando coleta"');
-      else if (nfSnap !== String(l.nf)) alertas.push('NF do e-mail (' + l.nf + ') ≠ NF no sistema (' + nfSnap + ')');
+      if (!nfSnap) alertas.push('PFA sem NF no sistema (nem no Pendentes nem no Analítico)');
+      else if (nfSnap !== numeroNf(l.nf)) alertas.push('NF do e-mail (' + l.nf + ') ≠ NF no sistema (' + nfSnap + ')');
       if (l.situacao === 'FALTA TOTAL' && pfasComNota.has(String(l.pfa)) && faltaPorPfa.get(l.pfa) !== pfasComNota.get(String(l.pfa))) {
         alertas.push('FALTA TOTAL: soma das faltas (' + faltaPorPfa.get(l.pfa) + ') ≠ qtde da NF no sistema (' + pfasComNota.get(String(l.pfa)) + ')');
       }
