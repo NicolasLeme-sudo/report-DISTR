@@ -150,12 +150,12 @@ const payload = construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, {}
 // real usada em todo o resto do sistema (16/09/2026: a árvore somava só o
 // disponível e ficava 349 mil peças abaixo do saldo por endereço).
 const totalArvorePicking = payload.arvore_picking.reduce(function (s, m) { return s + m.qtd; }, 0);
-eq(totalArvorePicking, 50 + 15 + 4, 'árvore de picking soma A1(50+15 cativado)+A5(4) — A2/A3/A4 saíram pro pulmão');
+eq(totalArvorePicking, 50 + 15 + 4, 'árvore de picking soma A1(50+15 cativado)+A5(4) — A2 (rua 20) some, A3/A4 saíram pro pulmão');
 
-// árvore de pulmão: A1(200, rua 1) + A2(10, reclass rua20) + A3(7, reclass rua70) +
-// A4(3, reclass rua81-02) + A3-sujeira(999, rua24) = 1219
+// árvore de pulmão: A1(200, rua 1) + A3(7, reclass rua70) + A4(3, reclass rua81-02)
+// + A3-sujeira(999, rua24) = 1209. A2 (rua 20 = crossdocking, 24/09/2026) não é estoque.
 const totalArvorePulmao = payload.arvore_pulmao.reduce(function (s, m) { return s + m.qtd; }, 0);
-eq(totalArvorePulmao, 200 + 10 + 7 + 3 + 999, 'árvore de pulmão inclui o real + todo o reclassificado do picking');
+eq(totalArvorePulmao, 200 + 7 + 3 + 999, 'árvore de pulmão inclui o real + o reclassificado do picking, sem a rua 20');
 
 // cruzamento: EAN1 (picking rua1, saldo 50) tem apoio real no pulmão rua1 (200) -> conta
 eq(payload.ressuprimento_por_segmento.calcado.apoio_pulmao_disponivel, 200,
@@ -225,7 +225,7 @@ secao('construirSaldoEnderecos — saldo físico por endereço, pro relatório d
 const classifSaldo = classificarPickingEPulmao(picking, pulmao, mapaFamilias);
 const saldos = construirSaldoEnderecos(classifSaldo.pickingReal, classifSaldo.pulmaoTudo);
 
-eq(saldos.length, 7, '2 endereços de Picking (A1, A5) + 5 de Pulmão (A1, A3x2, A2, A4)');
+eq(saldos.length, 6, '2 endereços de Picking (A1, A5) + 4 de Pulmão (A1, A3x2, A4) — rua 20 fora');
 const saldoA1Picking = saldos.find(function (s) { return s.artigo_codigo === 'A1' && s.classificacao === 'PICKING'; });
 eq(saldoA1Picking.qtd, 65, 'Picking soma disponível + cativado (50+15), mesmo gabarito de "peças ocupadas" do resto do arquivo');
 eq(saldoA1Picking.rua, '1', 'carrega o endereço físico certo');
@@ -234,7 +234,7 @@ eq(saldoA5Picking.qtd, 4, 'sem qtd_cativado, soma só o disponível (4+0)');
 const saldosA3Pulmao = saldos.filter(function (s) { return s.artigo_codigo === 'A3' && s.classificacao === 'PULMAO'; });
 eq(saldosA3Pulmao.length, 2, 'A3 físico em 2 endereços diferentes (rua 24 real + rua 70 reclassificada) vira 2 linhas, não soma');
 const saldoA2Pulmao = saldos.find(function (s) { return s.artigo_codigo === 'A2'; });
-eq(saldoA2Pulmao.classificacao, 'PULMAO', 'A2 (reclassificada da rua 20 do picking) entra como PULMAO, não PICKING — pedido do usuário é só essas 2 classificações');
+eq(saldoA2Pulmao, undefined, 'A2 (rua 20 = crossdocking, sem estoque físico) não entra no saldo por endereço');
 ok(saldos.every(function (s) { return s.classificacao === 'PICKING' || s.classificacao === 'PULMAO'; }),
   'nenhuma linha escapa da classificação binária PICKING/PULMAO — a subdivisão fina de validação não importa aqui');
 
@@ -349,9 +349,15 @@ const payloadFisico = construirSnapshotRessuprimento(
   { arquivo_picking: 'p.txt', arquivo_pulmao: 'x.txt' }
 );
 eq(payloadFisico.ocupacao.pulmao.total.ocupado, 0,
-   'rua 20 (reclassificada) NÃO ocupa posição de pulmão — não é porta-pallet fixo');
+   'rua 20 (crossdocking) NÃO ocupa posição de pulmão');
 eq(payloadFisico.ocupacao.picking.calcado.ocupado, 0,
-   'nem de picking — pickingReal já a exclui, e ela não volta em lugar nenhum');
+   'nem de picking — some de tudo');
+
+secao('rua 20 (crossdocking) é descartada já na leitura dos arquivos');
+const pRua20 = parsearPicking(arquivoPicking([linhaPicking('20', '01', '001', '12', '3'), linhaPicking('01', '01', '001', '5', '0')]));
+eq(pRua20.registros.length, 1, 'só a linha fora da rua 20 fica');
+eq(pRua20.desconsiderado.linhas + '/' + pRua20.desconsiderado.qtd, '1/15', 'rua 20 contada à parte: 1 linha, 12+3 pç');
+eq(payloadFisico.ruas_desconsideradas.ruas['20'].indexOf('Crossdocking'), 0, 'payload registra por que a rua 20 saiu');
 
 /* -------------------------------------------------------------------------- */
 secao('ocupação — ruas de trânsito DENTRO do Pulmão (21/24/26/27/98/100/500/600) também ficam de fora');

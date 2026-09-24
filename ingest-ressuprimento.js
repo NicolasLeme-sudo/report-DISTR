@@ -89,7 +89,6 @@ function classificarRuaPulmao(rua) {
    Pulmão (decisão da operação), mas não são material confiável pra puxar.
    ============================================================================ */
 const RECLASSIFICA_PICKING_PARA_PULMAO = {
-  '20': { motivo: 'Camisas de time Mizuno — visadas, risco de furto no picking', apoioConfiavel: true },
   // 70/80 (corrigido pela operação, 23/09/2026): endereço de Picking que fica
   // DENTRO do Pulmão — item que não coube 100% no picking e foi alocado lá.
   // Estoque bom, não é pendência.
@@ -101,6 +100,23 @@ const RECLASSIFICA_PICKING_PARA_PULMAO = {
   // rua 81 é tratada à parte (abaixo): só o nível 02 reclassifica.
 };
 const MOTIVO_81_02 = 'Capacidade de calçados Under Armour esgotada no picking';
+
+/* Ruas que NÃO são estoque e saem de tudo já na leitura (Picking e Pulmão):
+   rua 20 = CROSSDOCKING, operação do recebimento sem estoque físico
+   (confirmado pelo usuário, 24/09/2026 — antes era tratada como "camisas de
+   time Mizuno" reclassificadas pro Pulmão). Não entra em ocupação, árvore,
+   composição, endereços vazios nem saldo por endereço; a contagem do que foi
+   descartado fica em payload.ruas_desconsideradas. */
+const RUAS_DESCONSIDERADAS = { '20': 'Crossdocking (recebimento, sem estoque físico)' };
+function novoContadorDesconsiderado() { return { linhas: 0, qtd: 0 }; }
+// Mesma regra na entrada da agregação (defensivo: quem chama sem passar
+// pelos parsers — testes, recálculo — também não vê a rua 20).
+function semRuasDesconsideradas(parse) {
+  if (!parse || !parse.registros) return parse;
+  return Object.assign({}, parse, {
+    registros: parse.registros.filter(function (r) { return !RUAS_DESCONSIDERADAS[String(r.rua)]; }),
+  });
+}
 
 /* ============================================================================
    BUCKET Meia / Vestuário / Calçado — usado só pros cards de ocupação do
@@ -220,6 +236,7 @@ function parsearPicking(textoArquivo) {
   let comecouDados = false;
   let negativasExcluidas = 0;
   let negativasUnidades = 0;
+  const desconsiderado = novoContadorDesconsiderado();
 
   for (let i = 0; i < linhas.length; i++) {
     const linha = linhas[i];
@@ -243,6 +260,12 @@ function parsearPicking(textoArquivo) {
     const rua = String(parseInt(partes[0], 10));
     const nivel = String(parseInt(partes[1], 10));
     const box = partes[2];
+
+    if (RUAS_DESCONSIDERADAS[rua]) {
+      desconsiderado.linhas++;
+      desconsiderado.qtd += Math.max(0, window.numeroBR(p[8])) + Math.max(0, window.numeroBR(p[9]));
+      continue;
+    }
 
     let qtd = window.numeroBR(p[8]);
     // GAP CONHECIDO (confirmado com a operação em 01/09/2026): negativo aqui
@@ -291,7 +314,7 @@ function parsearPicking(textoArquivo) {
     });
   }
 
-  return { registros: registros, negativas_excluidas: negativasExcluidas, negativas_unidades: negativasUnidades };
+  return { registros: registros, negativas_excluidas: negativasExcluidas, negativas_unidades: negativasUnidades, desconsiderado: desconsiderado };
 }
 
 /* ============================================================================
@@ -307,6 +330,7 @@ function parsearPulmao(textoArquivo) {
   const volumesVistos = new Set();
   let comecouDados = false;
   let colisoesVolume = 0;
+  const desconsiderado = novoContadorDesconsiderado();
 
   for (let i = 0; i < linhas.length; i++) {
     const linha = linhas[i];
@@ -327,6 +351,11 @@ function parsearPulmao(textoArquivo) {
     const rua = String(parseInt(p[2], 10));
     const nivel = String(parseInt(p[3], 10));
     const box = (p[4] || '').trim();
+    if (RUAS_DESCONSIDERADAS[rua]) {
+      desconsiderado.linhas++;
+      desconsiderado.qtd += Math.max(0, window.numeroBR(p[19]));
+      continue;
+    }
 
     registros.push({
       familia_codigo: window.familiaCanonica(p[10]),
@@ -344,7 +373,7 @@ function parsearPulmao(textoArquivo) {
     });
   }
 
-  return { registros: registros, colisoes_volume: colisoesVolume };
+  return { registros: registros, colisoes_volume: colisoesVolume, desconsiderado: desconsiderado };
 }
 
 /* ============================================================================
@@ -371,6 +400,8 @@ function parsearPulmao(textoArquivo) {
    PFA) — mesma regra de classificação nos dois lugares, sem duplicar.
    ============================================================================ */
 function classificarPickingEPulmao(picking, pulmao, mapaFamilias) {
+  picking = semRuasDesconsideradas(picking);
+  pulmao = semRuasDesconsideradas(pulmao);
   const familiasNaoMapeadas = new Set();
 
   function infoFamilia(codigo) {
@@ -484,6 +515,8 @@ function construirSaldoEnderecos(pickingReal, pulmaoTudo) {
 }
 
 function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidadesManual, meta, capacidadesItensManual) {
+  picking = semRuasDesconsideradas(picking);
+  pulmao = semRuasDesconsideradas(pulmao);
   const cap = capacidadesManual || {};
   const capItens = capacidadesItensManual || {};
   const classif = classificarPickingEPulmao(picking, pulmao, mapaFamilias);
@@ -850,6 +883,11 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
         'com este arquivo, então NÃO entram no saldo disponível (nem positivo, nem negativo). GAP a ' +
         'resolver quando houver como separar os dois motivos.',
     },
+    ruas_desconsideradas: {
+      ruas: RUAS_DESCONSIDERADAS,
+      picking: picking.desconsiderado || novoContadorDesconsiderado(),
+      pulmao: pulmao.desconsiderado || novoContadorDesconsiderado(),
+    },
     ocupacao: ocupacao,
     ocupacao_itens: ocupacaoItens,
     // Saldo parado nas ruas de trânsito/validação do Pulmão, por endereço —
@@ -1042,6 +1080,12 @@ async function processarRessuprimento(supabaseClient, filePicking, filePulmao, o
     ' · ' + pulmao.registros.length.toLocaleString('pt-BR') + ' linhas de Pulmão' +
     (pulmao.colisoes_volume ? ' (' + pulmao.colisoes_volume + ' volumes duplicados descartados)' : '') + '.'
   );
+  const descPk = picking.desconsiderado, descPl = pulmao.desconsiderado;
+  if (descPk.linhas + descPl.linhas) {
+    avisar('Rua 20 (crossdocking, sem estoque físico) desconsiderada: ' +
+      (descPk.linhas + descPl.linhas).toLocaleString('pt-BR') + ' linha(s), ' +
+      (descPk.qtd + descPl.qtd).toLocaleString('pt-BR') + ' pç fora do estoque.');
+  }
 
   avisar('Carregando gabarito de famílias e capacidades…');
   const [linhasFam, linhasCap] = await Promise.all([
