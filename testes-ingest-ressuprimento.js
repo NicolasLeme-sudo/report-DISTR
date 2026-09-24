@@ -447,7 +447,7 @@ const payloadRua99 = construirSnapshotRessuprimento(
   mapaFamilias, { pulmao: 100 }, { arquivo_picking: 'x.txt', arquivo_pulmao: 'p.txt' }
 );
 eq(payloadRua99.validacao.length, 2, 'rua 99 do Pulmão e do Picking entram no material parado');
-ok(payloadRua99.validacao.every(function (v) { return v.classificacao === 'Transitório'; }), 'rótulo "Transitório" (vira "Rua 99 — Transitório" na tela)');
+ok(payloadRua99.validacao.every(function (v) { return v.classificacao === 'Endereço de retorno de saldo'; }), 'rótulo "Endereço de retorno de saldo" (vira "Rua 99 — Endereço de retorno de saldo" na tela)');
 eq(payloadRua99.ocupacao.picking.total.ocupado, 0, 'rua 99 do Picking não ocupa posição de Picking');
 
 

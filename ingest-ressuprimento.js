@@ -64,7 +64,7 @@ Object.assign(CLASSIF_RUA_PULMAO, {
   '98':  { grupo: 'VALIDACAO', rotulo: 'Transitório - Armazenagem/Ressuprimento' },
   // Rua 99 (23/09/2026, pedido do usuário): endereço transitório, entra no
   // card de material parado. Antes caía em "fora do gabarito".
-  '99':  { grupo: 'VALIDACAO', rotulo: 'Transitório' },
+  '99':  { grupo: 'VALIDACAO', rotulo: 'Endereço de retorno de saldo' },
   // Rua 100 (23/09/2026, operação): material do RECEBIMENTO armazenado no
   // chão, endereços criados porque faltou espaço no Pulmão. É estoque bom
   // (conta como apoio confiável), mas provisório — por isso aparece no card
@@ -97,7 +97,7 @@ const RECLASSIFICA_PICKING_PARA_PULMAO = {
   '80': { motivo: 'Excedente do picking Under Armour alocado no Pulmão', apoioConfiavel: true },
   // Rua 99 no arquivo de Picking também é transitório (23/09/2026): sai do
   // Picking e vai pro card de material parado, igual à 99 do Pulmão.
-  '99': { motivo: 'Transitório', apoioConfiavel: false },
+  '99': { motivo: 'Endereço de retorno de saldo', apoioConfiavel: false },
   // rua 81 é tratada à parte (abaixo): só o nível 02 reclassifica.
 };
 const MOTIVO_81_02 = 'Capacidade de calçados Under Armour esgotada no picking';
