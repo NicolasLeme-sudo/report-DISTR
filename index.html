@@ -306,12 +306,13 @@ html { overflow-x: hidden; }
 .kpi-row-ocup { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 .kpi-ocup { display: flex; flex-direction: row; justify-content: flex-start; align-items: center; gap: 14px; }
 .kpi-ocup .rot { min-height: 0; font-size: 11px; }
-.kpi-ocup { position: relative; cursor: help; }
+.kpi-ocup { position: relative; cursor: pointer; }
 .kpi-ocup .ruas-zona { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-muted); font-size: 10px; }
 .tip-ocup { display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; width: 270px;
   background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
   box-shadow: 0 8px 24px rgba(0,0,0,.35); font-size: 11.5px; color: var(--text); cursor: default; }
-.kpi-ocup:hover .tip-ocup, .kpi-ocup:focus-within .tip-ocup { display: block; }
+.kpi-ocup.aberto .tip-ocup { display: block; }
+.kpi-ocup.aberto { border-color: var(--accent); }
 .kpi-row-ocup > .kpi-ocup:last-child .tip-ocup { left: auto; right: 0; }
 .tip-ocup .tip-tit { font-weight: 700; font-size: 12px; margin-bottom: 8px; }
 .tip-ocup .tip-sec { margin: 9px 0 4px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-label); }
@@ -4759,6 +4760,18 @@ function renderizarArvoreBuscaSaldoEndereco(linhasBusca, p) {
 // Pulmão) — o prefixo (Picking/Pulmão) já vem do título da linha, aqui só o
 // nome do bucket (06/09/2026: Pulmão passou a ter as mesmas 4 zonas do
 // Picking, antes era um bloco só).
+// Detalhe da capacidade abre no CLIQUE do card (24/09/2026) e fecha ao clicar
+// de novo ou fora — só um aberto por vez.
+function alternarTipOcup(card, ev) {
+  if (ev && ev.target && ev.target.closest('.tip-ocup')) return;
+  const abrir = !card.classList.contains('aberto');
+  document.querySelectorAll('.kpi-ocup.aberto').forEach(function (c) { c.classList.remove('aberto'); });
+  if (abrir) card.classList.add('aberto');
+  if (ev) ev.stopPropagation();
+}
+document.addEventListener('click', function (ev) {
+  if (!ev.target.closest('.kpi-ocup')) document.querySelectorAll('.kpi-ocup.aberto').forEach(function (c) { c.classList.remove('aberto'); });
+});
 const ROT_BUCKET = { total: 'Total', meia: 'Meia', vestuario: 'Vestuário', acessorio: 'Acessório', calcado: 'Calçado' };
 const ROT_FILTRO_RESSUP = { picking: 'Picking', pulmao: 'Pulmão', todos: 'Todos' };
 
@@ -4922,15 +4935,17 @@ function renderizarEstoqueOperacao(p) {
       linhaTip('Capacidade (' + unidadeLonga + ')', dados.capacidade) +
       linhaTip('Ocupados (qualquer produto)', dados.ocupado) +
       linhaTip('Livres', dados.disponivel) +
-      '<div class="tip-sec">Dentro destas ruas</div>' +
+      '<div class="tip-sec">Dentro destas ruas (' + unidadeLonga + ')</div>' +
       linhaTip('Com ' + escapar(rotulo.toLowerCase()), det.do_segmento) +
       (outros.length
         ? outros.map(function (b) { return linhaTip('Com ' + escapar((ROT_BUCKET[b] || b).toLowerCase()) + ' (fora do lugar)', det.outros_segmentos[b], true); }).join('')
         : '<div class="tip-ok">Nenhum produto de outro segmento</div>') +
-      '<div class="tip-sec">' + escapar(rotulo) + ' guardado fora destas ruas</div>' +
+      '<div class="tip-sec">' + escapar(rotulo) + ' guardado em outras ruas (' + unidadeLonga + ')</div>' +
       (fora.length
         ? fora.map(function (r) { return linhaTip('Rua ' + escapar(r), det.fora_por_rua[r], true); }).join('')
         : '<div class="tip-ok">Nada fora da zona</div>') +
+      (unidadeLonga === 'endereços'
+        ? '<p>Um endereço com 2 segmentos aparece nas duas linhas, por isso a soma pode passar do total ocupado.</p>' : '') +
     '</div>';
   }
   function tooltipOcupacaoTotal(titulo, linha, unidadeLonga) {
@@ -4946,14 +4961,14 @@ function renderizarEstoqueOperacao(p) {
       '<div class="tip-linha"><span>Ocupados</span><b>' + fmtInt(linha.total.ocupado) + '</b></div>' +
       '<div class="tip-linha"><span>Livres</span><b>' + fmtInt(linha.total.disponivel) + '</b></div>' +
       (outrosTot ? '<div class="tip-linha alerta"><span>Ocupados por produto de outro segmento</span><b>' + fmtInt(outrosTot) + '</b></div>' : '') +
-      '<p>Passe o mouse em cada segmento pra ver onde está o produto fora do lugar.</p>' +
+      '<p>Clique em cada segmento pra ver onde está o produto fora do lugar.</p>' +
     '</div>';
   }
   function cardOcupacao(rotulo, dados, unidade, tooltip) {
     if (!dados) return '';
     const cor = corOcupacao(dados);
     const ruas = dados.detalhe ? listaRuas(dados.detalhe.ruas) : '';
-    return '<div class="kpi kpi-ocup" tabindex="0">' +
+    return '<div class="kpi kpi-ocup" onclick="alternarTipOcup(this, event)">' +
       '<div class="donut-wrap" style="color:' + cor + '">' + donutOcupacao(dados.pct, cor) + '</div>' +
       '<div>' +
         '<div class="rot">' + rotulo + (ruas ? ' <span class="ruas-zona">' + ruas + '</span>' : '') +
@@ -4977,8 +4992,7 @@ function renderizarEstoqueOperacao(p) {
     const linha = arvore[secao];
     const cabecalho = '<div class="filtros" style="margin:14px 0 6px">' +
       '<span style="font-size:11px;font-weight:600;color:var(--text-label)">' + titulo + '</span>' +
-      '<span style="font-size:10.5px;color:var(--text-muted)">Capacidade = endereços das ruas de cada segmento · ' +
-        'ocupado = endereço com qualquer produto · passe o mouse no card pra ver o que está fora do lugar</span>' +
+
       (secao === 'pulmao' ? '' :
         '<span class="chip' + (modo === 'endereco' ? ' on' : '') +
           '" onclick="alternarModoOcupacao(\'' + secao + '\',\'endereco\')">Endereços</span>' +
