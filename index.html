@@ -593,7 +593,6 @@ tr.total > th, tr.total > td {
 .matriz-nf td.mz-cel { color: #fff; }
 .matriz-nf td.mz-vazio { color: var(--text-muted); font-weight: 400; }
 .matriz-nf td.mz-tot { background: var(--bg-input); }
-.matriz-nf tr.mz-grupo th { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-label); font-weight: 600; padding: 10px 8px 4px; }
 .matriz-nf tr.mz-total th, .matriz-nf tr.mz-total td { border-top: 1px solid var(--border); font-weight: 700; background: var(--bg-input); }
 @media (max-width: 900px) {
   .grid2 { grid-template-columns: 1fr; }
@@ -3235,6 +3234,12 @@ function donutMultiSegmento(segmentos, totalRotulo) {
   segmentos.forEach(function (f) {
     if (f.valor <= 0) return;
     const a = (f.valor / total) * 360, large = a > 180 ? 1 : 0;
+    // Faixa única com 100%: o arco começa e termina no mesmo ponto e o SVG
+    // não desenha nada — vira um círculo inteiro.
+    if (a >= 359.99) {
+      paths += '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + f.cor + '" stroke-width="' + sw + '"/>';
+      return;
+    }
     const x1 = cx + r * Math.cos(ang * Math.PI / 180), y1 = cy + r * Math.sin(ang * Math.PI / 180);
     const ae = ang + a;
     const x2 = cx + r * Math.cos(ae * Math.PI / 180), y2 = cy + r * Math.sin(ae * Math.PI / 180);
@@ -3945,25 +3950,23 @@ function renderizarPfas() {
   };
   const todasLinhasMz = ['SEM'].concat(datasNotaMz);
   const blocoMatrizNf = '<div class="card">' +
-    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:12px">' +
-      '<div><div class="kicker" style="color:var(--text-muted)">' + (emPecasMz ? 'Peças' : 'PFAs') + ' em tela por nota fiscal e segmento</div>' +
-        '<div style="font-size:14px;font-weight:700">Matriz Nota fiscal × Segmento</div></div>' +
-      '<div class="filtros" style="margin:0">' +
+    '<div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<span>Matriz — Nota fiscal × Segmento</span>' +
+      '<div class="filtros" style="margin:-8px 0 -6px">' +
         '<span class="chip' + (emPecasMz ? ' on' : '') + '" onclick="alternarModoMatrizNf(\'pecas\')">Peças</span>' +
         '<span class="chip' + (!emPecasMz ? ' on' : '') + '" onclick="alternarModoMatrizNf(\'pfas\')">Qtde PFAs</span>' +
       '</div>' +
     '</div>' +
-    '<div style="overflow-x:auto"><table class="matriz-nf"><thead><tr><th class="esq">Nota fiscal</th>' +
+    '<div style="overflow-x:auto"><table class="matriz-nf"><thead><tr><th class="esq">Data da nota</th>' +
       colsMatriz.map(function (c) { return '<th>' + c.rotulo + '</th>'; }).join('') + '<th>Total</th></tr></thead><tbody>' +
       linhaMatriz('Sem nota fiscal', ['SEM']) +
-      (datasNotaMz.length ? '<tr class="mz-grupo"><th class="esq" colspan="' + (colsMatriz.length + 2) + '">Data da nota</th></tr>' : '') +
       datasNotaMz.map(function (d) { return linhaMatriz(formatarDataSimples(d), [d]); }).join('') +
       '<tr class="mz-total"><th class="esq">Total</th>' +
         colsMatriz.map(function (c) { return '<td>' + fmtInt(valorCelula(celulasDe(todasLinhasMz, c.chave))) + '</td>'; }).join('') +
         '<td>' + fmtInt(valorCelula(celulasDe(todasLinhasMz, null))) + '</td></tr>' +
     '</tbody></table></div>' +
-    '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">PFAs em tela (Pendentes, com os filtros do topo). ' +
-      'Data da nota = já faturada, aguardando coleta. Calçados inclui chinelos e chuteiras.' +
+    '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">' +
+      'Com data = NF emitida nessa data, aguardando coleta. Calçados inclui chinelos e chuteiras.' +
       (emPecasMz ? '' : ' Totais contam cada PFA uma vez.') + '</p>' +
   '</div>';
 
