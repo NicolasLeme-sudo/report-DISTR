@@ -3499,46 +3499,26 @@ function renderizarPfas() {
   const pendentesFiscal = filtrados.filter(function (r) { return r.situacao === 'Gerar Nota Fiscal'; });
   const paresPendentesFiscal = pendentesFiscal.reduce(function (s, r) { return s + r.pares; }, 0);
 
-  // Aguardando coleta vem do Analítico, que não tem etapa própria — pra
-  // Etapa valer aqui também, cruza pelo número da PFA com a situação atual
-  // em Pendentes. PFA que não aparece mais em Pendentes fica de fora sempre
-  // que algum filtro de etapa estiver ativo (não tem etapa que se afirme).
-  // Conferência/Situação/Origem também cruzam pela PFA (Analítico não tem
-  // esses campos) — mesma regra: sem linha em Pendentes, fica de fora quando
-  // algum desses filtros estiver ativo.
-  const pendentePorPfa = new Map();
-  (p.pendentes || []).forEach(function (r) { pendentePorPfa.set(r.pfa, r); });
-  function passaEtapaCruzada(pfa) {
-    if (!filtroEtapaPfa.size && !filtrosPfaLinhaAtivos()) return true;
-    const r = pendentePorPfa.get(pfa);
-    if (!r) return false;
-    if (filtroEtapaPfa.size && !filtroEtapaPfa.has(r.situacao)) return false;
-    return passaFiltrosPfaLinha(r);
-  }
-  const coletaFiltrado = (p.aguardando_coleta || []).filter(function (r) {
-    return passaMarcaSegmentoPfa(r) && passaEtapaCruzada(r.pfa);
+  /* Com NF emitida, aguardando coleta — SÓ o que está em tela (decisão do
+     usuário, 24/09/2026): PFA do recorte de Pendentes (`filtrados`, mesma
+     base do Funil e da Matriz NF × Segmento) que tem NF no Analítico
+     (aguardando_coleta). Peças = pares da PFA em Pendentes. Antes o card
+     somava o Analítico inteiro, incluindo PFAs faturadas há meses que já não
+     aparecem em Pendentes, e não batia com a Matriz. Data da NF = a mais
+     antiga da PFA no Analítico. Chinelo/Chuteira entram em CALÇADO, igual à
+     Matriz. */
+  const notaPorPfa = new Map();
+  (p.aguardando_coleta || []).forEach(function (r) {
+    if (!r.data_nota) return;
+    const atual = notaPorPfa.get(r.pfa);
+    if (!atual || r.data_nota < atual) notaPorPfa.set(r.pfa, r.data_nota);
   });
-  // "Confirmado" = a PFA ainda aparece na lista VIVA de Pendentes — prova
-  // direta de que está em tela hoje. Trocou de critério em 09/09/2026: usava
-  // a janela do arquivo de Embarcadas (prova indireta — "não vi no que
-  // saiu"), mas um arquivo de janela mais larga "confirmou" como em tela 98
-  // PFAs / 5.648 pç que a própria operação já tinha dito, na rodada
-  // anterior, que não estavam mais em tela. Presença em Pendentes não
-  // depende da cobertura de nenhum arquivo — não some quando o arquivo
-  // muda.
-  function separarConfirmado(lista) {
-    const conf = lista.filter(function (r) { return r.confirmado; });
-    const naoConf = lista.filter(function (r) { return !r.confirmado; });
-    return {
-      conf: conf, naoConf: naoConf,
-      qtdeConf: conf.reduce(function (s, r) { return s + r.qtde; }, 0),
-      qtdeNaoConf: naoConf.reduce(function (s, r) { return s + r.qtde; }, 0),
-      pfasConf: new Set(conf.map(function (r) { return r.pfa; })).size,
-    };
-  }
-  const coletaSep = separarConfirmado(coletaFiltrado);
-  const qtdeColeta = coletaFiltrado.reduce(function (s, r) { return s + r.qtde; }, 0);
-  const pfasColeta = new Set(coletaFiltrado.map(function (r) { return r.pfa; })).size;
+  const comNotaEmTela = filtrados.filter(function (r) { return notaPorPfa.has(r.pfa); }).map(function (r) {
+    const seg = r.segmento_macro === 'CHINELO' || r.segmento_macro === 'CHUTEIRA' ? 'CALÇADO' : r.segmento_macro;
+    return { pfa: r.pfa, segmento_macro: seg, qtde: r.pares || 0, data_nota: notaPorPfa.get(r.pfa) };
+  });
+  const qtdeColeta = comNotaEmTela.reduce(function (s, r) { return s + r.qtde; }, 0);
+  const pfasColeta = new Set(comNotaEmTela.map(function (r) { return r.pfa; })).size;
   const ajustesEmAberto = p.ajustes_em_aberto || 0;
 
   /* PFA mais antiga em tela COM NF EMITIDA (pedido da gestão, 23/09/2026):
@@ -3547,8 +3527,8 @@ function renderizarPfas() {
      (confirmado em Pendentes). Itens = soma da PFA inteira (todas as
      famílias dela), não só da linha mais antiga. */
   const itensPorPfaNota = new Map();
-  coletaSep.conf.forEach(function (r) { itensPorPfaNota.set(r.pfa, (itensPorPfaNota.get(r.pfa) || 0) + r.qtde); });
-  const pfaNotaMaisAntiga = coletaSep.conf.reduce(function (mx, r) {
+  comNotaEmTela.forEach(function (r) { itensPorPfaNota.set(r.pfa, (itensPorPfaNota.get(r.pfa) || 0) + r.qtde); });
+  const pfaNotaMaisAntiga = comNotaEmTela.reduce(function (mx, r) {
     if (!r.data_nota) return mx;
     return (!mx || r.data_nota < mx.data_nota) ? r : mx;
   }, null);
@@ -3576,8 +3556,8 @@ function renderizarPfas() {
       '<div class="val forte">' + fmtInt(paresPendentesFiscal) + ' Peças</div>' +
       '<div class="sub">' + fmtInt(pendentesFiscal.length) + ' PFAs</div></div>' +
     '<div class="kpi"><div class="rot">NF Emitida - Ag. Coleta</div>' +
-      '<div class="val forte" style="color:var(--red)">' + fmtInt(coletaSep.qtdeConf) + ' Peças</div>' +
-      '<div class="sub">' + fmtInt(coletaSep.pfasConf) + ' PFAs</div></div>' +
+      '<div class="val forte" style="color:var(--red)">' + fmtInt(qtdeColeta) + ' Peças</div>' +
+      '<div class="sub">' + fmtInt(pfasColeta) + ' PFAs</div></div>' +
     '<div class="kpi" style="border-color:var(--accent)">' +
       '<div class="rot" style="color:var(--accent)">Ajustes de PFA em aberto</div>' +
       '<div class="val forte" style="color:var(--accent)">' + fmtInt(ajustesEmAberto) + '</div>' +
@@ -3778,7 +3758,7 @@ function renderizarPfas() {
 
   /* ---------- aguardando coleta por segmento ---------- */
   const porSegColeta = new Map();
-  coletaFiltrado.forEach(function (r) {
+  comNotaEmTela.forEach(function (r) {
     porSegColeta.set(r.segmento_macro, (porSegColeta.get(r.segmento_macro) || 0) + r.qtde);
   });
   const segsColeta = Array.from(porSegColeta.entries()).sort(function (a, b) { return b[1] - a[1]; });
@@ -3800,7 +3780,7 @@ function renderizarPfas() {
      cliente conta a partir dela (pedido da gestão, 23/09/2026). Título
      mostra a faixa de datas do recorte; clicar num segmento abre o gráfico
      por idade desde a NF, no mesmo formato do "FIFO — dias em aberto". */
-  const datasNota = coletaFiltrado.map(function (r) { return r.data_nota; }).filter(Boolean).sort();
+  const datasNota = comNotaEmTela.map(function (r) { return r.data_nota; }).filter(Boolean).sort();
   const faixaDatasNota = datasNota.length
     ? (datasNota[0] === datasNota[datasNota.length - 1]
         ? 'NF de ' + formatarDataSimples(datasNota[0])
@@ -3808,7 +3788,7 @@ function renderizarPfas() {
     : '';
   let detalheSegColeta = '';
   if (segColetaAberto) {
-    const doSeg = coletaFiltrado.filter(function (r) { return r.segmento_macro === segColetaAberto; });
+    const doSeg = comNotaEmTela.filter(function (r) { return r.segmento_macro === segColetaAberto; });
     const FAIXAS_NF = [
       { chave: '0-2', rotulo: '0–2 dias', ate: 2 }, { chave: '3-5', rotulo: '3–5 dias', ate: 5 },
       { chave: '6-10', rotulo: '6–10 dias', ate: 10 }, { chave: '11+', rotulo: '11+ dias', ate: Infinity },
@@ -3946,12 +3926,6 @@ function renderizarPfas() {
      com Chinelo e Chuteira dentro de Calçados. Dois modos: peças (pares da
      PFA em tela) ou quantidade de PFAs distintas — as duas tabelas da
      planilha da operação, no formato da matrizNf do report de produtividade. */
-  const notaPorPfa = new Map();
-  (p.aguardando_coleta || []).forEach(function (r) {
-    if (!r.data_nota) return;
-    const atual = notaPorPfa.get(r.pfa);
-    if (!atual || r.data_nota < atual) notaPorPfa.set(r.pfa, r.data_nota);
-  });
   const COLS_MATRIZ_NF = [
     { chave: 'ACESSÓRIO', rotulo: 'Acessórios' }, { chave: 'CALÇADO', rotulo: 'Calçados' },
     { chave: 'MEIA', rotulo: 'Meias' }, { chave: 'VESTUÁRIO', rotulo: 'Vestuários' },
@@ -4050,12 +4024,10 @@ function renderizarPfas() {
           (faixaDatasNota ? '<span style="font-size:11px;font-weight:600;color:var(--amber)">' + faixaDatasNota + '</span>' : '') +
         '</div>' +
         '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' + fmtInt(qtdeColeta) +
-          ' pç já faturadas (' + fmtInt(pfasColeta) + ' PFAs) — única fatia com FIFO real' +
-          (coletaSep.qtdeNaoConf ? ', incluindo ' + fmtInt(coletaSep.qtdeNaoConf) + ' pç não confirmadas em tela' : '') +
-          '.</p>' +
+          ' pç com NF emitida (' + fmtInt(pfasColeta) + ' PFAs em tela), por segmento.</p>' +
         '<div class="bar-list">' + (barrasSegColeta || '<div class="aviso">Nada aguardando coleta neste recorte.</div>') + '</div>' +
         detalheSegColeta +
-        '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Clique num segmento para ver as datas de faturamento. Etapa, Conferência, Situação e Origem vêm do cruzamento com Pendentes.</p>' +
+        '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Clique num segmento para ver as datas de faturamento.</p>' +
       '</div>' +
     '</div>' +
     '<div class="card">' +
