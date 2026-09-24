@@ -359,6 +359,13 @@ const payloadRua102 = construirSnapshotRessuprimento({ registros: [
 ], negativas_excluidas: 0, negativas_unidades: 0 }, { registros: [], colisoes_volume: 0 }, mapaFamilias, {}, { arquivo_picking: 'p', arquivo_pulmao: 'x' });
 eq(payloadRua102.arvore_picking.length, 0, 'rua 102 (desativada) sai do Picking');
 eq(payloadRua102.arvore_pulmao[0].qtd, 6, 'e conta como Pulmão, igual 70/80');
+const classif102 = classificarPickingEPulmao({ registros: [
+  { familia_codigo: '101', artigo_codigo: 'R1', cor: 'PT', tamanho: '40', ean: 'R1', rua: '102', nivel: '2', box: '1', qtd: 6, qtd_cativado: 0, qtd_gap_reservado: 0 },
+  { familia_codigo: '101', artigo_codigo: 'R2', cor: 'PT', tamanho: '41', ean: 'R2', rua: '102', nivel: '4', box: '77', qtd: 2, qtd_cativado: 0, qtd_gap_reservado: 0 },
+  { familia_codigo: '101', artigo_codigo: 'R3', cor: 'PT', tamanho: '42', ean: 'R3', rua: '81', nivel: '1', box: '9', qtd: 1, qtd_cativado: 0, qtd_gap_reservado: 0 },
+], negativas_excluidas: 0, negativas_unidades: 0 }, { registros: [], colisoes_volume: 0 }, mapaFamilias);
+const ends102 = new Set(classif102.pulmaoTudo.map(function (r) { return r.rua + '-' + r.nivel + '-' + r.box; }));
+eq(Array.from(ends102).sort().join(' '), '102-1-001 81-1-001', 'um endereço só pra cada rua desativada (81 e 102)');
 const payloadSkuZero = construirSnapshotRessuprimento({ registros: [
   { familia_codigo: '101', artigo_codigo: 'Z1', cor: 'PT', tamanho: '40', ean: 'Z1', rua: '7', nivel: '1', box: '1', qtd: 5, qtd_cativado: 0, qtd_gap_reservado: 0 },
   { familia_codigo: '101', artigo_codigo: 'Z2', cor: 'PT', tamanho: '41', ean: 'Z2', rua: '7', nivel: '1', box: '2', qtd: 0, qtd_cativado: 0, qtd_gap_reservado: 0 },

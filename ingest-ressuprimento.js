@@ -100,8 +100,11 @@ const RECLASSIFICA_PICKING_PARA_PULMAO = {
   // 81 (todos os níveis) e 102 (24/09/2026, usuário): ruas de picking de
   // calçado DESATIVADAS — o material está todo no Pulmão. Mesmo tratamento
   // de 70/80: sai do Picking e conta como Pulmão (estoque bom).
-  '81': { motivo: 'Rua de picking desativada — material no Pulmão', apoioConfiavel: true },
-  '102': { motivo: 'Rua de picking desativada — material no Pulmão', apoioConfiavel: true },
+  // enderecoUnico: todo o material da rua vira UM endereço (81-1-001 e
+  // 102-1-001) — as posições antigas não existem mais e não podem inflar a
+  // contagem de endereços (pedido do usuário, 24/09/2026: "um endereço pra cada").
+  '81': { motivo: 'Rua de picking desativada — material no Pulmão', apoioConfiavel: true, enderecoUnico: true },
+  '102': { motivo: 'Rua de picking desativada — material no Pulmão', apoioConfiavel: true, enderecoUnico: true },
 };
 
 /* Ruas de cada segmento — planilha "Métricas e capacidade estoque - DISTR"
@@ -444,7 +447,7 @@ function classificarPickingEPulmao(picking, pulmao, mapaFamilias) {
     if (reclass) {
       pulmaoViaPicking.push(Object.assign({}, enriquecido, {
         origem: 'picking_reclassificado', motivo: reclass.motivo, apoio_confiavel: reclass.apoioConfiavel,
-      }));
+      }, reclass.enderecoUnico ? { nivel: '1', box: '001' } : {}));
     } else {
       enriquecido.bucket = classificarBucket(fam.segmento, fam.categoria);
       pickingReal.push(enriquecido);
