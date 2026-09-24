@@ -57,6 +57,7 @@
   --roxo:        #A77BEA;
   --verde-escuro: #2E8B3E;
   --verde-musgo: #5B7F2B;
+  --azul-marinho: #2F5DA8;
   --brand-miz:   #DFBD41;
   --brand-oly:   #297ADF;
   --brand-ua:    #C8102E;
@@ -85,6 +86,7 @@
   --roxo:        #7C4DC4;
   --verde-escuro: #237A33;
   --verde-musgo: #4E6E24;
+  --azul-marinho: #1A3A6B;
   --brand-miz:   #B8940A;
   --brand-oly:   #1A6FC4;
   --brand-ua:    #C0392B;
@@ -2738,7 +2740,9 @@ function htmlComposicaoSegmento(p) {
   '</div>';
 
 }
-const COR_SEGMENTO_COMP = { 'VESTUÁRIO': '--accent', 'MEIA': '--olive', 'ACESSÓRIO': '--amber', 'CALÇADO': '--laranja' };
+// Cores escolhidas pelo usuário (24/09/2026), na ordem da rosca:
+// amarelo, verde, azul marinho e gelo.
+const COR_SEGMENTO_COMP = { 'VESTUÁRIO': '--amber', 'MEIA': '--olive', 'ACESSÓRIO': '--azul-marinho', 'CALÇADO': '--gelo' };
 let ruaBOAberta = null;
 // Ruas do último render (preenchido em renderizarEstoqueOperacao) — o clique
 // na barra monta o tooltip direto no DOM, sem re-renderizar a tela inteira
