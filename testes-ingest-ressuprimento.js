@@ -374,6 +374,18 @@ eq(payloadSkuZero.arvore_picking[0].skus, 1, 'só o SKU com peça conta (o aloca
 eq(payloadSkuZero.ocupacao.picking.calcado.ocupado, 2, 'mas o endereço alocado vazio continua ocupando posição');
 eq(payloadSkuZero.ocupacao.picking.calcado.detalhe.ruas.join(','), '7,8', 'zona de calçado do Picking = ruas 7 e 8 (81 e 102 desativadas)');
 
+secao('capacidade por rua bate com a capacidade por zona (planilha da operação)');
+const somaRuas = function (linha, ruas) { return ruas.reduce(function (a, r) { return a + payloadSkuZero.ocupacao_por_rua.capacidade[linha][r]; }, 0); };
+eq(somaRuas('picking', ['1', '2', '3', '4', '5', '6']), 14630, 'Picking vestuário 1–6 = 14.630');
+eq(somaRuas('picking', ['7', '8']), 4352, 'Picking calçado 7–8 = 4.352');
+eq(somaRuas('picking', ['11', '12', '13']), 1598, 'Picking acessório 11–13 = 1.598');
+eq(somaRuas('picking', ['14', '15']), 408, 'Picking meia 14–15 = 408');
+eq(somaRuas('pulmao', ['1', '15']), 848, 'Pulmão meia 1 e 15 = 848');
+eq(somaRuas('pulmao', ['2', '6', '7']), 2136, 'Pulmão vestuário 2, 6, 7 = 2.136');
+eq(somaRuas('pulmao', ['3', '4', '5']), 2131, 'Pulmão calçado 3–5 = 2.131');
+eq(somaRuas('pulmao', ['11', '12', '13', '14']), 952, 'Pulmão acessório 11–14 = 952');
+eq(payloadSkuZero.ocupacao_por_rua.picking['7'], 2, 'ocupado por rua conta endereço alocado (2 na rua 7)');
+
 secao('rua 20 (crossdocking) é descartada já na leitura dos arquivos');
 const pRua20 = parsearPicking(arquivoPicking([linhaPicking('20', '01', '001', '12', '3'), linhaPicking('01', '01', '001', '5', '0')]));
 eq(pRua20.registros.length, 1, 'só a linha fora da rua 20 fica');

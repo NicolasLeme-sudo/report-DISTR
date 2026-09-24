@@ -5052,19 +5052,35 @@ function renderizarEstoqueOperacao(p) {
     // rua 15) — reforço client-side pra valer mesmo em snapshots antigos,
     // gerados antes desse corte existir no ingest, sem esperar reprocessar.
     const LIMITE_RUA_FISICA_TELA = 15;
+    /* Mesma régua dos cards de ocupação (24/09/2026): LIVRE = capacidade da
+       rua (planilha) − endereços ocupados nela. Picking ainda mostra à parte o
+       endereço CADASTRADO sem saldo (tem SKU alocado, zero peça). Snapshot
+       antigo, sem ocupacao_por_rua, cai na estimativa por posição de antes. */
+    const opr = p.ocupacao_por_rua;
+    const livresPorRua = function (linha) {
+      const saida = [];
+      if (!opr) return saida;
+      Object.keys(opr.capacidade[linha] || {}).forEach(function (rua) {
+        const n = Math.max(0, opr.capacidade[linha][rua] - ((opr[linha] || {})[rua] || 0));
+        for (let i = 0; i < n; i++) saida.push([rua, '', '', 0]);
+      });
+      return saida;
+    };
     const ZONAS_OCIOSOS = [
       { chave: 'picking', rotulo: 'Picking', tipos: [
-        { chave: 'vazio', rotulo: 'Vazio', lista: oc.picking.vazios, cor: null },
+        { chave: 'livre', rotulo: 'Livre (sem SKU cadastrado)', lista: livresPorRua('picking'), cor: null },
+        { chave: 'vazio', rotulo: 'Cadastrado sem saldo', lista: oc.picking.vazios, cor: null },
         { chave: 'picado', rotulo: 'Menos de ' + oc.limite_picado + ' pç', lista: oc.picking.picados, cor: '--amber' },
       ] },
       { chave: 'pulmao', rotulo: 'Pulmão', tipos: [
-        { chave: 'vazio', rotulo: 'Vazio (estimado)', lista: oc.pulmao.vazios, cor: null },
+        opr ? { chave: 'livre', rotulo: 'Livre', lista: livresPorRua('pulmao'), cor: null }
+            : { chave: 'vazio', rotulo: 'Vazio (estimado)', lista: oc.pulmao.vazios, cor: null },
         { chave: 'picado', rotulo: 'Menos de ' + oc.limite_picado + ' pç', lista: oc.pulmao.picados, cor: '--amber' },
       ] },
     ];
     const ruas = new Map(); // rua -> { zonas: Map(chave -> { rotulo, tipos: Map(chave -> {rotulo, cor, end, pecas}), end, pecas }), end, pecas }
-    const tot = { pv: 0, pp: 0, uv: 0, up: 0 };
-    const TOT_CHAVE = { picking: { vazio: 'pv', picado: 'pp' }, pulmao: { vazio: 'uv', picado: 'up' } };
+    const tot = { pl: 0, pv: 0, pp: 0, uv: 0, up: 0 };
+    const TOT_CHAVE = { picking: { livre: 'pl', vazio: 'pv', picado: 'pp' }, pulmao: { livre: 'uv', vazio: 'uv', picado: 'up' } };
     ZONAS_OCIOSOS.forEach(function (z) {
       z.tipos.forEach(function (t) {
         t.lista.forEach(function (l) {
@@ -5084,7 +5100,7 @@ function renderizarEstoqueOperacao(p) {
       });
     });
     const ruasOrdenadas = Array.from(ruas.keys()).sort(function (a, b) { return Number(a) - Number(b); });
-    const totEnd = tot.pv + tot.pp + tot.uv + tot.up;
+    const totEnd = tot.pl + tot.pv + tot.pp + tot.uv + tot.up;
     const totPecas = ruasOrdenadas.reduce(function (s, r) { return s + ruas.get(r).pecas; }, 0);
 
     function linhaOciosos(nivel, chave, rotulo, endCount, pecasCount, temFilhos, cor) {
@@ -5124,17 +5140,20 @@ function renderizarEstoqueOperacao(p) {
         '<span style="display:flex;gap:6px;flex-wrap:wrap">' +
           '<button class="btn-mini" onclick="expandirTudoOciosos()">Expandir tudo</button>' +
           '<button class="btn-mini" onclick="recolherTudoOciosos()">Recolher tudo</button>' +
-          '<button class="btn-mini" onclick="exportarPosicoesOciosas(\'picking\', \'vazios\')">⬇ Posições livres — Picking</button>' +
-          '<button class="btn-mini" onclick="exportarPosicoesOciosas(\'pulmao\', \'vazios\')">⬇ Posições livres — Pulmão</button>' +
+          '<button class="btn-mini" onclick="exportarPosicoesOciosas(\'picking\', \'vazios\')">⬇ Cadastrados sem saldo — Picking</button>' +
+          '<button class="btn-mini" onclick="exportarPosicoesOciosas(\'pulmao\', \'vazios\')" title="Lista de posições vazias identificadas no arquivo (box existe na rua, nível sem volume) — pode não cobrir todas as livres">⬇ Posições vazias — Pulmão</button>' +
           '<button class="btn-mini" onclick="exportarPosicoesOciosas(null, \'picados\')">⬇ Endereços com &lt; ' + oc.limite_picado + ' pç</button>' +
         '</span>' +
       '</div>' +
-      '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Picking: endereço alocado com saldo zero (disponível + cativado). ' +
-        'Pulmão: posição <strong>estimada</strong> — box que existe na rua mas está sem volume naquele nível. Só rua física até a ' + LIMITE_RUA_FISICA_TELA + ' — acima disso é corredor/trânsito, fora da conta.</p>' +
+      (opr
+        ? '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Livre = capacidade da rua menos os endereços ocupados — mesma conta dos cards de ocupação. ' +
+          'Picking "cadastrado sem saldo" = endereço com SKU alocado e zero peça.</p>'
+        : '<div class="aviso" style="margin-bottom:12px">Reprocesse <strong>Picking + Pulmão</strong> para o livre por rua usar a mesma régua dos cards de ocupação.</div>') +
       '<div class="kpi-row">' +
-        '<div class="kpi"><div class="rot">Picking vazio</div><div class="val forte">' + fmtInt(tot.pv) + '</div><div class="sub">endereços alocados sem saldo</div></div>' +
+        (opr ? '<div class="kpi"><div class="rot">Picking livre</div><div class="val forte">' + fmtInt(tot.pl) + '</div><div class="sub">sem SKU cadastrado</div></div>' : '') +
+        '<div class="kpi"><div class="rot">Picking cadastrado sem saldo</div><div class="val forte">' + fmtInt(tot.pv) + '</div><div class="sub">SKU alocado, zero peça</div></div>' +
         '<div class="kpi"><div class="rot">Picking &lt; ' + oc.limite_picado + ' pç</div><div class="val forte" style="color:var(--amber)">' + fmtInt(tot.pp) + '</div><div class="sub">candidatos a compactar</div></div>' +
-        '<div class="kpi"><div class="rot">Pulmão vazio (estimado)</div><div class="val forte">' + fmtInt(tot.uv) + '</div><div class="sub">posições de porta-pallet livres</div></div>' +
+        '<div class="kpi"><div class="rot">Pulmão livre' + (opr ? '' : ' (estimado)') + '</div><div class="val forte">' + fmtInt(tot.uv) + '</div><div class="sub">posições de porta-pallet livres</div></div>' +
         '<div class="kpi"><div class="rot">Pulmão &lt; ' + oc.limite_picado + ' pç</div><div class="val forte" style="color:var(--amber)">' + fmtInt(tot.up) + '</div><div class="sub">candidatos a compactar</div></div>' +
       '</div>' +
       '<div class="tabela-rolavel tabela-5-linhas" style="margin-top:12px"><table class="arvore"><thead><tr>' +

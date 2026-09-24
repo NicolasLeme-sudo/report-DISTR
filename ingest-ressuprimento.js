@@ -120,6 +120,17 @@ const RUAS_ZONA = {
   pulmao: { meia: ['1', '15'], vestuario: ['2', '6', '7'], calcado: ['3', '4', '5'], acessorio: ['11', '12', '13', '14'] },
 };
 const BUCKETS_ZONA = ['meia', 'vestuario', 'acessorio', 'calcado'];
+/* Capacidade (endereços) POR RUA — mesma planilha; a soma por zona bate com
+   dim_capacidade_zonas. Picking calçado (7+8 = 4.352) vem por longarina na
+   planilha: dividido pela quantidade de níveis (rua 7 = 3, rua 8 = 4). Usada
+   pra "livre por rua" (capacidade − ocupado) no bloco de endereços vazios,
+   mesma régua dos cards de ocupação (24/09/2026). */
+const CAPACIDADE_RUA = {
+  picking: { '1': 2415, '2': 2450, '3': 2450, '4': 2415, '5': 2450, '6': 2450, '7': 1865, '8': 2487,
+             '11': 1190, '12': 204, '13': 204, '14': 272, '15': 136 },
+  pulmao: { '1': 712, '2': 712, '3': 712, '4': 707, '5': 712, '6': 712, '7': 712,
+            '11': 136, '12': 272, '13': 272, '14': 272, '15': 136 },
+};
 
 /* Ruas que NÃO são estoque e saem de tudo já na leitura (Picking e Pulmão):
    rua 20 = CROSSDOCKING, operação do recebimento sem estoque físico
@@ -687,6 +698,19 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     };
   }
   const ocupacao = montarOcupacao(cap, posicoesOcupadas);
+  // Endereços ocupados por rua (qualquer produto) — base do "livre por rua".
+  function ocupadosPorRua(lista) {
+    const porRua = {};
+    lista.forEach(function (r) {
+      const rua = String(r.rua);
+      if (!porRua[rua]) porRua[rua] = new Set();
+      porRua[rua].add(r.nivel + '|' + r.box);
+    });
+    const saida = {};
+    Object.keys(porRua).forEach(function (rua) { saida[rua] = porRua[rua].size; });
+    return saida;
+  }
+  const ocupacaoPorRua = { picking: ocupadosPorRua(pickingReal), pulmao: ocupadosPorRua(pulmaoFisico), capacidade: CAPACIDADE_RUA };
   // Segunda árvore, mesma forma, medida em peças — recalculada do zero (não
   // é o número de endereço convertido) com a capacidade já segregada por
   // item (pedido da operação, 09/09/2026).
@@ -949,6 +973,7 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
       pulmao: pulmao.desconsiderado || novoContadorDesconsiderado(),
     },
     ocupacao: ocupacao,
+    ocupacao_por_rua: ocupacaoPorRua,
     ocupacao_itens: ocupacaoItens,
     // Saldo parado nas ruas de trânsito/validação do Pulmão, por endereço —
     // fica de fora da ocupação×capacidade acima, mas precisa aparecer em
