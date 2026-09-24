@@ -585,6 +585,9 @@ tr.total > th, tr.total > td {
 .loading-msg { color: var(--text-muted); font-size: 12px; padding: 20px 0; }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+/* Detalhamento (largo) + Composição por segmento (estreito) na mesma linha. */
+.grid-det { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); gap: 16px; align-items: start; }
+.filtros-mini .chip { padding: 2px 9px; font-size: 10.5px; }
 .matriz-nf { width: 100%; border-collapse: separate; border-spacing: 2px; font-variant-numeric: tabular-nums; }
 .matriz-nf thead th { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-label); font-weight: 600; padding: 6px 8px; text-align: center; }
 .matriz-nf th.esq { text-align: left; }
@@ -595,7 +598,7 @@ tr.total > th, tr.total > td {
 .matriz-nf td.mz-tot { background: var(--bg-input); }
 .matriz-nf tr.mz-total th, .matriz-nf tr.mz-total td { border-top: 1px solid var(--border); font-weight: 700; background: var(--bg-input); }
 @media (max-width: 900px) {
-  .grid2 { grid-template-columns: 1fr; }
+  .grid2, .grid-det { grid-template-columns: 1fr; }
   .sidebar { display: none; }
   .topbar { left: 0; }
   .conteudo { margin-left: 0; }
@@ -2620,6 +2623,16 @@ const FAIXAS_PARADO = [
   { chave: '0-2', rotulo: '0–2 dias', ate: 2 }, { chave: '3-5', rotulo: '3–5 dias', ate: 5 },
   { chave: '6-10', rotulo: '6–10 dias', ate: 10 }, { chave: '11+', rotulo: '11+ dias', ate: Infinity },
 ];
+// Filtro de marca do card "Composição por segmento" (pizza) ao lado do
+// Detalhamento — null = todas (pedido do usuário, 24/09/2026).
+let filtroMarcaCompRessup = null;
+function alternarMarcaCompRessup(marca) {
+  filtroMarcaCompRessup = filtroMarcaCompRessup === marca ? null : marca;
+  const scrollY = window.scrollY;
+  renderizarEstoqueOperacao();
+  window.scrollTo(0, scrollY);
+}
+const COR_SEGMENTO_COMP = { 'VESTUÁRIO': '--accent', 'MEIA': '--olive', 'ACESSÓRIO': '--amber', 'CALÇADO': '--laranja' };
 let ruaBOAberta = null;
 // Ruas do último render (preenchido em renderizarEstoqueOperacao) — o clique
 // na barra monta o tooltip direto no DOM, sem re-renderizar a tela inteira
@@ -3264,7 +3277,7 @@ function alternarSegColeta(seg, ev) {
 }
 /* Donut multi-segmento (mesmo traço em anel do "Backlog FIFO" do Report
    E-commerce — path por arco, sem lib) — usado no tooltip de FIFO. */
-function donutMultiSegmento(segmentos, totalRotulo) {
+function donutMultiSegmento(segmentos, totalRotulo, tamanho) {
   const total = segmentos.reduce(function (s, f) { return s + f.valor; }, 0) || 1;
   const cx = 60, cy = 60, r = 42, sw = 20;
   let ang = -90, paths = '';
@@ -3284,8 +3297,9 @@ function donutMultiSegmento(segmentos, totalRotulo) {
       x2.toFixed(2) + ' ' + y2.toFixed(2) + '" fill="none" stroke="' + f.cor + '" stroke-width="' + sw + '"/>';
     ang = ae;
   });
-  return '<svg width="120" height="120" viewBox="0 0 120 120">' + paths +
-    '<text x="60" y="56" text-anchor="middle" font-size="17" font-weight="700" fill="var(--text)">' + fmtInt(total) + '</text>' +
+  const px = tamanho || 120;
+  return '<svg width="' + px + '" height="' + px + '" viewBox="0 0 120 120">' + paths +
+    '<text x="60" y="56" text-anchor="middle" font-size="' + (fmtInt(total).length > 7 ? 12 : fmtInt(total).length > 5 ? 14 : 17) + '" font-weight="700" fill="var(--text)">' + fmtInt(total) + '</text>' +
     '<text x="60" y="72" text-anchor="middle" font-size="9" fill="var(--text-muted)">' + escapar(totalRotulo || 'peças') + '</text>' +
   '</svg>';
 }
@@ -4727,50 +4741,51 @@ function renderizarEstoqueOperacao(p) {
   const totalGeral = arvoreAtual.reduce(function (s, m) { return s + m.qtd; }, 0);
   const skusGeral = arvoreAtual.reduce(function (s, m) { return s + m.skus; }, 0);
 
-  /* ---------- gráfico 1 (topo): composição por marca — geral, soma todos os segmentos do recorte ---------- */
-  let barraMarca = '', legendaMarca = '';
-  arvoreAtual.forEach(function (m) {
-    const perc = totalGeral > 0 ? m.qtd / totalGeral * 100 : 0;
-    if (perc <= 0) return;
-    const cor = 'var(' + (COR_MARCA[m.codigo] || '--gelo') + ')';
-    barraMarca += '<div style="width:' + perc + '%;background:' + cor + '" title="' +
-      escapar(m.nome) + ' — ' + fmtInt(m.qtd) + '">' + (perc > 6 ? escapar(m.nome) + ' ' + fmtPct(perc) : '') + '</div>';
-    legendaMarca += '<span><i style="background:' + cor + '"></i>' + escapar(m.nome) +
-      ' · ' + fmtInt(m.qtd) + ' (' + fmtPct(perc) + ')</span>';
-  });
-
-  /* ---------- gráfico 2 (embaixo): composição por segmento — visão macro, cruza TODAS as marcas ----------
-     Não usa a árvore por marca (que já pode estar recortada por segmento) nem teria sentido recortar
-     pelo próprio filtro de segmento — vem pronto de por_segmento_macro_* (ingest-ressuprimento.js),
-     sempre a visão completa do filtro Picking/Pulmão/Todos, pra dar contexto de onde o recorte
-     escolhido acima se encaixa no todo.
-     CHUTEIRA e CHINELO entram somados dentro de CALÇADO NESTE GRÁFICO só
-     (pedido do usuário, 23/09/2026) — os dois são fatia pequena demais
-     (0,1% cada) pra pesar sozinhos aqui. O filtro "Segmento" dos chips
-     acima continua com os 6 baldes separados, pra quem quiser recortar só
-     chuteira ou só chinelo. */
-  const segmentosParaGrafico = (function () {
-    const fundidos = ['CHUTEIRA', 'CHINELO'];
+  /* ---------- composição por segmento (pizza) com filtro de marca ----------
+     Substitui os gráficos de barra por marca e por segmento (pedido do
+     usuário, 24/09/2026): uma pizza por segmento, recortável por marca
+     (OLY/MIZ/UA) nos chips do próprio card. Usa a árvore completa do filtro
+     Picking/Pulmão/Todos — não o recorte de segmento dos chips do topo, senão
+     a pizza mostraria só a fatia já escolhida. CHUTEIRA e CHINELO somam em
+     CALÇADO (mesma regra do gráfico antigo, 23/09/2026). */
+  const MARCAS_COMP = [{ codigo: 'OLYMPIKUS', rotulo: 'OLY' }, { codigo: 'MIZUNO', rotulo: 'MIZ' }, { codigo: 'UNDER ARMOUR', rotulo: 'UA' }];
+  const segmentosComp = (function () {
     const porNome = new Map();
-    segmentosDisponiveis.forEach(function (s) {
-      const alvo = fundidos.indexOf(s.nome) !== -1 ? 'CALÇADO' : s.nome;
-      if (!porNome.has(alvo)) porNome.set(alvo, { codigo: alvo, nome: alvo, qtd: 0, skus: 0 });
-      const g = porNome.get(alvo);
-      g.qtd += s.qtd; g.skus += s.skus;
+    ((p && p['arvore_' + filtroRessuprimento]) || []).forEach(function (m) {
+      if (filtroMarcaCompRessup && m.codigo !== filtroMarcaCompRessup) return;
+      (m.segmentos || []).forEach(function (sg) {
+        (sg.familias || []).forEach(function (f) {
+          let nome = f.segmento_macro || 'OUTROS';
+          if (nome === 'CHUTEIRA' || nome === 'CHINELO') nome = 'CALÇADO';
+          porNome.set(nome, (porNome.get(nome) || 0) + (f.qtd || 0));
+        });
+      });
     });
-    return Array.from(porNome.values()).sort(function (a, b) { return b.qtd - a.qtd; });
+    return Array.from(porNome.entries())
+      .map(function (e) { return { rotulo: e[0], valor: e[1], cor: 'var(' + (COR_SEGMENTO_COMP[e[0]] || '--gelo') + ')' }; })
+      .filter(function (x) { return x.valor > 0; })
+      .sort(function (x, y) { return y.valor - x.valor; });
   })();
-  const totalSegmento = segmentosParaGrafico.reduce(function (s, x) { return s + x.qtd; }, 0);
-  const maxSeg = segmentosParaGrafico.reduce(function (mx, s) { return Math.max(mx, s.qtd); }, 0);
-  let barrasSegmento = '';
-  segmentosParaGrafico.forEach(function (s) {
-    const larg = maxSeg > 0 ? s.qtd / maxSeg * 100 : 0;
-    barrasSegmento += '<div class="bar-item' + (filtroSegmentoRessuprimento.has(s.codigo) ? ' on' : '') + '">' +
-      '<div class="nome">' + escapar(s.nome) + '</div>' +
-      '<div class="trilho"><div class="preench" style="width:' + larg + '%;background:var(--accent)"></div></div>' +
-      '<div class="num">' + fmtInt(s.qtd) + ' · ' + fmtPct(totalSegmento ? s.qtd / totalSegmento * 100 : 0) + '</div>' +
-    '</div>';
-  });
+  const totalComp = segmentosComp.reduce(function (a, x) { return a + x.valor; }, 0);
+  const blocoComposicao = '<div class="card">' +
+    '<div class="section-title">Composição por segmento — ' + ROT_FILTRO_RESSUP[filtroRessuprimento] + '</div>' +
+    '<div class="filtros filtros-mini" style="margin-bottom:10px">' +
+      '<span class="chip' + (!filtroMarcaCompRessup ? ' on' : '') + '" onclick="alternarMarcaCompRessup(null)">Todas</span>' +
+      MARCAS_COMP.map(function (m) {
+        return '<span class="chip' + (filtroMarcaCompRessup === m.codigo ? ' on' : '') + '" onclick="alternarMarcaCompRessup(\'' + m.codigo + '\')" title="' + m.codigo + '">' + m.rotulo + '</span>';
+      }).join('') +
+    '</div>' +
+    (totalComp
+      ? '<div style="display:flex;justify-content:center;margin:4px 0 12px">' + donutMultiSegmento(segmentosComp, 'itens', 150) + '</div>' +
+        segmentosComp.map(function (x) {
+          return '<div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:6px">' +
+            '<span style="width:10px;height:10px;border-radius:50%;background:' + x.cor + ';flex-shrink:0"></span>' +
+            '<span style="flex:1">' + escapar(x.rotulo) + '</span><b>' + fmtInt(x.valor) + '</b>' +
+            '<span style="color:var(--text-muted);width:48px;text-align:right">' + fmtPct(x.valor / totalComp * 100) + '</span>' +
+          '</div>';
+        }).join('')
+      : '<div class="aviso">Sem material para essa marca no recorte.</div>') +
+  '</div>';
 
   /* ---------- árvore Marca › Grupo › Família ----------
      Segmento e família ganham "⬇ endereços": exporta os artigos daquele nó
@@ -5069,6 +5084,7 @@ function renderizarEstoqueOperacao(p) {
     kpisOcupacao +
     // Detalhamento logo abaixo da ocupação, antes dos gráficos de composição
     // (pedido do usuário, 23/09/2026).
+    '<div class="grid-det">' +
     '<div class="card">' +
       '<div class="section-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">' +
         '<span>Detalhamento — Marca › Grupo › Família (' + ROT_FILTRO_RESSUP[filtroRessuprimento] + ')</span>' +
@@ -5097,16 +5113,7 @@ function renderizarEstoqueOperacao(p) {
                   window.LIMITE_BUSCA_SALDO_ENDERECO + ' de maior quantidade — refine a busca pra ver o resto (o CSV não tem esse teto).</p>' : '')) +
           '</div>') +
     '</div>' +
-    '<div class="grid2">' +
-      '<div class="card">' +
-        '<div class="section-title">Composição por marca — ' + ROT_FILTRO_RESSUP[filtroRessuprimento] + '</div>' +
-        '<div class="barra-comp">' + barraMarca + '</div>' +
-        '<div class="legenda">' + legendaMarca + '</div>' +
-      '</div>' +
-      '<div class="card">' +
-        '<div class="section-title">Composição por segmento — ' + ROT_FILTRO_RESSUP[filtroRessuprimento] + '</div>' +
-        '<div class="bar-list">' + barrasSegmento + '</div>' +
-      '</div>' +
+      blocoComposicao +
     '</div>' +
     blocoOciosos +
     blocoBO +
