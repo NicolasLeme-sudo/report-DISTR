@@ -58,6 +58,30 @@ const FAIXAS_FIFO_PFA = [
    item), e por isso não pode virar alarme. */
 const DIAS_PARCIAL_RASTREIO = 3;
 
+/* Conferência a partir do Analítico — que lista os volumes que AINDA NÃO
+   passaram na esteira de conferência (confirmado pela operação, 24/09/2026:
+   PFA de 15 volumes com 10 lidos aparece no Analítico com os 5 que faltam).
+   Até essa data o sistema lia ao contrário (volume no arquivo = lido), o que
+   mostrava "Completa" justamente pra quem não tinha passado na esteira.
+   lidos = total da PFA − volumes ainda no Analítico. Etapas antes da
+   separação (sem volume formado) não têm o que conferir: não iniciada. */
+const ETAPAS_ANTES_DA_CONFERENCIA = ['Nao disp. picking', 'Disp. p/ picking'];
+const REGRA_CONFERENCIA = 'pendentes_leitura';
+function statusConferenciaPorPendentes(situacao, total, pendentes, diasNaEtapa) {
+  total = total || 0; pendentes = pendentes || 0;
+  if (ETAPAS_ANTES_DA_CONFERENCIA.indexOf(situacao) !== -1) {
+    return { status: 'nao_iniciada', volumes_lidos: 0, volumes_total: total };
+  }
+  if (total <= 0) return { status: 'nao_iniciada', volumes_lidos: 0, volumes_total: pendentes };
+  const lidos = Math.max(0, total - pendentes);
+  let status = lidos === 0 ? 'nao_iniciada' : (lidos >= total ? 'completa' : 'parcial');
+  // Parcial parada há muito tempo deixa de ser fluxo normal e vira tarefa.
+  if (status === 'parcial' && diasNaEtapa !== null && diasNaEtapa !== undefined && diasNaEtapa >= DIAS_PARCIAL_RASTREIO) {
+    status = 'parcial_rastreio';
+  }
+  return { status: status, volumes_lidos: lidos, volumes_total: total };
+}
+
 function faixaFifoPfa(dias) {
   for (let i = 0; i < FAIXAS_FIFO_PFA.length; i++) {
     if (dias <= FAIXAS_FIFO_PFA[i].ate) return FAIXAS_FIFO_PFA[i].chave;
@@ -709,19 +733,9 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
     volumesPorPfa.get(r.pfa).add(r.volume);
   });
 
-  function statusConferencia(pfa, qtVolumes, diasNaEtapa) {
-    const lidos = volumesPorPfa.has(pfa) ? volumesPorPfa.get(pfa).size : 0;
-    const total = qtVolumes || 0;
-    // Sem saber o total não dá pra dizer "completa" — trata como parcial
-    // assumida em vez de fingir certeza que o dado não sustenta.
-    let status = 'nao_iniciada';
-    if (lidos > 0) status = (total > 0 && lidos >= total) ? 'completa' : 'parcial';
-    // Parcial parada há muito tempo deixa de ser fluxo normal e vira tarefa —
-    // é um status à parte pra tela poder gritar só com o que merece grito.
-    if (status === 'parcial' && diasNaEtapa !== null && diasNaEtapa >= DIAS_PARCIAL_RASTREIO) {
-      status = 'parcial_rastreio';
-    }
-    return { status: status, volumes_lidos: lidos, volumes_total: total };
+  function statusConferencia(pfa, qtVolumes, diasNaEtapa, situacao) {
+    const pendentesLeitura = volumesPorPfa.has(pfa) ? volumesPorPfa.get(pfa).size : 0;
+    return statusConferenciaPorPendentes(situacao, qtVolumes, pendentesLeitura, diasNaEtapa);
   }
 
   // Sem Analítico novo não dá pra recalcular conferência nenhuma (não tem
@@ -729,6 +743,9 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
   // conferido antes (voltando tudo pra "não iniciada"), reaproveita o
   // último valor conhecido POR PFA. PFA nova, nunca vista, fica honesta em
   // "não iniciada" mesmo assim — não tem de onde puxar histórico dela.
+  // Snapshot anterior à regra de 24/09/2026 guardou em conferencia_lidos os
+  // volumes que estavam NO Analítico (= pendentes de leitura) — converte.
+  const ultimoRegraAntiga = !!(ultimo && ultimo.conferencia_regra !== REGRA_CONFERENCIA);
   const conferenciaCongelada = new Map();
   if (!analiticoFornecido && ultimo && ultimo.pendentes) {
     ultimo.pendentes.forEach(function (r) {
@@ -737,9 +754,12 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
       });
     });
   }
-  function statusConferenciaOuCongelada(pfa, qtVolumes, diasNaEtapa) {
-    if (analiticoFornecido) return statusConferencia(pfa, qtVolumes, diasNaEtapa);
-    return conferenciaCongelada.get(pfa) || { status: 'nao_iniciada', volumes_lidos: 0, volumes_total: qtVolumes || 0 };
+  function statusConferenciaOuCongelada(pfa, qtVolumes, diasNaEtapa, situacao) {
+    if (analiticoFornecido) return statusConferencia(pfa, qtVolumes, diasNaEtapa, situacao);
+    const c = conferenciaCongelada.get(pfa);
+    if (!c) return statusConferenciaPorPendentes(situacao, qtVolumes, qtVolumes, diasNaEtapa);
+    if (ultimoRegraAntiga) return statusConferenciaPorPendentes(situacao, c.volumes_total, c.volumes_lidos, diasNaEtapa);
+    return c;
   }
 
   /* PFA "nova" de um AJUSTE é reconhecida por aparecer como `pfa_nova` de
@@ -756,7 +776,7 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
   /* ---------- 3. linhas de Pendentes, já enriquecidas ---------- */
   const linhasPendentes = pendentesAtivos.map(function (r) {
     const e = enriquecer(r.familia_codigo);
-    const conf = statusConferenciaOuCongelada(r.pfa, r.qt_volumes, r.dias_na_etapa);
+    const conf = statusConferenciaOuCongelada(r.pfa, r.qt_volumes, r.dias_na_etapa, r.situacao);
     const ehRetrabalhada = pfaNovaParaAjuste.has(r.pfa);
     const diasUteisRetrabalho = ehRetrabalhada && r.data_importacao
       ? diasUteisEntre(r.data_importacao, hoje) : null;
@@ -1037,6 +1057,7 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
     // Pedaço não reenviado nesta rodada → mantém o nome do arquivo que
     // alimentou ele da última vez, pra tela continuar dizendo a fonte real.
     arquivo_pendentes: pendentesFornecido ? ((meta && meta.arquivo_pendentes) || null) : ((ultimo && ultimo.arquivo_pendentes) || null),
+    conferencia_regra: REGRA_CONFERENCIA,
     arquivo_analitico: analiticoFornecido ? ((meta && meta.arquivo_analitico) || null) : ((ultimo && ultimo.arquivo_analitico) || null),
     arquivo_embarcadas: embarcadasFornecido ? ((meta && meta.arquivo_embarcadas) || null) : ((ultimo && ultimo.arquivo_embarcadas) || null),
     referencia: hoje,
@@ -1283,6 +1304,8 @@ window.processarAjustesPfa = processarAjustesPfa;
 window.extrairNumeroEncomenda = extrairNumeroEncomenda;
 window.parsearPfasPendentes = parsearPfasPendentes;
 window.parsearPfasAnalitico = parsearPfasAnalitico;
+window.statusConferenciaPorPendentes = statusConferenciaPorPendentes;
+window.REGRA_CONFERENCIA = REGRA_CONFERENCIA;
 window.parsearPfasEmbarcadas = parsearPfasEmbarcadas;
 window.parsearAjustesPfa = parsearAjustesPfa;
 window.construirSnapshotPfas = construirSnapshotPfas;

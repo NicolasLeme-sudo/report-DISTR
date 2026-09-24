@@ -615,7 +615,11 @@ tr.total > th, tr.total > td {
 .card-det .section-title { flex-shrink: 0; }
 .det-rolagem { flex: 1 1 0; min-height: 176px; overflow: auto; }
 #card-composicao { display: flex; flex-direction: column; }
-#card-composicao > .corpo-comp { flex: 1; display: flex; align-items: center; gap: 14px; }
+#card-composicao > .corpo-comp { flex: 1; display: flex; align-items: center; gap: 18px; }
+#card-composicao .fatia-comp { cursor: pointer; transition: opacity .15s; }
+#card-composicao .leg-comp { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 4px 8px;
+  margin-bottom: 2px; border-radius: 6px; cursor: default; }
+#card-composicao .leg-comp.ativo { background: var(--bg-input); font-weight: 700; }
 .det-rolagem thead th { position: sticky; top: 0; z-index: 1; background: var(--bg-card); }
 .filtros-mini .chip { padding: 2px 9px; font-size: 10.5px; }
 .matriz-nf { width: 100%; border-collapse: separate; border-spacing: 2px; font-variant-numeric: tabular-nums; }
@@ -2713,6 +2717,7 @@ function htmlComposicaoSegmento(p) {
       .sort(function (x, y) { return y.valor - x.valor; });
   })();
   const totalComp = segmentosComp.reduce(function (a, x) { return a + x.valor; }, 0);
+  compSegAtual = { segs: segmentosComp, total: totalComp };
   return '<div class="card" id="card-composicao">' +
     '<div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
       '<span>Composição por segmento — ' + ROT_FILTRO_RESSUP[filtroRessuprimento] + '</span>' +
@@ -2726,13 +2731,20 @@ function htmlComposicaoSegmento(p) {
     // fica com a altura do Detalhamento recolhido, sem vão.
     (totalComp
       ? '<div class="corpo-comp">' +
-        '<div style="flex-shrink:0">' + donutMultiSegmento(segmentosComp, 'itens', 120) + '</div>' +
+        // Valores só no hover (pedido do usuário, 24/09/2026): passar na fatia
+        // ou no nome da legenda troca o centro da rosca pelo valor e %.
+        '<div style="flex-shrink:0" onmouseleave="destacarSegComp(null)">' + (function () {
+          let n = 0;
+          return donutMultiSegmento(segmentosComp, 'itens', 165).replace(/<path /g, function () {
+            const i = n++;
+            return '<path class="fatia-comp" data-i="' + i + '" onmouseenter="destacarSegComp(' + i + ')" ';
+          });
+        })() + '</div>' +
         '<div style="flex:1;min-width:0">' +
-        segmentosComp.map(function (x) {
-          return '<div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:6px">' +
+        segmentosComp.map(function (x, i) {
+          return '<div class="leg-comp" data-i="' + i + '" onmouseenter="destacarSegComp(' + i + ')" onmouseleave="destacarSegComp(null)">' +
             '<span style="width:10px;height:10px;border-radius:50%;background:' + x.cor + ';flex-shrink:0"></span>' +
-            '<span style="flex:1">' + escapar(x.rotulo) + '</span><b>' + fmtInt(x.valor) + '</b>' +
-            '<span style="color:var(--text-muted);width:48px;text-align:right">' + fmtPct(x.valor / totalComp * 100) + '</span>' +
+            '<span>' + escapar(x.rotulo) + '</span>' +
           '</div>';
         }).join('') +
         '</div></div>'
@@ -2742,6 +2754,29 @@ function htmlComposicaoSegmento(p) {
 }
 // Cores escolhidas pelo usuário (24/09/2026), na ordem da rosca:
 // amarelo, verde, azul marinho e gelo.
+let compSegAtual = { segs: [], total: 0 };
+// Hover na rosca/legenda da Composição: centro mostra valor e % do segmento,
+// as outras fatias apagam. null volta pro total.
+function destacarSegComp(i) {
+  const card = document.getElementById('card-composicao');
+  if (!card) return;
+  const textos = card.querySelectorAll('svg text');
+  const seg = i === null ? null : compSegAtual.segs[i];
+  card.querySelectorAll('.fatia-comp').forEach(function (el) {
+    el.style.opacity = (seg && Number(el.getAttribute('data-i')) !== i) ? '.25' : '1';
+  });
+  card.querySelectorAll('.leg-comp').forEach(function (el) {
+    el.classList.toggle('ativo', seg !== null && Number(el.getAttribute('data-i')) === i);
+  });
+  if (textos.length < 2) return;
+  const valor = seg ? seg.valor : compSegAtual.total;
+  const txt = fmtInt(valor);
+  textos[0].textContent = txt;
+  textos[0].setAttribute('font-size', txt.length > 7 ? 12 : txt.length > 5 ? 14 : 17);
+  textos[1].textContent = seg
+    ? fmtPct(compSegAtual.total ? seg.valor / compSegAtual.total * 100 : 0) + ' · ' + seg.rotulo.toLowerCase()
+    : 'itens';
+}
 const COR_SEGMENTO_COMP = { 'VESTUÁRIO': '--amber', 'MEIA': '--olive', 'ACESSÓRIO': '--azul-marinho', 'CALÇADO': '--gelo' };
 let ruaBOAberta = null;
 // Ruas do último render (preenchido em renderizarEstoqueOperacao) — o clique
@@ -3335,6 +3370,18 @@ function aplicarEtapaPersona(p) {
     if (!atual || r.data_nota < atual) notaPfa.set(r.pfa, r.data_nota);
   });
   (p.pendentes || []).forEach(function (r) { r.data_nota = notaPfa.get(r.pfa) || null; });
+  // Snapshot processado antes de 24/09/2026 leu o Analítico ao contrário
+  // (volume no arquivo = lido; na verdade é o que AINDA NÃO passou na
+  // esteira). conferencia_lidos desses snapshots é a contagem de pendentes —
+  // reconverte aqui pra tela ficar certa sem precisar reprocessar.
+  if (p.conferencia_regra !== window.REGRA_CONFERENCIA && window.statusConferenciaPorPendentes) {
+    (p.pendentes || []).forEach(function (r) {
+      const c = window.statusConferenciaPorPendentes(r.situacao_arquivo || r.situacao, r.conferencia_total,
+        r.conferencia_lidos, r.dias_na_etapa);
+      r.conferencia = c.status; r.conferencia_lidos = c.volumes_lidos; r.conferencia_total = c.volumes_total;
+    });
+    p.conferencia_regra = window.REGRA_CONFERENCIA;
+  }
   (p.pendentes || []).forEach(function (r) {
     if (r.situacao_arquivo === undefined) r.situacao_arquivo = r.situacao;
     r.situacao = r.situacao_arquivo === 'Leitura expedicao' && ehClientePersona(r.cliente_nome)

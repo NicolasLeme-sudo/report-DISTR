@@ -118,9 +118,9 @@ const mapaFamilias = new Map([
 ]);
 
 const pendCompleto = parsearPfasPendentes([CAB_PEND,
-  linhaPend('235651', '21/08', '102', '1', 'Leitura expedicao', '6'),    // 1 volume, 1 conferido -> completa
-  linhaPend('236153', '28/08', '105', '2', 'Leitura expedicao', '72'),   // 2 volumes, 1 conferido -> parcial
-  linhaPend('237746', '21/08', '082', '5', 'Leitura expedicao', '118'),  // nada conferido -> nao_iniciada
+  linhaPend('235651', '21/08', '102', '1', 'Leitura expedicao', '6'),    // 1 volume, 1 ainda no Analítico -> nao_iniciada
+  linhaPend('236153', '28/08', '105', '2', 'Leitura expedicao', '72'),   // 2 volumes, 1 no Analítico -> parcial
+  linhaPend('237746', '21/08', '082', '5', 'Leitura expedicao', '118'),  // nenhum no Analítico -> completa
   linhaPend('242263', '01/09', '105', '3', 'Nao disp. picking', '144'),  // nada conferido
   linhaPend('243305', '05/09', '060', '2', 'Em picking', '500'),         // JÁ EMBARCADA: sai de tudo
 ].join('\n'), HOJE);
@@ -158,17 +158,21 @@ eq(snap.stats.aguardando_coleta.pfas, 1, 'uma PFA faturada esperando coleta');
 eq(snap.stats.aguardando_coleta.nota_mais_antiga_dias, 195, 'FIFO da coleta usa DATA_NOTA (25/02 = 195 dias)');
 eq(snap.stats.aguardando_nf.volumes, 1, 'volume distinto, não linha: V-B com 2 SKUs conta 1');
 
-secao('conferência — volume DISTINTO lido × total de volumes da PFA');
+secao('conferência — Analítico lista o que AINDA NÃO passou na esteira (24/09/2026)');
 function conf(pfa) { return snap.pendentes.filter(function (r) { return r.pfa === pfa; })[0]; }
-eq(conf('235651').conferencia, 'completa', '235651: 1 de 1 volume lido → completa');
-eq(conf('235651').conferencia_lidos + '/' + conf('235651').conferencia_total, '1/1', 'razão exibida na tela');
+eq(conf('235651').conferencia, 'nao_iniciada', '235651: o único volume ainda está no Analítico → não iniciada');
+eq(conf('235651').conferencia_lidos + '/' + conf('235651').conferencia_total, '0/1', 'razão exibida na tela');
 // 236153 entrou na etapa em 28/08 (11 dias parada) — parcial que passa de 3
 // dias vira caso de rastreio, não fluxo normal.
 eq(conf('236153').conferencia, 'parcial_rastreio',
    '236153: 1 de 2 volumes E parada há 11 dias → parcial em rastreio');
 eq(conf('236153').conferencia_lidos + '/' + conf('236153').conferencia_total, '1/2', 'razão 1/2');
-eq(conf('237746').conferencia, 'nao_iniciada', '237746: nenhum volume lido → não iniciada');
-eq(conf('237746').conferencia_lidos + '/' + conf('237746').conferencia_total, '0/5', 'razão 0/5');
+eq(conf('237746').conferencia, 'completa', '237746: nenhum volume pendente no Analítico → todos lidos');
+eq(conf('237746').conferencia_lidos + '/' + conf('237746').conferencia_total, '5/5', 'razão 5/5');
+eq(conf('242263').conferencia, 'nao_iniciada', '242263: Nao disp. picking não tem volume formado → não iniciada (não "completa")');
+eq(snap.conferencia_regra, 'pendentes_leitura', 'snapshot marca a regra nova');
+eq(statusConferenciaPorPendentes('Em picking', 15, 5, 0).volumes_lidos, 10, '15 volumes, 5 no Analítico → 10 lidos');
+eq(statusConferenciaPorPendentes('Em picking', 15, 5, 0).status, 'parcial', '… parcial');
 
 secao('enriquecimento por família (mesmo gabarito do resto do report)');
 eq(conf('235651').marca, 'MIZUNO', 'família 102 → MIZUNO');
@@ -591,12 +595,12 @@ secao('construirSnapshotPfas — abastecimento parcial (só Pendentes, ou só Em
 
 // snap1: rodada "completa", com os 3 arquivos.
 const pend1Parcial = parsearPfasPendentes([CAB_PEND,
-  linhaPend('S1', '01/09', '102', '2', 'Nao disp. picking', '10'), // 2 volumes, 1 conferido -> parcial
+  linhaPend('S1', '01/09', '102', '2', 'Em picking', '10'),        // 2 volumes, 1 no Analítico -> parcial
   linhaPend('S2', '01/09', '102', '1', 'Nao disp. picking', '8'),  // com nota -> aguardando_coleta
   linhaPend('E1', '01/09', '102', '1', 'Nao disp. picking', '7'),  // vai ser embarcada
 ].join('\n'), HOJE);
 const ana1Parcial = parsearPfasAnalitico([CAB_ANA,
-  linhaAna('S1', '0', '', 'VOLA', '102', 'ART1', '4'),               // sem nota, 1 de 2 volumes lidos
+  linhaAna('S1', '0', '', 'VOLA', '102', 'ART1', '4'),               // sem nota, 1 de 2 volumes ainda pendente
   linhaAna('S2', 'N100', '01/09/2026', 'VOLB', '102', 'ART2', '6'),  // com nota
 ].join('\n'));
 const emb1Parcial = parsearPfasEmbarcadas([CAB_EMB, linhaEmb('E1', '01/09/2026', 'N1', '5')].join('\n'));
@@ -728,6 +732,14 @@ ok(
   snapDivergAd.avisos_divergencia_ajustes[0].indexOf('Analítico') !== -1,
   'mensagem identifica a PFA e cita o Analítico como fonte automática'
 );
+
+/* -------------------------------------------------------------------------- */
+secao('snapshot antigo (regra invertida) é convertido quando o Analítico não é reenviado');
+const ultimoAntigo = { pendentes: [{ pfa: 'V1', conferencia: 'completa', conferencia_lidos: 1, conferencia_total: 1 }] };
+const pendV1 = parsearPfasPendentes([CAB_PEND, linhaPend('V1', '01/09', '102', '1', 'Em picking', '28')].join('\n'), HOJE);
+const snapV1 = construirSnapshotPfas(pendV1, null, null, mapaFamilias, { referencia: HOJE }, { registros: [] }, new Map(), ultimoAntigo);
+eq(snapV1.pendentes[0].conferencia, 'nao_iniciada', 'V1: o "1 lido" antigo era 1 volume AINDA no Analítico → não iniciada');
+eq(snapV1.pendentes[0].conferencia_lidos + '/' + snapV1.pendentes[0].conferencia_total, '0/1', 'razão 0/1');
 
 /* -------------------------------------------------------------------------- */
 secao('diasUteisEntre — pula sábado e domingo');
