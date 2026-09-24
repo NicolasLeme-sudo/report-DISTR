@@ -3134,8 +3134,9 @@ const ROT_ETAPA_PFA = {
 
 /* ---------- Clientes que personalizam ----------
    Lista padrão = planilha "Base de Clientes que personalizam DISTR" + 8 nomes
-   sem razão social (24/09/2026). Um upload em Admin › Abastecimento grava
-   um snapshot (pagina 'clientes_persona') que substitui esta lista.
+   sem razão social (24/09/2026). A lista em uso vem da tabela
+   dim_clientes_persona (mesma carga inicial); esta constante só vale se a
+   tabela não responder.
    Casamento: nome do cliente da PFA, sem acento/pontuação, CONTÉM o nome da
    lista como palavras inteiras (então "FLAMBOYAN" pega a razão social que
    tiver FLAMBOYAN). Linha "N" com o nome exato força não-persona. */
@@ -3555,16 +3556,18 @@ function linhasTabelaPfa() {
   });
 }
 
+/* Lista de clientes que personalizam vem de dim_clientes_persona (Admin ›
+   Abastecimento substitui a tabela inteira). Tabela vazia ou ilegível: fica
+   a lista padrão embutida (CLIENTES_PERSONA_PADRAO). */
 async function carregarClientesPersona() {
   try {
-    const r = await supabaseClient.from('dashboard_snapshots').select('payload, gerado_em')
-      .eq('pagina', 'clientes_persona').order('gerado_em', { ascending: false }).limit(1);
-    const pl = r && r.data && r.data[0] && r.data[0].payload;
-    if (pl && Array.isArray(pl.clientes) && pl.clientes.length) {
-      clientesPersona = pl.clientes;
-      origemClientesPersona = (pl.arquivo || 'upload') + ' (' + formatarDataHora(r.data[0].gerado_em) + ')';
+    const r = await supabaseClient.from('dim_clientes_persona').select('nome, personalizavel, atualizado_em');
+    if (r && !r.error && r.data && r.data.length) {
+      clientesPersona = r.data.map(function (c) { return { nome: c.nome, personalizavel: c.personalizavel }; });
+      const ultima = r.data.reduce(function (mx, c) { return c.atualizado_em > mx ? c.atualizado_em : mx; }, '');
+      origemClientesPersona = 'banco de dados, atualizada em ' + formatarDataHora(ultima);
     }
-  } catch (e) { /* sem snapshot: segue com a lista padrão */ }
+  } catch (e) { /* segue com a lista padrão */ }
 }
 async function carregarPfas() {
   const alvo = document.getElementById('start-conteudo');
@@ -6930,11 +6933,14 @@ document.getElementById('btnProcessarPersona').addEventListener('click', async f
     const clientes = lerPlanilhaPersona(wb);
     if (!clientes.length) throw new Error('Nenhum cliente lido da planilha.');
     escrever(fmtInt(clientes.length) + ' cliente(s) lidos (' + fmtInt(clientes.filter(function (c) { return c.personalizavel; }).length) + ' com S).');
-    const { error } = await supabaseClient.from('dashboard_snapshots').insert({
-      pagina: 'clientes_persona', gerado_em: new Date().toISOString(),
-      payload: { clientes: clientes, arquivo: arquivoPersonaSelecionado.name },
-    });
-    if (error) throw new Error(error.message);
+    // Substitui a lista inteira: apaga tudo e grava a planilha.
+    const del = await supabaseClient.from('dim_clientes_persona').delete().neq('nome', '');
+    if (del.error) throw new Error(del.error.message);
+    const agora = new Date().toISOString();
+    const ins = await supabaseClient.from('dim_clientes_persona').insert(clientes.map(function (c) {
+      return { nome: c.nome, personalizavel: c.personalizavel, atualizado_em: agora };
+    }));
+    if (ins.error) throw new Error(ins.error.message + ' — a lista pode ter ficado vazia; envie a planilha de novo.');
     clientesPersona = clientes;
     if (dadosPfas) aplicarEtapaPersona(dadosPfas);
     ok.textContent = '✔ Lista salva — o Start Inicial já usa a nova lista.';
