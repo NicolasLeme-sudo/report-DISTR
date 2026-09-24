@@ -124,7 +124,7 @@ const picking = {
     { familia_codigo: '101', artigo_codigo: 'A2', cor: 'PT', tamanho: '40', ean: 'EAN2', rua: '20', nivel: '1', box: '1', qtd: 10, qtd_gap_reservado: 0 },
     { familia_codigo: '101', artigo_codigo: 'A3', cor: 'PT', tamanho: '40', ean: 'EAN3', rua: '70', nivel: '1', box: '1', qtd: 7, qtd_gap_reservado: 0 },
     { familia_codigo: '101', artigo_codigo: 'A4', cor: 'PT', tamanho: '40', ean: 'EAN4', rua: '81', nivel: '2', box: '1', qtd: 3, qtd_gap_reservado: 0 },
-    { familia_codigo: '101', artigo_codigo: 'A5', cor: 'PT', tamanho: '40', ean: 'EAN5', rua: '81', nivel: '1', box: '1', qtd: 4, qtd_gap_reservado: 0 },
+    { familia_codigo: '101', artigo_codigo: 'A5', cor: 'PT', tamanho: '40', ean: 'EAN5', rua: '7', nivel: '1', box: '1', qtd: 4, qtd_gap_reservado: 0 },
   ],
   negativas_excluidas: 0, negativas_unidades: 0,
 };
@@ -165,13 +165,13 @@ eq(payload.ressuprimento_por_segmento.calcado.apoio_pulmao_disponivel, 200,
 // nível 1) NÃO entra: gabarito da gestão exclui a rua 81 inteira dessa soma
 // específica, mesmo o nível 1 continuando picking de verdade pra ocupação
 // (05/09/2026). Sem essa exclusão daria 69 (contando A5=4 também).
-eq(payload.ressuprimento_por_segmento.calcado.saldo_disponivel, 50, 'saldo_disponivel exclui A5 (rua 81 nível 1) — só A1(50)');
+eq(payload.ressuprimento_por_segmento.calcado.saldo_disponivel, 54, 'saldo_disponivel = A1(50) + A5(4, rua 7) — rua 81 agora é Pulmão (desativada, 24/09/2026)');
 eq(payload.ressuprimento_por_segmento.calcado.saldo_cativado, 15, 'saldo_cativado soma só qtd_cativado (A1=15, A5 não tem)');
-eq(payload.ressuprimento_por_segmento.calcado.saldo_picking, 65, 'saldo_picking = disponível + cativado, sem a rua 81');
+eq(payload.ressuprimento_por_segmento.calcado.saldo_picking, 69, 'saldo_picking = disponível + cativado (50+4+15)');
 
 // mas a rua 81 nível 1 (A5) continua contando NORMALMENTE na árvore/ocupação
 // do Picking-Calçado — a exclusão é só nesse cruzamento de ressuprimento.
-eq(totalArvorePicking, 69, 'árvore de picking continua com A1(50+15)+A5(4) — rua 81 nível 1 não sai da ocupação');
+eq(totalArvorePicking, 69, 'árvore de picking continua com A1(50+15)+A5(4) — rua 7 (picking de calçado) não sai da ocupação');
 
 // "Composição por segmento" precisa concordar com a árvore por marca — as
 // duas leem os mesmos pickingReal/pulmaoTudo, então a mesma convenção
@@ -262,8 +262,8 @@ secao('ocupação — endereço ALOCADO conta, saldo zero não esvazia a posiç�
 // antigo, de saldo > 0, dava 240 e o armazém parecia mais vazio do que está.
 const pickingComZerado = {
   registros: [
-    { familia_codigo: '101', artigo_codigo: 'A5', cor: 'PT', tamanho: '40', ean: 'E5', rua: '81', nivel: '1', box: '1', qtd: 4, qtd_gap_reservado: 0 },
-    { familia_codigo: '101', artigo_codigo: 'A6', cor: 'PT', tamanho: '41', ean: 'E6', rua: '81', nivel: '1', box: '2', qtd: 0, qtd_gap_reservado: 0 },
+    { familia_codigo: '101', artigo_codigo: 'A5', cor: 'PT', tamanho: '40', ean: 'E5', rua: '7', nivel: '1', box: '1', qtd: 4, qtd_gap_reservado: 0 },
+    { familia_codigo: '101', artigo_codigo: 'A6', cor: 'PT', tamanho: '41', ean: 'E6', rua: '7', nivel: '1', box: '2', qtd: 0, qtd_gap_reservado: 0 },
   ],
   negativas_excluidas: 0, negativas_unidades: 0,
 };
@@ -287,8 +287,8 @@ secao('ocupação em ITENS — recalculada do zero, peça de propósito diferent
 // zerado conta pra um lado e não conta pro outro).
 const pickingComCativado = {
   registros: [
-    { familia_codigo: '101', artigo_codigo: 'A5', cor: 'PT', tamanho: '40', ean: 'E5', rua: '81', nivel: '1', box: '1', qtd: 4, qtd_cativado: 3, qtd_gap_reservado: 0 },
-    { familia_codigo: '101', artigo_codigo: 'A6', cor: 'PT', tamanho: '41', ean: 'E6', rua: '81', nivel: '1', box: '2', qtd: 0, qtd_cativado: 0, qtd_gap_reservado: 0 },
+    { familia_codigo: '101', artigo_codigo: 'A5', cor: 'PT', tamanho: '40', ean: 'E5', rua: '7', nivel: '1', box: '1', qtd: 4, qtd_cativado: 3, qtd_gap_reservado: 0 },
+    { familia_codigo: '101', artigo_codigo: 'A6', cor: 'PT', tamanho: '41', ean: 'E6', rua: '7', nivel: '1', box: '2', qtd: 0, qtd_cativado: 0, qtd_gap_reservado: 0 },
   ],
   negativas_excluidas: 0, negativas_unidades: 0,
 };
@@ -354,13 +354,18 @@ eq(payloadFisico.ocupacao.picking.calcado.ocupado, 0,
    'nem de picking — some de tudo');
 
 secao('SKU alocado sem saldo não conta na coluna Qtde SKUs');
+const payloadRua102 = construirSnapshotRessuprimento({ registros: [
+  { familia_codigo: '101', artigo_codigo: 'R1', cor: 'PT', tamanho: '40', ean: 'R1', rua: '102', nivel: '2', box: '1', qtd: 6, qtd_cativado: 0, qtd_gap_reservado: 0 },
+], negativas_excluidas: 0, negativas_unidades: 0 }, { registros: [], colisoes_volume: 0 }, mapaFamilias, {}, { arquivo_picking: 'p', arquivo_pulmao: 'x' });
+eq(payloadRua102.arvore_picking.length, 0, 'rua 102 (desativada) sai do Picking');
+eq(payloadRua102.arvore_pulmao[0].qtd, 6, 'e conta como Pulmão, igual 70/80');
 const payloadSkuZero = construirSnapshotRessuprimento({ registros: [
   { familia_codigo: '101', artigo_codigo: 'Z1', cor: 'PT', tamanho: '40', ean: 'Z1', rua: '7', nivel: '1', box: '1', qtd: 5, qtd_cativado: 0, qtd_gap_reservado: 0 },
   { familia_codigo: '101', artigo_codigo: 'Z2', cor: 'PT', tamanho: '41', ean: 'Z2', rua: '7', nivel: '1', box: '2', qtd: 0, qtd_cativado: 0, qtd_gap_reservado: 0 },
 ], negativas_excluidas: 0, negativas_unidades: 0 }, { registros: [], colisoes_volume: 0 }, mapaFamilias, {}, { arquivo_picking: 'p', arquivo_pulmao: 'x' });
 eq(payloadSkuZero.arvore_picking[0].skus, 1, 'só o SKU com peça conta (o alocado vazio fica fora)');
 eq(payloadSkuZero.ocupacao.picking.calcado.ocupado, 2, 'mas o endereço alocado vazio continua ocupando posição');
-eq(payloadSkuZero.ocupacao.picking.calcado.detalhe.ruas.join(','), '7,8,81,102', 'zona de calçado do Picking = ruas 7, 8, 81 e 102');
+eq(payloadSkuZero.ocupacao.picking.calcado.detalhe.ruas.join(','), '7,8', 'zona de calçado do Picking = ruas 7 e 8 (81 e 102 desativadas)');
 
 secao('rua 20 (crossdocking) é descartada já na leitura dos arquivos');
 const pRua20 = parsearPicking(arquivoPicking([linhaPicking('20', '01', '001', '12', '3'), linhaPicking('01', '01', '001', '5', '0')]));

@@ -97,9 +97,12 @@ const RECLASSIFICA_PICKING_PARA_PULMAO = {
   // Rua 99 no arquivo de Picking também é transitório (23/09/2026): sai do
   // Picking e vai pro card de material parado, igual à 99 do Pulmão.
   '99': { motivo: 'Endereço de retorno de saldo', apoioConfiavel: false },
-  // rua 81 é tratada à parte (abaixo): só o nível 02 reclassifica.
+  // 81 (todos os níveis) e 102 (24/09/2026, usuário): ruas de picking de
+  // calçado DESATIVADAS — o material está todo no Pulmão. Mesmo tratamento
+  // de 70/80: sai do Picking e conta como Pulmão (estoque bom).
+  '81': { motivo: 'Rua de picking desativada — material no Pulmão', apoioConfiavel: true },
+  '102': { motivo: 'Rua de picking desativada — material no Pulmão', apoioConfiavel: true },
 };
-const MOTIVO_81_02 = 'Capacidade de calçados Under Armour esgotada no picking';
 
 /* Ruas de cada segmento — planilha "Métricas e capacidade estoque - DISTR"
    da operação (24/09/2026), a mesma que deu os números de dim_capacidade_zonas:
@@ -109,10 +112,8 @@ const MOTIVO_81_02 = 'Capacidade de calçados Under Armour esgotada no picking';
               (2.131), acessório 11–14 (952). Rua 8 do Pulmão = insumos,
               fora da capacidade (confirmado pelo usuário). */
 const RUAS_ZONA = {
-  // 81 (nível 1, tênis UA) e 102 (tênis/chuteira Mizuno, níveis 1–4) não
-  // estão na planilha, mas no arquivo real são picking de calçado — entram na
-  // zona de calçado até a operação confirmar (24/09/2026).
-  picking: { vestuario: ['1', '2', '3', '4', '5', '6'], calcado: ['7', '8', '81', '102'], acessorio: ['11', '12', '13'], meia: ['14', '15'] },
+  // 81 e 102 estão desativadas (material no Pulmão) — fora das zonas.
+  picking: { vestuario: ['1', '2', '3', '4', '5', '6'], calcado: ['7', '8'], acessorio: ['11', '12', '13'], meia: ['14', '15'] },
   pulmao: { meia: ['1', '15'], vestuario: ['2', '6', '7'], calcado: ['3', '4', '5'], acessorio: ['11', '12', '13', '14'] },
 };
 const BUCKETS_ZONA = ['meia', 'vestuario', 'acessorio', 'calcado'];
@@ -438,7 +439,7 @@ function classificarPickingEPulmao(picking, pulmao, mapaFamilias) {
     });
 
     let reclass = RECLASSIFICA_PICKING_PARA_PULMAO[r.rua];
-    if (r.rua === '81' && r.nivel === '2') reclass = { motivo: MOTIVO_81_02, apoioConfiavel: true };
+    // (81 nível 02 tinha motivo próprio; desde 24/09/2026 a rua 81 inteira reclassifica.)
 
     if (reclass) {
       pulmaoViaPicking.push(Object.assign({}, enriquecido, {
@@ -882,7 +883,6 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     // contando normalmente na ocupação/árvore do Picking-Calçado.
     const doBucket = pickingReal.filter(function (r) {
       if (r.bucket !== bucket) return false;
-      if (bucket === 'calcado' && r.rua === '81') return false;
       return true;
     });
     const enderecosComApoio = new Set();
