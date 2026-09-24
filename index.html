@@ -379,6 +379,11 @@ html { overflow-x: hidden; }
 .bar-item-rua .nome { white-space: nowrap; cursor: default; font-size: 11px; font-weight: 600; }
 .bar-item-rua .trilho { background: var(--bg-input); border-radius: 3px; height: 16px; overflow: hidden; }
 .bar-item-rua .preench { height: 100%; border-radius: 3px; }
+.bar-item-rua .seg-bo { cursor: pointer; border-radius: 0; }
+.bar-item-rua .seg-bo:first-child { border-radius: 3px 0 0 3px; }
+.bar-item-rua .seg-bo:last-child { border-radius: 0 3px 3px 0; }
+.bar-item-rua .seg-bo:only-child { border-radius: 3px; }
+.bar-item-rua .seg-bo:hover { filter: brightness(1.15); }
 .bar-item-rua .num { font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
 
 /* Funil de PFAs: mesma ideia do grid compartilhado acima, mas com DUAS colunas
@@ -2598,6 +2603,29 @@ let filtroTextoValidacao = '';
 // acompanhamento não pode esconder item por causa de paginação.
 let limiteValidacao = Infinity;       // quantas linhas carregar na tabela (não afeta o CSV)
 let ordemValidacao = { campo: 'qtd', direcao: 'desc' };
+// Barras do material parado por idade da última movimentação (24/09/2026).
+// Prazo em dias: até ele fica amarelo, acima vermelho (a operação vai
+// avaliar se diminui).
+const PRAZO_PARADO_DIAS = 7;
+const FAIXAS_PARADO = [
+  { chave: '0-2', rotulo: '0–2 dias', ate: 2 }, { chave: '3-5', rotulo: '3–5 dias', ate: 5 },
+  { chave: '6-10', rotulo: '6–10 dias', ate: 10 }, { chave: '11+', rotulo: '11+ dias', ate: Infinity },
+];
+let ruaBOAberta = null;
+let ruaBOTooltipPos = null;
+function alternarRuaBO(rua, ev) {
+  const fechando = rua === null || ruaBOAberta === rua;
+  ruaBOAberta = fechando ? null : rua;
+  if (!fechando && ev && ev.currentTarget) {
+    const r = ev.currentTarget.getBoundingClientRect();
+    ruaBOTooltipPos = { top: Math.min(r.bottom + 6, window.innerHeight - 380), left: Math.min(Math.max(ev.clientX - 140, 12), window.innerWidth - 300) };
+  } else {
+    ruaBOTooltipPos = null;
+  }
+  const scrollY = window.scrollY;
+  renderizarEstoqueOperacao();
+  window.scrollTo(0, scrollY);
+}
 // Ordenação da lista de barras "por rua" do B.O. em trânsito/validação
 // (06/09/2026) — 'rua' ordena numericamente pelo número da rua, 'qtd' pela
 // quantidade parada ali. Independente de ordemValidacao acima, que ordena a
@@ -4664,9 +4692,21 @@ function renderizarEstoqueOperacao(p) {
     validacaoTudo.forEach(function (v) {
       totalQtd += v.qtd;
       enderecosDistintos.add(v.rua + '|' + v.nivel + '|' + v.box);
-      if (!porRua.has(v.rua)) porRua.set(v.rua, { rua: v.rua, rotulo: String(Number(v.rua)) === '98' ? 'Transitório - Armazenagem/Recebimento' : v.classificacao, qtd: 0, enderecos: new Set() });
+      if (!porRua.has(v.rua)) porRua.set(v.rua, { rua: v.rua, rotulo: String(Number(v.rua)) === '98' ? 'Transitório - Armazenagem/Recebimento' : v.classificacao, qtd: 0, enderecos: new Set(), recente: 0, antigo: 0, sem: 0, faixas: {} });
       const g = porRua.get(v.rua);
       g.qtd += v.qtd; g.enderecos.add(v.rua + '|' + v.nivel + '|' + v.box);
+      // Idade por VOLUME (última movimentação dele neste endereço, Kardex);
+      // saldo sem volume ou sem registro no Kardex vai pro "sem registro".
+      let somaVol = 0;
+      (v.volumes_det || []).forEach(function (vol) {
+        const q = vol.q || 0; somaVol += q;
+        if (!vol.entrada) { g.sem += q; return; }
+        const d = diasDesdeIso(vol.entrada);
+        if (d <= PRAZO_PARADO_DIAS) g.recente += q; else g.antigo += q;
+        const f = FAIXAS_PARADO.find(function (x) { return d <= x.ate; });
+        g.faixas[f.chave] = (g.faixas[f.chave] || 0) + q;
+      });
+      if (v.qtd > somaVol) g.sem += v.qtd - somaVol;
     });
     // Ordenação pedida pelo usuário (06/09/2026): por endereço (número da
     // rua) ou por quantidade, cada uma do maior pro menor ou o inverso —
@@ -4674,22 +4714,69 @@ function renderizarEstoqueOperacao(p) {
     // comparador pra 'asc' sem duplicar a função de comparação.
     const mult = ordemBarrasBO.direcao === 'asc' ? 1 : -1;
     const ruas = Array.from(porRua.values())
-      .map(function (r) { return { rua: r.rua, rotulo: r.rotulo, qtd: r.qtd, enderecos: r.enderecos.size }; })
+      .map(function (r) { return { rua: r.rua, rotulo: r.rotulo, qtd: r.qtd, enderecos: r.enderecos.size, recente: r.recente, antigo: r.antigo, sem: r.sem, faixas: r.faixas }; })
       .sort(function (a, b) {
         const diff = ordemBarrasBO.campo === 'rua' ? (parseInt(a.rua, 10) - parseInt(b.rua, 10)) : (a.qtd - b.qtd);
         return mult * diff;
       });
     const maxRua = ruas.reduce(function (mx, r) { return Math.max(mx, r.qtd); }, 0);
     let barrasBO = '';
+    // Barra quebrada pela idade da última movimentação (pedido do usuário,
+    // 24/09/2026): amarelo até PRAZO_PARADO_DIAS, vermelho acima, cinza sem
+    // registro no Kardex. Clicar abre a pizza por faixa de FIFO da rua.
     ruas.forEach(function (r) {
-      const larg = maxRua > 0 ? r.qtd / maxRua * 100 : 0;
+      const pct = function (q) { return maxRua > 0 ? q / maxRua * 100 : 0; };
       const rotuloRua = 'Rua ' + r.rua + ' — ' + r.rotulo;
+      const clique = ' onclick="alternarRuaBO(\'' + escaparJs(r.rua) + '\', event)"';
+      const seg = function (q, cor, dica) {
+        return q > 0 ? '<div class="preench seg-bo" style="width:' + pct(q) + '%;background:' + cor + '"' + clique +
+          ' title="' + escapar(dica + ': ' + fmtInt(q) + ' pç — clique para ver por faixa de FIFO') + '"></div>' : '';
+      };
       barrasBO += '<div class="bar-item bar-item-rua">' +
         '<div class="nome" title="' + escapar(rotuloRua) + '">' + escapar(rotuloRua) + '</div>' +
-        '<div class="trilho"><div class="preench" style="width:' + larg + '%;background:var(--amber)"></div></div>' +
+        '<div class="trilho" style="display:flex;gap:1px">' +
+          seg(r.recente, 'var(--amber)', 'Até ' + PRAZO_PARADO_DIAS + ' dias') +
+          seg(r.antigo, 'var(--red)', 'Mais de ' + PRAZO_PARADO_DIAS + ' dias') +
+          seg(r.sem, 'var(--text-muted)', 'Sem registro no Kardex') +
+        '</div>' +
         '<div class="num">' + fmtInt(r.qtd) + ' · ' + fmtInt(r.enderecos) + ' end.</div>' +
       '</div>';
     });
+    const legendaBarrasBO = '<div class="legenda" style="margin:-6px 0 14px">' +
+      '<span><i style="background:var(--amber)"></i>Até ' + PRAZO_PARADO_DIAS + ' dias</span>' +
+      '<span><i style="background:var(--red)"></i>Mais de ' + PRAZO_PARADO_DIAS + ' dias</span>' +
+      '<span><i style="background:var(--text-muted)"></i>Sem registro no Kardex</span>' +
+      '<span style="color:var(--text-muted)">· dias desde a última movimentação · clique na barra para ver por FIFO</span>' +
+    '</div>';
+
+    let tooltipRuaBO = '';
+    const ruaAberta = ruaBOAberta !== null ? ruas.find(function (r) { return r.rua === ruaBOAberta; }) : null;
+    if (ruaAberta) {
+      const segs = FAIXAS_PARADO.map(function (f) {
+        return { chave: f.chave, rotulo: f.rotulo, valor: ruaAberta.faixas[f.chave] || 0, cor: 'var(' + COR_FAIXA_FIFO[f.chave] + ')' };
+      }).concat([{ chave: 'sem', rotulo: 'Sem registro', valor: ruaAberta.sem, cor: 'var(--text-muted)' }]);
+      const legenda = segs.map(function (f) {
+        return '<div style="display:flex;align-items:center;gap:6px;font-size:11px;margin-bottom:4px">' +
+          '<span style="width:9px;height:9px;border-radius:50%;background:' + f.cor + ';flex-shrink:0"></span>' +
+          '<span style="flex:1">' + escapar(f.rotulo) + '</span><b>' + fmtInt(f.valor) + '</b>' +
+          '<span style="color:var(--text-muted);width:44px;text-align:right">' + fmtPct(ruaAberta.qtd ? f.valor / ruaAberta.qtd * 100 : 0) + '</span>' +
+        '</div>';
+      }).join('');
+      const pos = ruaBOTooltipPos || { top: 80, left: 80 };
+      tooltipRuaBO =
+        '<div style="position:fixed;inset:0;z-index:998" onclick="alternarRuaBO(null)"></div>' +
+        '<div style="position:fixed;top:' + pos.top + 'px;left:' + pos.left + 'px;z-index:999;' +
+          'background:var(--bg-card);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.35);' +
+          'padding:14px;width:280px;max-width:calc(100vw - 24px)" onclick="event.stopPropagation()">' +
+          '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:10px">' +
+            '<strong style="font-size:12px">' + escapar('Rua ' + ruaAberta.rua + ' — ' + ruaAberta.rotulo) + '</strong>' +
+            '<span class="chip" onclick="alternarRuaBO(null)" style="cursor:pointer;font-size:10px">✕</span>' +
+          '</div>' +
+          '<p style="font-size:10.5px;color:var(--text-muted);margin:0 0 10px">Dias desde a última movimentação (FIFO)</p>' +
+          '<div style="display:flex;justify-content:center">' + donutMultiSegmento(segs, 'pç') + '</div>' +
+          '<div style="margin-top:10px">' + legenda + '</div>' +
+        '</div>';
+    }
     function setaOrdemBarrasBO(campo) {
       if (ordemBarrasBO.campo !== campo) return '';
       return ' <span style="font-size:9px">' + (ordemBarrasBO.direcao === 'asc' ? '▲' : '▼') + '</span>';
@@ -4821,6 +4908,7 @@ function renderizarEstoqueOperacao(p) {
         '</div>' +
         chipsOrdemBarrasBO +
         '<div class="bar-list-rua" style="margin-bottom:14px">' + barrasBO + '</div>' +
+        legendaBarrasBO + tooltipRuaBO +
         chipsClassif +
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0">' +
           '<input type="text" id="buscaValidacao" placeholder="Buscar (endereço, SKU, nome, volume, login…)" ' +
