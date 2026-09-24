@@ -54,6 +54,7 @@
   --accent-soft: #16283F;
   --gelo:        #93A5B8;
   --laranja:     #E8830D;
+  --roxo:        #A77BEA;
   --brand-miz:   #DFBD41;
   --brand-oly:   #297ADF;
   --brand-ua:    #C8102E;
@@ -79,6 +80,7 @@
   --accent-soft: #EFF6FF;
   --gelo:        #8FA3B8;
   --laranja:     #C26A00;
+  --roxo:        #7C4DC4;
   --brand-miz:   #B8940A;
   --brand-oly:   #1A6FC4;
   --brand-ua:    #C0392B;
@@ -585,6 +587,15 @@ tr.total > th, tr.total > td {
 .loading-msg { color: var(--text-muted); font-size: 12px; padding: 20px 0; }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+/* Start Inicial: Matriz + FIFO na esquerda, Funil na direita com a altura das duas. */
+.grid-start { display: grid; grid-template-columns: 1fr 1fr; column-gap: 16px; }
+.grid-start > .card-funil { grid-column: 2; grid-row: 1 / span 2; display: flex; flex-direction: column; }
+.card-funil .bar-list-funil { flex: 1; row-gap: 0; grid-template-columns: max-content minmax(0, 1fr) 70px 48px; }
+.card-funil .bar-item-funil .trilho { height: 34px; border-radius: 4px; }
+.card-funil .bar-item-funil .preench { border-radius: 4px; }
+.card-funil .bar-item-funil .nome, .card-funil .bar-item-funil .num { font-size: 12px; }
+.matriz-nf td.mz-clicavel { cursor: pointer; }
+.matriz-nf td.mz-clicavel:hover { outline: 1px solid var(--accent); }
 /* Detalhamento (largo) + Composição por segmento (estreito) na mesma linha. */
 .grid-det { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); gap: 16px; align-items: start; }
 .filtros-mini .chip { padding: 2px 9px; font-size: 10.5px; }
@@ -598,7 +609,8 @@ tr.total > th, tr.total > td {
 .matriz-nf td.mz-tot { background: var(--bg-input); }
 .matriz-nf tr.mz-total th, .matriz-nf tr.mz-total td { border-top: 1px solid var(--border); font-weight: 700; background: var(--bg-input); }
 @media (max-width: 900px) {
-  .grid2, .grid-det { grid-template-columns: 1fr; }
+  .grid2, .grid-det, .grid-start { grid-template-columns: 1fr; }
+  .grid-start > .card-funil { grid-column: auto; grid-row: auto; }
   .sidebar { display: none; }
   .topbar { left: 0; }
   .conteudo { margin-left: 0; }
@@ -1409,6 +1421,27 @@ tr.total > th, tr.total > td {
         <div class="log" id="logIngestAtivos"></div>
       </div>
 
+      <div class="section-title" style="margin-top:24px">Clientes que personalizam (etapa 04 - Material em Personalização)</div>
+      <div class="card">
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+          PFA em <strong>Leitura expedição</strong> de cliente desta lista aparece no Start Inicial como
+          <strong>04 - Material em Personalização</strong> — vale na hora, sem reprocessar as PFAs. Planilha
+          <strong>.xlsx</strong> com as colunas <strong>DESCRIÇÃO CLIENTE</strong> e <strong>PERSONALIZAVEL</strong>
+          (S/N). O nome pode ser a razão social inteira ou só um trecho (ex.: FLAMBOYAN): casa com todo cliente
+          cujo nome contém esse texto. O upload <strong>substitui a lista inteira</strong> — para incluir um
+          cliente novo, exporte a lista atual, acrescente a linha e envie de volta.
+        </p>
+        <div class="dropzone" id="dropzonePersona">
+          <span id="dropzonePersonaTexto">Clique para selecionar o .xlsx da <strong>base de clientes que personalizam</strong></span>
+          <input type="file" id="inputPersona" accept=".xlsx" style="display:none">
+        </div>
+        <button class="btn-mini" id="btnProcessarPersona" style="margin-top:12px" disabled>Salvar lista</button>
+        <button class="btn-mini" style="margin-top:12px;margin-left:8px" onclick="exportarClientesPersona()">⬇ Exportar lista atual</button>
+        <p id="origemPersona" style="font-size:11px;color:var(--text-muted);margin:10px 0 0"></p>
+        <div class="aviso ok" id="okPersona" style="display:none;margin-top:10px"></div>
+        <div class="log" id="logPersona"></div>
+      </div>
+
       <div class="section-title" style="margin-top:24px">Planejamento de Ressuprimento (PFA por turno)</div>
       <div class="card">
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
@@ -1689,6 +1722,7 @@ function mostrarSecao(secao) {
     estoqueCarregado = true;
     carregarEstoque();
   }
+  if (secao === 'atualizar') mostrarOrigemPersona();
 }
 
 function aplicarVisibilidadeMenu() {
@@ -3072,13 +3106,156 @@ let filtroTextoPfa = '';
 let limitePfa = 100;
 let ordemPfa = { campo: 'dias', direcao: 'desc' };
 
+/* Etapas na ordem da operação, numeradas (pedido do usuário, 24/09/2026).
+   "Material em personalizacao" NÃO vem do arquivo: é a PFA em "Leitura
+   expedicao" de cliente que personaliza (lista em Admin › Abastecimento),
+   reclassificada na tela — ver aplicarEtapaPersona. */
+const ETAPA_PERSONA = 'Material em personalizacao';
+const ORDEM_ETAPA_TELA = ['Nao disp. picking', 'Disp. p/ picking', 'Em picking', 'Gerar Nota Fiscal', ETAPA_PERSONA, 'Leitura expedicao'];
 const ROT_ETAPA_PFA = {
-  'Nao disp. picking': 'Não disp. picking',
-  'Disp. p/ picking': 'Disp. p/ picking',
-  'Em picking': 'Em picking',
-  'Leitura expedicao': 'Leitura expedição',
-  'Gerar Nota Fiscal': 'Gerar Nota Fiscal',
+  'Nao disp. picking': '00 - Não Disp. Picking',
+  'Disp. p/ picking': '01 - Disp. p/ Picking',
+  'Em picking': '02 - Em Picking',
+  'Gerar Nota Fiscal': '03 - Gerar Nota Fiscal',
+  'Material em personalizacao': '04 - Material em Personalização',
+  'Leitura expedicao': '05 - Leitura Expedição',
 };
+
+/* ---------- Clientes que personalizam ----------
+   Lista padrão = planilha "Base de Clientes que personalizam DISTR" + 8 nomes
+   sem razão social (24/09/2026). Um upload em Admin › Abastecimento grava
+   um snapshot (pagina 'clientes_persona') que substitui esta lista.
+   Casamento: nome do cliente da PFA, sem acento/pontuação, CONTÉM o nome da
+   lista como palavras inteiras (então "FLAMBOYAN" pega a razão social que
+   tiver FLAMBOYAN). Linha "N" com o nome exato força não-persona. */
+const CLIENTES_PERSONA_PADRAO = [
+  ["ABYS MODAS LTDA", "S"],
+  ["ADELINA MODAS LTDA", "S"],
+  ["ALF COMERCIO DE CALCADOS LTDA", "S"],
+  ["ALM COMERCIAL DE CALCADOS LTDA", "S"],
+  ["AMAZON SERVICOS DE VAREJO DO BRASIL LTDA.", "N"],
+  ["BADAN ARTIGOS ESPORTIVOS LTDA", "S"],
+  ["BIG BELEM CALCADOS LTDA", "S"],
+  ["BISOL CALCADOS E ARTIGOS ESPORTIVOS LTDA - EPP", "S"],
+  ["CAL CENTER COM DE CALC LTDA", "S"],
+  ["CAL-CENTER COMERCIO DE CALCADOS LTDA", "S"],
+  ["CALZADOS ROGER S.A.", "S"],
+  ["CASA BAYARD ARTIGOS PARA ESPORTES LTDA", "N"],
+  ["CASA SORAYA LTDA.", "S"],
+  ["CHRIS INDUSTRIA E COMERCIO DE CONFECCOES LTDA", "S"],
+  ["DEP COMERCIO DE CALCADOS LTDA", "S"],
+  ["DF WORK COMERCIO DE CALCADOS LTDA", "S"],
+  ["DJP COMERCIAL DE CALCADOS LTDA", "S"],
+  ["DREBES & CIA LTDA", "S"],
+  ["DS LOG COMERCIO DE CALCADOS LTDA", "S"],
+  ["DS.COM.BR COMERCIO DE CALCADOS LTDA", "S"],
+  ["DSR COML DE CALCADOS LTDA", "S"],
+  ["EBAZAR.COM.BR. LTDA", "N"],
+  ["ECLIPSE COM.DE CALCADOS LTDA", "S"],
+  ["ECLIPSE COMERCIO DE CALCADOS LTDA", "S"],
+  ["ELDA COMERCIAL CALCADOS LTDA", "S"],
+  ["ELI COMERCIO DE CALCADOS LTDA", "S"],
+  ["ESTRATEGIA CALCADOS LTDA", "S"],
+  ["EUZIMAR A. NOBRE", "S"],
+  ["FCO COMERCIAL DE CALCADOS LTDA", "S"],
+  ["FF.COM ESPORTES LTDA", "S"],
+  ["FLYTE COM CALC LTDA", "S"],
+  ["FORMOSA SUPERMERCADOS E MAGAZINE LTDA", "N"],
+  ["FRANK SILVESTRIN DE SOUZA", "S"],
+  ["GERALDO ALEXANDRE JANUARIO FALDAO EPP", "S"],
+  ["ISA COMERCIAL DE CALCADOS LTDA", "S"],
+  ["JQG COMERCIAL DE CALCADOS LTDA", "S"],
+  ["JSP COMERCIAL DE CALCADOS LTDA", "S"],
+  ["JULI COMERCIO DE CALCADOS LTDA", "S"],
+  ["KAREN COMERCIAL DE CALCADOS LTDA", "S"],
+  ["KENIAK COM DE CALC LTDA", "S"],
+  ["KYRALY COM CALC LTDA", "S"],
+  ["LFM COMERCIAL DE CALCADOS LTDA", "S"],
+  ["LIDER COMERCIO E INDUSTRIA LTDA", "S"],
+  ["LINDA COMERCIAL DE CALCADOS LTDA", "S"],
+  ["LNJC COMERCIO DA MODA LTDA", "S"],
+  ["LOJA VINTE E NOVE LTDA", "S"],
+  ["LOJAS AVENIDA S.A", "S"],
+  ["LUIS FELIPE CAGLIARI DE SOUZA", "S"],
+  ["LUIZA CALCADOS LTDA", "S"],
+  ["M MODAS LTDA", "S"],
+  ["MARJA COMERCIO DE CALCADOS LTDA", "S"],
+  ["MARJOV COMERCIO DE ROUPAS E CALCADOS LTDA", "S"],
+  ["MM PAPELARIA PROMISSAO LTDA", "S"],
+  ["MN COMERCIO DE CALCADOS LTDA - ME", "S"],
+  ["MRM COMERCIAL DE CALCADOS LTDA", "S"],
+  ["NACIONAL BREVES COMERCIO DE CALCADOS LTDA", "N"],
+  ["NACIONAL CASTANHAL COMERCIO DE CALCADOS LTDA", "N"],
+  ["NACIONAL MOJU COMERCIO DE CALCADOS LTDA", "N"],
+  ["NACIONAL MOJU II COMERCIO DE CALCADOS", "N"],
+  ["ONE CALCADOS LTDA", "S"],
+  ["OSANA ANA DE LIRA GARRIDO ME", "S"],
+  ["PINHEIRO TECIDOS LTDA", "S"],
+  ["PITTOL CALCADOS LTDA", "S"],
+  ["PIUMA CALCADOS LTDA", "S"],
+  ["PK COMERCIAL DE CALCADOS LTDA", "S"],
+  ["QUEIROZ COMERCIAL DE CALCADOS LTDA", "S"],
+  ["R MILET COMERCIO DE CALCADOS LTDA", "S"],
+  ["RED COMERCIAL DE CALCADOS LTDA", "S"],
+  ["REGIONAL ALENQUER COMERCIO DE CALCADOS LTDA", "S"],
+  ["REGIONAL ITAITUBA COMERCIO DE CALCADOS LTDA", "S"],
+  ["REGIONAL JURITI COMERCIO DE CALCADOS LTDA", "S"],
+  ["REGIONAL ORIXIMINA COMERCIO DE CALCADOS LTDA", "S"],
+  ["REGIONAL VIGIA COMERCIO DE CALCADOS LTDA", "S"],
+  ["REGIS COMERCIO DE CALCADOS LTDA", "S"],
+  ["S.SALLUM LTDA", "S"],
+  ["SBF COMERCIO DE PRODUTOS ESPORTIVOS S.A.", "N"],
+  ["SNICKER COM CALC LTDA", "S"],
+  ["SNICKER COMERCIO DE CALCADOS LTDA", "S"],
+  ["T.A.N. MOUTINHO COMERCIO", "S"],
+  ["TK COMERCIAL DE CALCADOS LTDA", "S"],
+  ["TOBELLI COMERCIO DE CALCADOS LTDA", "S"],
+  ["TOP COMERCIO DE CALCADOS LTDA", "S"],
+  ["TWO FRIENDS COMERCIO DE CALCADOS E CONFECCOES LTDA", "S"],
+  ["UBS COMERCIAL DE CALCADOS LTDA", "S"],
+  ["ULTRA 1 ONLINE LTDA", "S"],
+  ["VECTRA COMERCIO DE CALCADOS LTDA", "S"],
+  ["VIANA COMERCIO DE CALCADOS LTDA", "S"],
+  ["FLAMBOYAN", "S"],
+  ["CALCENTER", "S"],
+  ["LÍDER", "S"],
+  ["POLICE", "S"],
+  ["ZAPEC", "S"],
+  ["CALZADOS ROGER", "S"],
+  ["ABYS", "S"],
+  ["OSCAR E ABYS", "S"]
+];
+let clientesPersona = CLIENTES_PERSONA_PADRAO.map(function (r) { return { nome: r[0], personalizavel: r[1] === 'S' }; });
+let origemClientesPersona = 'padrão do sistema';
+function normalizarNomeCliente(t) {
+  return ' ' + String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ').trim() + ' ';
+}
+function ehClientePersona(nome) {
+  const n = normalizarNomeCliente(nome);
+  if (n.trim() === '') return false;
+  let casou = false;
+  for (let i = 0; i < clientesPersona.length; i++) {
+    const c = clientesPersona[i], k = normalizarNomeCliente(c.nome);
+    if (k.trim() === '') continue;
+    if (!c.personalizavel) { if (k === n) return false; continue; }
+    if (n.indexOf(k) !== -1) casou = true;
+  }
+  return casou;
+}
+/* Reclassifica Leitura expedição -> Material em personalização pelos
+   clientes da lista e põe as etapas na ordem da tela. Idempotente: guarda a
+   situação do arquivo em situacao_arquivo e sempre parte dela. */
+function aplicarEtapaPersona(p) {
+  if (!p) return;
+  (p.pendentes || []).forEach(function (r) {
+    if (r.situacao_arquivo === undefined) r.situacao_arquivo = r.situacao;
+    r.situacao = r.situacao_arquivo === 'Leitura expedicao' && ehClientePersona(r.cliente_nome)
+      ? ETAPA_PERSONA : r.situacao_arquivo;
+  });
+  const extras = (p.etapas || []).filter(function (e) { return ORDEM_ETAPA_TELA.indexOf(e) === -1; });
+  p.etapas = ORDEM_ETAPA_TELA.concat(extras);
+}
 function rotEtapaPfa(e) { return ROT_ETAPA_PFA[e] || e || '—'; }
 
 /* Dois cards de KPI (pedido da operação 10/09/2026), cada um com seu recorte
@@ -3096,11 +3273,12 @@ const ETAPAS_FLUXO_COLETA = ['Em picking'];
    material anda da esquerda (ainda nem liberado) pra direita (só falta a
    nota). Vermelho fica reservado pro fim da fila, que é onde parar dói mais. */
 const COR_ETAPA_PFA = {
-  'Nao disp. picking': '--text-muted',
+  'Nao disp. picking': '--gelo',
   'Disp. p/ picking': '--accent',
-  'Em picking': '--accent',
-  'Leitura expedicao': '--amber',
+  'Em picking': '--olive',
   'Gerar Nota Fiscal': '--red',
+  'Material em personalizacao': '--roxo',
+  'Leitura expedicao': '--amber',
 };
 const COR_FAIXA_FIFO = { '0-2': '--olive', '3-5': '--olive', '6-10': '--amber', '11+': '--red' };
 
@@ -3351,6 +3529,17 @@ function linhasTabelaPfa() {
   });
 }
 
+async function carregarClientesPersona() {
+  try {
+    const r = await supabaseClient.from('dashboard_snapshots').select('payload, gerado_em')
+      .eq('pagina', 'clientes_persona').order('gerado_em', { ascending: false }).limit(1);
+    const pl = r && r.data && r.data[0] && r.data[0].payload;
+    if (pl && Array.isArray(pl.clientes) && pl.clientes.length) {
+      clientesPersona = pl.clientes;
+      origemClientesPersona = (pl.arquivo || 'upload') + ' (' + formatarDataHora(r.data[0].gerado_em) + ')';
+    }
+  } catch (e) { /* sem snapshot: segue com a lista padrão */ }
+}
 async function carregarPfas() {
   const alvo = document.getElementById('start-conteudo');
   const { data, error } = await supabaseClient.from('dashboard_snapshots')
@@ -3365,7 +3554,9 @@ async function carregarPfas() {
       'Envie os arquivos pela tela <strong>Admin › Abastecimento › PFAs em tela</strong>.</div>';
     return;
   }
+  await carregarClientesPersona();
   dadosPfas = data[0].payload;
+  aplicarEtapaPersona(dadosPfas);
   dataSnapshotPfas = data[0].gerado_em;
   atualizarSubtituloSecao('start');
   renderizarPfas();
@@ -3719,9 +3910,13 @@ function renderizarPfas() {
   let barrasEtapa = '<div class="bar-item-funil cabecalho"><div class="nome"></div><div></div>' +
     '<div class="num">Pares</div><div class="num">PFAs</div></div>';
   let totalParesEtapa = 0, totalPfasEtapa = 0;
+  // As 6 etapas da operação aparecem sempre (mesmo zeradas), pro funil manter
+  // a mesma régua; etapa fora do gabarito só aparece se tiver PFA.
+  let nEtapasFunil = 0;
   (p.etapas || []).forEach(function (e) {
-    const g = porEtapa.get(e);
+    const g = porEtapa.get(e) || (ORDEM_ETAPA_TELA.indexOf(e) !== -1 ? { pares: 0, pfas: 0 } : null);
     if (!g) return;
+    nEtapasFunil++;
     totalParesEtapa += g.pares; totalPfasEtapa += g.pfas;
     const larg = maxEtapa > 0 ? g.pares / maxEtapa * 100 : 0;
     barrasEtapa += '<div class="bar-item-funil">' +
@@ -3756,36 +3951,16 @@ function renderizarPfas() {
     '</div>';
   });
 
-  /* ---------- aguardando coleta por segmento ---------- */
+  /* ---------- com NF emitida por segmento (tooltip da Matriz NF × Segmento) ---------- */
   const porSegColeta = new Map();
   comNotaEmTela.forEach(function (r) {
     porSegColeta.set(r.segmento_macro, (porSegColeta.get(r.segmento_macro) || 0) + r.qtde);
   });
-  const segsColeta = Array.from(porSegColeta.entries()).sort(function (a, b) { return b[1] - a[1]; });
-  const maxSegColeta = segsColeta.reduce(function (mx, e) { return Math.max(mx, e[1]); }, 0);
-  let barrasSegColeta = '';
   if (segColetaAberto && !porSegColeta.has(segColetaAberto)) segColetaAberto = null;
-  segsColeta.forEach(function (e) {
-    const larg = maxSegColeta > 0 ? e[1] / maxSegColeta * 100 : 0;
-    const aberto = segColetaAberto === e[0];
-    barrasSegColeta += '<div class="bar-item" style="cursor:pointer' + (aberto ? ';outline:1px solid var(--accent);border-radius:6px' : '') + '" ' +
-      'onclick="alternarSegColeta(\'' + escaparJs(e[0]) + '\', event)" title="Clique para ver por data de faturamento e FIFO">' +
-      '<div class="nome">' + (aberto ? '▾ ' : '▸ ') + escapar(e[0]) + '</div>' +
-      '<div class="trilho"><div class="preench" style="width:' + larg + '%;background:var(--accent)"></div></div>' +
-      '<div class="num">' + fmtInt(e[1]) + '</div>' +
-    '</div>';
-  });
 
-  /* Data de faturamento (NF) do material "com nota" — o prazo passado ao
-     cliente conta a partir dela (pedido da gestão, 23/09/2026). Título
-     mostra a faixa de datas do recorte; clicar num segmento abre o gráfico
-     por idade desde a NF, no mesmo formato do "FIFO — dias em aberto". */
-  const datasNota = comNotaEmTela.map(function (r) { return r.data_nota; }).filter(Boolean).sort();
-  const faixaDatasNota = datasNota.length
-    ? (datasNota[0] === datasNota[datasNota.length - 1]
-        ? 'NF de ' + formatarDataSimples(datasNota[0])
-        : 'NF de ' + formatarDataSimples(datasNota[0]) + ' a ' + formatarDataSimples(datasNota[datasNota.length - 1]))
-    : '';
+  /* Clicar numa célula com data de NF da Matriz abre a pizza por idade desde
+     a NF daquele segmento (o prazo passado ao cliente conta do faturamento,
+     pedido da gestão, 23/09/2026). */
   let detalheSegColeta = '';
   if (segColetaAberto) {
     const doSeg = comNotaEmTela.filter(function (r) { return r.segmento_macro === segColetaAberto; });
@@ -3968,9 +4143,17 @@ function renderizarPfas() {
     const a = maxCelula > 0 ? 0.18 + 0.72 * (v / maxCelula) : 0.18;
     return '<td class="mz-cel" style="background:rgba(47,111,208,' + a.toFixed(2) + ')">' + fmtInt(v) + '</td>';
   };
-  const linhaMatriz = function (rotulo, linhas) {
+  // Célula de linha COM data de NF é clicável: abre a pizza por dias desde
+  // a emissão da NF daquele segmento (tooltip que era do card "Com nota,
+  // aguardando coleta", removido em 24/09/2026).
+  const linhaMatriz = function (rotulo, linhas, comNota) {
     return '<tr><th class="esq">' + rotulo + '</th>' +
-      colsMatriz.map(function (c) { return tdHeat(valorCelula(celulasDe(linhas, c.chave))); }).join('') +
+      colsMatriz.map(function (c) {
+        const td = tdHeat(valorCelula(celulasDe(linhas, c.chave)));
+        if (!comNota || td.indexOf('mz-vazio') !== -1) return td;
+        return td.replace('<td class="mz-cel"', '<td class="mz-cel mz-clicavel" title="Clique para ver por dias desde a emissão da NF" ' +
+          'onclick="alternarSegColeta(\'' + escaparJs(c.chave) + '\', event)"');
+      }).join('') +
       '<td class="mz-tot">' + fmtInt(valorCelula(celulasDe(linhas, null))) + '</td></tr>';
   };
   const todasLinhasMz = ['SEM'].concat(datasNotaMz);
@@ -3985,14 +4168,15 @@ function renderizarPfas() {
     '<div style="overflow-x:auto"><table class="matriz-nf"><thead><tr><th class="esq">Data da nota</th>' +
       colsMatriz.map(function (c) { return '<th>' + c.rotulo + '</th>'; }).join('') + '<th>Total</th></tr></thead><tbody>' +
       linhaMatriz('Sem nota fiscal', ['SEM']) +
-      datasNotaMz.map(function (d) { return linhaMatriz(formatarDataSimples(d), [d]); }).join('') +
+      datasNotaMz.map(function (d) { return linhaMatriz(formatarDataSimples(d), [d], true); }).join('') +
       '<tr class="mz-total"><th class="esq">Total</th>' +
         colsMatriz.map(function (c) { return '<td>' + fmtInt(valorCelula(celulasDe(todasLinhasMz, c.chave))) + '</td>'; }).join('') +
         '<td>' + fmtInt(valorCelula(celulasDe(todasLinhasMz, null))) + '</td></tr>' +
     '</tbody></table></div>' +
     '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">' +
       'Com data = NF emitida nessa data, aguardando coleta. Calçados inclui chinelos e chuteiras.' +
-      (emPecasMz ? '' : ' Totais contam cada PFA uma vez.') + '</p>' +
+      (emPecasMz ? '' : ' Totais contam cada PFA uma vez.') + ' Clique num valor com data para ver os dias desde a NF.</p>' +
+    detalheSegColeta +
   '</div>';
 
   document.getElementById('start-conteudo').innerHTML =
@@ -4000,34 +4184,23 @@ function renderizarPfas() {
     '<div class="kicker">Abastecimento — PFAs em tela</div>' +
     chipsTopo +
     kpis +
-    // Matriz Nota fiscal × Segmento à esquerda, Funil à direita (pedido do
-    // usuário, 24/09/2026).
-    '<div class="grid2">' +
+    // Esquerda: Matriz NF × Segmento em cima e FIFO embaixo; direita: Funil
+    // ocupando a altura das duas (pedido do usuário, 24/09/2026 — o card
+    // "Com nota, aguardando coleta" saiu, o tooltip dele foi pra Matriz).
+    '<div class="grid-start">' +
       blocoMatrizNf +
-      '<div class="card">' +
+      '<div class="card card-funil">' +
         '<div class="section-title">Funil — PFAs pendentes por etapa</div>' +
         '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Pares por etapa, picking → ' +
-          'expedição · ' + fmtInt(filtrados.length) + ' PFAs no recorte.</p>' +
-        '<div class="bar-list-funil">' + barrasEtapa + '</div>' +
+          'expedição · ' + fmtInt(filtrados.length) + ' PFAs no recorte. ' +
+          '"04 - Material em Personalização" = Leitura expedição de cliente que personaliza.</p>' +
+        '<div class="bar-list-funil" style="grid-template-rows:auto repeat(' + nEtapasFunil + ', minmax(44px, 1fr)) auto">' + barrasEtapa + '</div>' +
       '</div>' +
-    '</div>' +
-    '<div class="grid2">' +
       '<div class="card">' +
         '<div class="section-title">FIFO — dias em aberto</div>' +
         '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Pares por faixa de idade ' +
           '(data de importação da PFA).</p>' +
         '<div class="barras-dia">' + barrasFifo + '</div>' +
-      '</div>' +
-      '<div class="card">' +
-        '<div class="section-title" style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">' +
-          '<span>Com nota, aguardando coleta — por segmento</span>' +
-          (faixaDatasNota ? '<span style="font-size:11px;font-weight:600;color:var(--amber)">' + faixaDatasNota + '</span>' : '') +
-        '</div>' +
-        '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' + fmtInt(qtdeColeta) +
-          ' pç com NF emitida (' + fmtInt(pfasColeta) + ' PFAs em tela), por segmento.</p>' +
-        '<div class="bar-list">' + (barrasSegColeta || '<div class="aviso">Nada aguardando coleta neste recorte.</div>') + '</div>' +
-        detalheSegColeta +
-        '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Clique num segmento para ver as datas de faturamento.</p>' +
       '</div>' +
     '</div>' +
     '<div class="card">' +
@@ -6672,6 +6845,84 @@ document.getElementById('btnProcessarAtivos').addEventListener('click', async fu
     btn.disabled = false;
   }
 });
+
+/* ---------- Clientes que personalizam (.xlsx) ---------- */
+let arquivoPersonaSelecionado = null;
+function atualizarEstadoDropzonePersona() {
+  document.getElementById('btnProcessarPersona').disabled = !arquivoPersonaSelecionado;
+  document.getElementById('dropzonePersonaTexto').textContent = arquivoPersonaSelecionado
+    ? '✓ ' + arquivoPersonaSelecionado.name : 'Clique para selecionar o .xlsx da base de clientes que personalizam';
+}
+async function mostrarOrigemPersona() {
+  await carregarClientesPersona();
+  document.getElementById('origemPersona').textContent = 'Lista em uso: ' + fmtInt(clientesPersona.length) +
+    ' cliente(s) (' + fmtInt(clientesPersona.filter(function (c) { return c.personalizavel; }).length) +
+    ' personalizam) — ' + origemClientesPersona + '.';
+}
+document.getElementById('dropzonePersona').addEventListener('click', function () {
+  document.getElementById('inputPersona').click();
+});
+document.getElementById('inputPersona').addEventListener('change', function (ev) {
+  arquivoPersonaSelecionado = (ev.target.files && ev.target.files[0]) || null;
+  atualizarEstadoDropzonePersona();
+});
+/* Lê a 1ª aba pelo NOME do cabeçalho: cliente (DESCRIÇÃO CLIENTE / CLIENTE /
+   NOME / RAZÃO SOCIAL) e PERSONALIZAVEL (S/N; vazio conta como S). */
+function lerPlanilhaPersona(workbook) {
+  const linhas = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1, defval: '' });
+  if (!linhas.length) throw new Error('Planilha vazia.');
+  const cab = linhas[0].map(function (c) { return normalizarNomeCliente(c).trim(); });
+  const idxNome = cab.findIndex(function (c) { return /^(DESCRICAO CLIENTE|CLIENTE|NOME|RAZAO SOCIAL|DESCRICAO)$/.test(c); });
+  const idxFlag = cab.findIndex(function (c) { return /^PERSONALIZ/.test(c); });
+  if (idxNome === -1) throw new Error('Não encontrei a coluna "DESCRIÇÃO CLIENTE" no cabeçalho. Lido: ' + linhas[0].join(' | '));
+  const vistos = new Set(), clientes = [];
+  linhas.slice(1).forEach(function (l) {
+    const nome = String(l[idxNome] || '').trim();
+    if (!nome || vistos.has(nome.toUpperCase())) return;
+    vistos.add(nome.toUpperCase());
+    const flag = idxFlag === -1 ? 'S' : String(l[idxFlag] || 'S').trim().toUpperCase();
+    clientes.push({ nome: nome, personalizavel: flag !== 'N' });
+  });
+  return clientes;
+}
+document.getElementById('btnProcessarPersona').addEventListener('click', async function () {
+  const log = document.getElementById('logPersona'), ok = document.getElementById('okPersona');
+  const btn = document.getElementById('btnProcessarPersona');
+  ok.style.display = 'none'; log.textContent = '';
+  const escrever = function (msg) { log.textContent += msg + '\n'; };
+  btn.disabled = true;
+  try {
+    const wb = XLSX.read(await arquivoPersonaSelecionado.arrayBuffer(), { type: 'array' });
+    const clientes = lerPlanilhaPersona(wb);
+    if (!clientes.length) throw new Error('Nenhum cliente lido da planilha.');
+    escrever(fmtInt(clientes.length) + ' cliente(s) lidos (' + fmtInt(clientes.filter(function (c) { return c.personalizavel; }).length) + ' com S).');
+    const { error } = await supabaseClient.from('dashboard_snapshots').insert({
+      pagina: 'clientes_persona', gerado_em: new Date().toISOString(),
+      payload: { clientes: clientes, arquivo: arquivoPersonaSelecionado.name },
+    });
+    if (error) throw new Error(error.message);
+    clientesPersona = clientes;
+    if (dadosPfas) aplicarEtapaPersona(dadosPfas);
+    ok.textContent = '✔ Lista salva — o Start Inicial já usa a nova lista.';
+    ok.style.display = '';
+    arquivoPersonaSelecionado = null;
+    document.getElementById('inputPersona').value = '';
+    atualizarEstadoDropzonePersona();
+    mostrarOrigemPersona();
+  } catch (e) {
+    escrever('ERRO: ' + (e && e.message ? e.message : String(e)));
+    btn.disabled = false;
+  }
+});
+async function exportarClientesPersona() {
+  await carregarClientesPersona();
+  const ws = XLSX.utils.aoa_to_sheet([['DESCRIÇÃO CLIENTE', 'PERSONALIZAVEL']].concat(
+    clientesPersona.map(function (c) { return [c.nome, c.personalizavel ? 'S' : 'N']; })));
+  ws['!cols'] = [{ wch: 55 }, { wch: 16 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Clientes persona');
+  XLSX.writeFile(wb, 'clientes_que_personalizam.xlsx');
+}
 
 /* ---------- Planejamento de Ressuprimento (PFA por turno) ---------- */
 // Normaliza turno colado como "T01"/"t1"/"1"/"01" pro formato canônico do
