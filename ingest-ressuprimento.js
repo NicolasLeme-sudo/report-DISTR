@@ -101,6 +101,22 @@ const RECLASSIFICA_PICKING_PARA_PULMAO = {
 };
 const MOTIVO_81_02 = 'Capacidade de calçados Under Armour esgotada no picking';
 
+/* Ruas de cada segmento — planilha "Métricas e capacidade estoque - DISTR"
+   da operação (24/09/2026), a mesma que deu os números de dim_capacidade_zonas:
+     Picking: vestuário 1–6 (14.630), calçado 7–8 (4.352), acessório 11–13
+              (1.598), meia 14–15 (408).
+     Pulmão:  meia 1 e 15 (848), vestuário 2, 6 e 7 (2.136), calçado 3–5
+              (2.131), acessório 11–14 (952). Rua 8 do Pulmão = insumos,
+              fora da capacidade (confirmado pelo usuário). */
+const RUAS_ZONA = {
+  // 81 (nível 1, tênis UA) e 102 (tênis/chuteira Mizuno, níveis 1–4) não
+  // estão na planilha, mas no arquivo real são picking de calçado — entram na
+  // zona de calçado até a operação confirmar (24/09/2026).
+  picking: { vestuario: ['1', '2', '3', '4', '5', '6'], calcado: ['7', '8', '81', '102'], acessorio: ['11', '12', '13'], meia: ['14', '15'] },
+  pulmao: { meia: ['1', '15'], vestuario: ['2', '6', '7'], calcado: ['3', '4', '5'], acessorio: ['11', '12', '13', '14'] },
+};
+const BUCKETS_ZONA = ['meia', 'vestuario', 'acessorio', 'calcado'];
+
 /* Ruas que NÃO são estoque e saem de tudo já na leitura (Picking e Pulmão):
    rua 20 = CROSSDOCKING, operação do recebimento sem estoque físico
    (confirmado pelo usuário, 24/09/2026 — antes era tratada como "camisas de
@@ -599,6 +615,42 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
   function fazZonaBucket(capMap, medir, prefixo, bucket, lista) {
     return fazZona(capMap, prefixo + '_' + bucket, medir(lista.filter(function (r) { return r.bucket === bucket; })));
   }
+  /* Ocupação POR RUA DA ZONA (24/09/2026, pedido do usuário — a régua antiga
+     contava endereço com produto do segmento em QUALQUER rua e comparava com
+     a capacidade da zona, o que dava 115% num segmento e "livres" em outro
+     sem nenhum endereço vazio de verdade). Agora:
+       capacidade = endereços das ruas do segmento (planilha de capacidade);
+       ocupado    = endereços DESSAS ruas com qualquer produto;
+       livre      = capacidade − ocupado (vazio de verdade).
+     O detalhe (tooltip na tela) mostra o que está guardado fora do lugar:
+     produto de outro segmento dentro da zona e produto do segmento fora dela.
+     Rua fora de todas as zonas (Pulmão 8 = insumos, 9) não conta em nada. */
+  function fazZonaRua(capMap, medir, linha, bucket, lista) {
+    const ruas = RUAS_ZONA[linha][bucket];
+    const naZona = lista.filter(function (r) { return ruas.indexOf(String(r.rua)) !== -1; });
+    const z = fazZona(capMap, linha + '_' + bucket, medir(naZona));
+    const outros = {};
+    BUCKETS_ZONA.forEach(function (b) {
+      if (b === bucket) return;
+      const n = medir(naZona.filter(function (r) { return r.bucket === b; }));
+      if (n > 0) outros[b] = n;
+    });
+    const foraPorRua = {};
+    const doSegmentoFora = lista.filter(function (r) { return r.bucket === bucket && ruas.indexOf(String(r.rua)) === -1; });
+    const ruasFora = Array.from(new Set(doSegmentoFora.map(function (r) { return String(r.rua); })));
+    ruasFora.forEach(function (rua) {
+      const n = medir(doSegmentoFora.filter(function (r) { return String(r.rua) === rua; }));
+      if (n > 0) foraPorRua[rua] = n;
+    });
+    z.detalhe = {
+      ruas: ruas,
+      do_segmento: medir(naZona.filter(function (r) { return r.bucket === bucket; })),
+      outros_segmentos: outros,
+      fora_da_zona: medir(doSegmentoFora),
+      fora_por_rua: foraPorRua,
+    };
+    return z;
+  }
   function fazZonaTotal(subzonas) {
     const capacidade = subzonas.reduce(function (s, z) { return s + z.capacidade; }, 0);
     const ocupado = subzonas.reduce(function (s, z) { return s + z.ocupado; }, 0);
@@ -614,16 +666,16 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
   // sem duplicar a árvore.
   function montarOcupacao(capMap, medir) {
     const pB = {
-      meia: fazZonaBucket(capMap, medir, 'picking', 'meia', pickingReal),
-      vestuario: fazZonaBucket(capMap, medir, 'picking', 'vestuario', pickingReal),
-      acessorio: fazZonaBucket(capMap, medir, 'picking', 'acessorio', pickingReal),
-      calcado: fazZonaBucket(capMap, medir, 'picking', 'calcado', pickingReal),
+      meia: fazZonaRua(capMap, medir, 'picking', 'meia', pickingReal),
+      vestuario: fazZonaRua(capMap, medir, 'picking', 'vestuario', pickingReal),
+      acessorio: fazZonaRua(capMap, medir, 'picking', 'acessorio', pickingReal),
+      calcado: fazZonaRua(capMap, medir, 'picking', 'calcado', pickingReal),
     };
     const uB = {
-      meia: fazZonaBucket(capMap, medir, 'pulmao', 'meia', pulmaoFisico),
-      vestuario: fazZonaBucket(capMap, medir, 'pulmao', 'vestuario', pulmaoFisico),
-      acessorio: fazZonaBucket(capMap, medir, 'pulmao', 'acessorio', pulmaoFisico),
-      calcado: fazZonaBucket(capMap, medir, 'pulmao', 'calcado', pulmaoFisico),
+      meia: fazZonaRua(capMap, medir, 'pulmao', 'meia', pulmaoFisico),
+      vestuario: fazZonaRua(capMap, medir, 'pulmao', 'vestuario', pulmaoFisico),
+      acessorio: fazZonaRua(capMap, medir, 'pulmao', 'acessorio', pulmaoFisico),
+      calcado: fazZonaRua(capMap, medir, 'pulmao', 'calcado', pulmaoFisico),
     };
     return {
       picking: Object.assign({ total: fazZonaTotal([pB.meia, pB.vestuario, pB.acessorio, pB.calcado]) }, pB),
@@ -676,6 +728,10 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     const totalQtd = lista.reduce(function (s, r) { return s + qtdReal(r); }, 0);
     lista.forEach(function (r) {
       const qr = qtdReal(r);
+      // SKU só conta com saldo (24/09/2026): SKU ALOCADO no endereço com zero
+      // peça inflava a coluna — Olympikus calçados mostrava 11,5 mil SKUs
+      // pra 222 peças. Ocupação por endereço continua contando a alocação.
+      if (qr <= 0) return;
       if (!porMarca.has(r.marca)) porMarca.set(r.marca, { codigo: r.marca, nome: r.marca, qtd: 0, skus: new Set(), segmentos: new Map() });
       const nMarca = porMarca.get(r.marca);
       const skuKey = chaveSku(r.artigo_codigo, r.cor, r.tamanho);
@@ -733,6 +789,7 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     const qtdRealSeg = function (r) { return r.qtd + (r.qtd_cativado || 0); };
     const totalQtd = lista.reduce(function (s, r) { return s + qtdRealSeg(r); }, 0);
     lista.forEach(function (r) {
+      if (qtdRealSeg(r) <= 0) return; // mesma regra da árvore: SKU sem saldo não conta
       const chave = r.segmento_macro;
       if (!porSeg.has(chave)) porSeg.set(chave, { codigo: chave, nome: chave, qtd: 0, skus: new Set() });
       const n = porSeg.get(chave);
@@ -1223,6 +1280,7 @@ window.processarRessuprimento = processarRessuprimento;
 window.upsertArtigoFamilia = upsertArtigoFamilia;
 window.parsearPicking = parsearPicking;
 window.parsearPulmao = parsearPulmao;
+window.RUAS_ZONA = RUAS_ZONA;
 window.construirSnapshotRessuprimento = construirSnapshotRessuprimento;
 window.classificarPickingEPulmao = classificarPickingEPulmao;
 window.construirSaldoEnderecos = construirSaldoEnderecos;

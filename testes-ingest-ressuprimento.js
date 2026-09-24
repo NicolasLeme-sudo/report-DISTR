@@ -353,6 +353,15 @@ eq(payloadFisico.ocupacao.pulmao.total.ocupado, 0,
 eq(payloadFisico.ocupacao.picking.calcado.ocupado, 0,
    'nem de picking — some de tudo');
 
+secao('SKU alocado sem saldo não conta na coluna Qtde SKUs');
+const payloadSkuZero = construirSnapshotRessuprimento({ registros: [
+  { familia_codigo: '101', artigo_codigo: 'Z1', cor: 'PT', tamanho: '40', ean: 'Z1', rua: '7', nivel: '1', box: '1', qtd: 5, qtd_cativado: 0, qtd_gap_reservado: 0 },
+  { familia_codigo: '101', artigo_codigo: 'Z2', cor: 'PT', tamanho: '41', ean: 'Z2', rua: '7', nivel: '1', box: '2', qtd: 0, qtd_cativado: 0, qtd_gap_reservado: 0 },
+], negativas_excluidas: 0, negativas_unidades: 0 }, { registros: [], colisoes_volume: 0 }, mapaFamilias, {}, { arquivo_picking: 'p', arquivo_pulmao: 'x' });
+eq(payloadSkuZero.arvore_picking[0].skus, 1, 'só o SKU com peça conta (o alocado vazio fica fora)');
+eq(payloadSkuZero.ocupacao.picking.calcado.ocupado, 2, 'mas o endereço alocado vazio continua ocupando posição');
+eq(payloadSkuZero.ocupacao.picking.calcado.detalhe.ruas.join(','), '7,8,81,102', 'zona de calçado do Picking = ruas 7, 8, 81 e 102');
+
 secao('rua 20 (crossdocking) é descartada já na leitura dos arquivos');
 const pRua20 = parsearPicking(arquivoPicking([linhaPicking('20', '01', '001', '12', '3'), linhaPicking('01', '01', '001', '5', '0')]));
 eq(pRua20.registros.length, 1, 'só a linha fora da rua 20 fica');

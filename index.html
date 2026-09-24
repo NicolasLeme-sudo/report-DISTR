@@ -306,6 +306,19 @@ html { overflow-x: hidden; }
 .kpi-row-ocup { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 .kpi-ocup { display: flex; flex-direction: row; justify-content: flex-start; align-items: center; gap: 14px; }
 .kpi-ocup .rot { min-height: 0; font-size: 11px; }
+.kpi-ocup { position: relative; cursor: help; }
+.kpi-ocup .ruas-zona { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-muted); font-size: 10px; }
+.tip-ocup { display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; width: 270px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.35); font-size: 11.5px; color: var(--text); cursor: default; }
+.kpi-ocup:hover .tip-ocup, .kpi-ocup:focus-within .tip-ocup { display: block; }
+.kpi-row-ocup > .kpi-ocup:last-child .tip-ocup { left: auto; right: 0; }
+.tip-ocup .tip-tit { font-weight: 700; font-size: 12px; margin-bottom: 8px; }
+.tip-ocup .tip-sec { margin: 9px 0 4px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-label); }
+.tip-ocup .tip-linha { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
+.tip-ocup .tip-linha.alerta b { color: var(--amber); }
+.tip-ocup .tip-ok { color: var(--text-muted); font-style: italic; padding: 2px 0; }
+.tip-ocup p { margin: 8px 0 0; color: var(--text-muted); font-size: 10.5px; }
 .donut-ocup { flex: none; } /* nunca deixa o grid encolher a rosca pra caber o texto */
 .donut-ocup text { fill: var(--text); font-size: 13px; font-weight: 700; font-family: inherit; }
 
@@ -4867,17 +4880,71 @@ function renderizarEstoqueOperacao(p) {
   function corOcupacao(dados) {
     return dados.pct >= 95 ? 'var(--red)' : dados.pct >= 85 ? 'var(--amber)' : 'var(--olive)';
   }
-  function cardOcupacao(rotulo, dados, unidade) {
+  /* Card de capacidade por ZONA (ruas do segmento) — 24/09/2026: mais simples
+     de ler ("X de Y endereços ocupados · Z livres") e o que está guardado
+     fora do lugar vai num tooltip, sem ocupar espaço no card. */
+  function listaRuas(ruas) {
+    if (!ruas || !ruas.length) return '';
+    return ruas.length === 1 ? 'Rua ' + ruas[0]
+      : 'Ruas ' + ruas.slice(0, -1).join(', ') + ' e ' + ruas[ruas.length - 1];
+  }
+  function tooltipOcupacao(rotulo, dados, unidadeLonga, bucket) {
+    const det = dados.detalhe;
+    if (!det) {
+      return '<div class="tip-ocup"><p>Reprocesse <strong>Picking + Pulmão</strong> em Admin › Abastecimento pra ver ' +
+        'a capacidade por rua e o que está guardado fora do lugar.</p></div>';
+    }
+    const linhaTip = function (rot, v, destaque) {
+      return '<div class="tip-linha' + (destaque ? ' alerta' : '') + '"><span>' + rot + '</span><b>' + fmtInt(v) + '</b></div>';
+    };
+    const outros = Object.keys(det.outros_segmentos || {});
+    const fora = Object.keys(det.fora_por_rua || {}).sort(function (a, b) { return Number(a) - Number(b); });
+    return '<div class="tip-ocup">' +
+      '<div class="tip-tit">' + escapar(rotulo) + ' · ' + listaRuas(det.ruas) + '</div>' +
+      linhaTip('Capacidade (' + unidadeLonga + ')', dados.capacidade) +
+      linhaTip('Ocupados (qualquer produto)', dados.ocupado) +
+      linhaTip('Livres', dados.disponivel) +
+      '<div class="tip-sec">Dentro destas ruas</div>' +
+      linhaTip('Com ' + escapar(rotulo.toLowerCase()), det.do_segmento) +
+      (outros.length
+        ? outros.map(function (b) { return linhaTip('Com ' + escapar((ROT_BUCKET[b] || b).toLowerCase()) + ' (fora do lugar)', det.outros_segmentos[b], true); }).join('')
+        : '<div class="tip-ok">Nenhum produto de outro segmento</div>') +
+      '<div class="tip-sec">' + escapar(rotulo) + ' guardado fora destas ruas</div>' +
+      (fora.length
+        ? fora.map(function (r) { return linhaTip('Rua ' + escapar(r), det.fora_por_rua[r], true); }).join('')
+        : '<div class="tip-ok">Nada fora da zona</div>') +
+    '</div>';
+  }
+  function tooltipOcupacaoTotal(titulo, linha, unidadeLonga) {
+    let outrosTot = 0, foraTot = 0;
+    ['meia', 'vestuario', 'acessorio', 'calcado'].forEach(function (b) {
+      const d = linha[b] && linha[b].detalhe;
+      if (!d) return;
+      Object.keys(d.outros_segmentos || {}).forEach(function (k) { outrosTot += d.outros_segmentos[k]; });
+    });
+    return '<div class="tip-ocup">' +
+      '<div class="tip-tit">' + escapar(titulo) + ' · soma das 4 zonas</div>' +
+      '<div class="tip-linha"><span>Capacidade (' + unidadeLonga + ')</span><b>' + fmtInt(linha.total.capacidade) + '</b></div>' +
+      '<div class="tip-linha"><span>Ocupados</span><b>' + fmtInt(linha.total.ocupado) + '</b></div>' +
+      '<div class="tip-linha"><span>Livres</span><b>' + fmtInt(linha.total.disponivel) + '</b></div>' +
+      (outrosTot ? '<div class="tip-linha alerta"><span>Ocupados por produto de outro segmento</span><b>' + fmtInt(outrosTot) + '</b></div>' : '') +
+      '<p>Passe o mouse em cada segmento pra ver onde está o produto fora do lugar.</p>' +
+    '</div>';
+  }
+  function cardOcupacao(rotulo, dados, unidade, tooltip) {
     if (!dados) return '';
     const cor = corOcupacao(dados);
-    return '<div class="kpi kpi-ocup">' +
+    const ruas = dados.detalhe ? listaRuas(dados.detalhe.ruas) : '';
+    return '<div class="kpi kpi-ocup" tabindex="0">' +
       '<div class="donut-wrap" style="color:' + cor + '">' + donutOcupacao(dados.pct, cor) + '</div>' +
       '<div>' +
-        '<div class="rot">' + rotulo + (dados.capacidade_estimada ? ' <span title="Capacidade ainda não validada com a gestão — usando ocupado × 1.2 como estimativa provisória">≈</span>' : '') + '</div>' +
+        '<div class="rot">' + rotulo + (ruas ? ' <span class="ruas-zona">' + ruas + '</span>' : '') +
+          (dados.capacidade_estimada ? ' <span title="Capacidade ainda não validada com a gestão — usando ocupado × 1.2 como estimativa provisória">≈</span>' : '') + '</div>' +
         '<div class="val forte" style="color:' + cor + '">' + fmtPct(dados.pct) + '</div>' +
-        '<div class="sub">' + fmtInt(dados.ocupado) + ' / ' + fmtInt(dados.capacidade) + ' ' + unidade +
-          (dados.capacidade_estimada ? ' (estimada)' : '') + ' · ' + fmtInt(dados.disponivel) + ' livres</div>' +
+        '<div class="sub">' + fmtInt(dados.ocupado) + ' de ' + fmtInt(dados.capacidade) + ' ' + unidade + ' ocupados' +
+          ' · <strong>' + fmtInt(dados.disponivel) + ' livres</strong></div>' +
       '</div>' +
+      (tooltip || '') +
     '</div>';
   }
   /* Uma linha (Picking ou Pulmão) desenha o próprio toggle ao lado do título e
@@ -4892,6 +4959,8 @@ function renderizarEstoqueOperacao(p) {
     const linha = arvore[secao];
     const cabecalho = '<div class="filtros" style="margin:14px 0 6px">' +
       '<span style="font-size:11px;font-weight:600;color:var(--text-label)">' + titulo + '</span>' +
+      '<span style="font-size:10.5px;color:var(--text-muted)">Capacidade = endereços das ruas de cada segmento · ' +
+        'ocupado = endereço com qualquer produto · passe o mouse no card pra ver o que está fora do lugar</span>' +
       (secao === 'pulmao' ? '' :
         '<span class="chip' + (modo === 'endereco' ? ' on' : '') +
           '" onclick="alternarModoOcupacao(\'' + secao + '\',\'endereco\')">Endereços</span>' +
@@ -4911,14 +4980,15 @@ function renderizarEstoqueOperacao(p) {
             'Suba os arquivos de novo em <strong>Admin › Abastecimento</strong>.') +
       '</div>';
     }
-    const unidade = modo === 'itens' ? 'pç' : 'pos. alocadas';
+    const unidade = modo === 'itens' ? 'pç' : 'end.';
+    const unidadeLonga = modo === 'itens' ? 'peças' : 'endereços';
+    const card = function (b) {
+      return cardOcupacao(ROT_BUCKET[b], linha[b], unidade, tooltipOcupacao(ROT_BUCKET[b], linha[b] || {}, unidadeLonga, b));
+    };
     return cabecalho +
       '<div class="kpi-row kpi-row-ocup">' +
-        cardOcupacao(ROT_BUCKET.total, linha.total, unidade) +
-        cardOcupacao(ROT_BUCKET.meia, linha.meia, unidade) +
-        cardOcupacao(ROT_BUCKET.vestuario, linha.vestuario, unidade) +
-        cardOcupacao(ROT_BUCKET.acessorio, linha.acessorio, unidade) +
-        cardOcupacao(ROT_BUCKET.calcado, linha.calcado, unidade) +
+        cardOcupacao(ROT_BUCKET.total, linha.total, unidade, tooltipOcupacaoTotal(titulo, linha, unidadeLonga)) +
+        card('meia') + card('vestuario') + card('acessorio') + card('calcado') +
       '</div>';
   }
   // Pulmão só por endereço (23/09/2026): capacidade em peças no Pulmão é
