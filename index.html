@@ -295,7 +295,9 @@ html { overflow-x: hidden; }
 /* Mais compacto na altura: o conteúdo é pouco (pedido do usuário, 23/09). */
 .kpi-row-destaque .kpi { padding: 10px 14px; justify-content: flex-start; gap: 4px; }
 .kpi-row-destaque .kpi .rot { min-height: 0; margin-bottom: 0; }
-.kpi-row-destaque .kpi .sub { margin-top: auto; padding-top: 8px; font-size: 12px; } /* texto de baixo encostado no rodapé do card */
+.kpi-row-destaque .kpi .sub { margin-top: 0; padding-top: 8px; font-size: 12px; } /* texto de baixo encostado no rodapé do card */
+/* Valor principal centralizado entre o título e o rodapé (24/09/2026). */
+.kpi-row-destaque .kpi .val { margin-top: auto; margin-bottom: auto; }
 .kpi .sub { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; }
 
 /* Card de ocupação com rosca — Ressuprimento (Picking × Pulmão). Sobrescreve
@@ -466,8 +468,10 @@ html { overflow-x: hidden; }
   margin-top: 5px; line-height: 1.5; font-variant-numeric: tabular-nums;
 }
 .barras-dia .rot-dia .dia-semana { text-transform: uppercase; letter-spacing: .02em; }
-/* FIFO do Start Inicial: rótulos maiores (pedido do usuário, 24/09/2026). */
+/* FIFO do Start Inicial e Ressuprimento por dia: rótulos maiores (24/09/2026). */
 .barras-fifo { height: 170px; }
+.barras-rotulo-grande .valor-dia { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+.barras-rotulo-grande .rot-dia { font-size: 12px; font-weight: 600; color: var(--text-label); margin-top: 6px; }
 .barras-fifo .valor-dia { font-size: 14px; font-weight: 700; margin-bottom: 5px; }
 .barras-fifo .rot-dia { font-size: 13px; font-weight: 600; color: var(--text-label); margin-top: 7px; }
 
@@ -2912,7 +2916,7 @@ function hojeISO() {
 // diferentes na fila via "Fila geral" com T01 selecionado esperava ver só o
 // do T01, mas continuava vendo os 3. Corrigido: os dois modos agora também
 // recortam por turno quando o filtro está ativo.
-let modoFilaRessuprimento = 'geral';
+let modoFilaRessuprimento = 'geral'; // fixo em 'geral' desde 24/09/2026 (chips removidos do card)
 function alternarModoFila(modo) { modoFilaRessuprimento = modo; renderizarRessuprimento(); }
 function filaItensVisiveis() {
   const m = dadosMovimentacoes;
@@ -5701,11 +5705,10 @@ function blocoMovimentacoes() {
     : '';
   const filaItens = filaItensVisiveis();
   const pecasFila = filaItens ? filaItens.reduce(function (s, f) { return s + f.qtd; }, 0) : null;
-  const chipsFila = '<div style="display:flex;gap:4px;flex-wrap:wrap;margin:6px 0 2px">' +
-    '<span class="chip' + (modoFilaRessuprimento === 'geral' ? ' on' : '') + '" style="font-size:10px;padding:2px 8px" onclick="alternarModoFila(\'geral\')">Fila geral</span>' +
-    '<span class="chip' + (modoFilaRessuprimento === 'periodo' ? ' on' : '') + '" style="font-size:10px;padding:2px 8px" onclick="alternarModoFila(\'periodo\')">Período filtrado</span>' +
-    '<span class="chip" style="font-size:10px;padding:2px 8px" onclick="exportarCSVFila()" title="Exporta os itens da fila (volume, artigo, quem baixou, origem/destino)">⬇ CSV</span>' +
-  '</div>';
+  // Só o CSV, ao lado do título (24/09/2026) — os chips Fila geral/Período
+  // filtrado saíram; a fila é sempre a geral (modoFilaRessuprimento = 'geral').
+  const csvFila = '<span class="chip" style="font-size:10px;padding:2px 8px;cursor:pointer" onclick="exportarCSVFila()" ' +
+    'title="Exporta os itens da fila (volume, artigo, quem baixou, origem/destino)">⬇ CSV</span>';
 
   /* ---------- chips de turno (multi-seleção, 05/09/2026) ---------- */
   let chipsTurno = '<div class="filtros">' +
@@ -5767,9 +5770,8 @@ function blocoMovimentacoes() {
     '<div class="kpi"><div class="rot">Média por dia</div>' +
       '<div class="val forte">' + fmtInt(mediaDia) + '</div>' +
       '<div class="sub">peças/dia · ' + fmtInt(avaliacaoDias.fechados.length) + ' dia(s) fechado(s)</div></div>' +
-    '<div class="kpi"><div class="rot">Fila em andamento</div>' +
+    '<div class="kpi"><div class="rot" style="display:flex;justify-content:space-between;align-items:center;gap:6px">Fila em andamento' + csvFila + '</div>' +
       '<div class="val forte" style="color:var(--amber)">' + (pecasFila !== null ? fmtInt(pecasFila) : '—') + '</div>' +
-      chipsFila +
       '<div class="sub">' + (pecasFila !== null
         ? fmtInt(filaItens.length) + ' baixa(s) de material sem retorno ao Pulmão'
         : 'reprocesse o Kardex para listar a fila por item') + '</div></div>' +
@@ -6112,7 +6114,7 @@ function blocoMovimentacoes() {
     chipsSegmentoDia +
     alertaAbastecimento +
     kpis +
-    '<div class="barras-dia">' + barras + '</div>' +
+    '<div class="barras-dia barras-rotulo-grande">' + barras + '</div>' +
     '<div class="legenda" style="margin-top:10px">' + legendaTurno + '</div>' +
     '<div style="overflow-x:auto;margin-top:16px"><table class="arvore"><thead><tr>' +
       '<th class="esq">Dia</th><th>T01</th><th>T02</th><th>T03</th>' +
