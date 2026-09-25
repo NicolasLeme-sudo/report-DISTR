@@ -2698,7 +2698,7 @@ let filtroTextoValidacao = '';
 // tinha mais peças — sumia da tabela sem nenhum aviso, mesmo contando certo
 // no total e na barra "por rua" acima. É um card de acompanhamento; card de
 // acompanhamento não pode esconder item por causa de paginação.
-let limiteValidacao = Infinity;       // quantas linhas carregar na tabela (não afeta o CSV)
+let limiteValidacao = 100;            // quantas linhas carregar na tabela (não afeta o CSV) — padrão 100 (25/09/2026)
 let ordemValidacao = { campo: 'qtd', direcao: 'desc' };
 // Barras do material parado por idade da última movimentação (24/09/2026).
 // Prazo em dias: até ele fica amarelo, acima vermelho (a operação vai
