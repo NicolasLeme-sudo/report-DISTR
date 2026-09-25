@@ -58,3 +58,8 @@ insert into dim_capacidade_zonas (zona, capacidade) values
   ('picking_calcado',   3933)
 on conflict (zona) do update set capacidade = excluded.capacidade, atualizado_em = now();
 -- ============================================================================
+
+-- 25/09/2026: rua 15 do Pulmão é área de alocação da reversa, não pulmão —
+-- meia do Pulmão fica só com a rua 1 (712). Já aplicado no banco.
+update dim_capacidade_zonas set capacidade = 712, capacidade_itens = 1068000, atualizado_em = now()
+ where zona = 'pulmao_meia';

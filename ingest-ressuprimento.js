@@ -111,13 +111,14 @@ const RECLASSIFICA_PICKING_PARA_PULMAO = {
    da operação (24/09/2026), a mesma que deu os números de dim_capacidade_zonas:
      Picking: vestuário 1–6 (14.630), calçado 7–8 (4.352), acessório 11–13
               (1.598), meia 14–15 (408).
-     Pulmão:  meia 1 e 15 (848), vestuário 2, 6 e 7 (2.136), calçado 3–5
+     Pulmão:  meia 1 (712 — a rua 15 do Pulmão é área de alocação da reversa,
+              não pulmão; fora da capacidade, usuário 25/09/2026), vestuário 2, 6 e 7 (2.136), calçado 3–5
               (2.131), acessório 11–14 (952). Rua 8 do Pulmão = insumos,
               fora da capacidade (confirmado pelo usuário). */
 const RUAS_ZONA = {
   // 81 e 102 estão desativadas (material no Pulmão) — fora das zonas.
   picking: { vestuario: ['1', '2', '3', '4', '5', '6'], calcado: ['7', '8'], acessorio: ['11', '12', '13'], meia: ['14', '15'] },
-  pulmao: { meia: ['1', '15'], vestuario: ['2', '6', '7'], calcado: ['3', '4', '5'], acessorio: ['11', '12', '13', '14'] },
+  pulmao: { meia: ['1'], vestuario: ['2', '6', '7'], calcado: ['3', '4', '5'], acessorio: ['11', '12', '13', '14'] },
 };
 const BUCKETS_ZONA = ['meia', 'vestuario', 'acessorio', 'calcado'];
 /* Capacidade (endereços) POR RUA — mesma planilha; a soma por zona bate com
@@ -133,7 +134,7 @@ const CAPACIDADE_RUA = {
              // a 14 do sistema (quase vazia) não tem capacidade própria.
              '11': 1190, '12': 204, '13': 204, '14': 0, '15': 408 },
   pulmao: { '1': 712, '2': 712, '3': 712, '4': 707, '5': 712, '6': 712, '7': 712,
-            '11': 136, '12': 272, '13': 272, '14': 272, '15': 136 },
+            '11': 136, '12': 272, '13': 272, '14': 272 },
 };
 
 /* Ruas que NÃO são estoque e saem de tudo já na leitura (Picking e Pulmão):
