@@ -2319,6 +2319,11 @@ function renderizarEstoque(p) {
     blocoConf = '<div class="aviso">Somatório das linhas e itens contabilizados: <strong>' +
       fmtInt(c.qtd_parseada) + ' un</strong> · ' + fmtMoeda(c.valor_parseado) + '.</div>';
   }
+  if (p.crossdocking && p.crossdocking.linhas) {
+    blocoConf += '<div class="aviso">Crossdocking desconsiderado: calçado Olympikus no AC190 (' +
+      fmtInt(p.crossdocking.linhas) + ' SKUs · ' + fmtInt(p.crossdocking.qtd) + ' pares · ' +
+      fmtMoeda(p.crossdocking.valor) + ') não é estoque da distribuidora e ficou fora do balanço.</div>';
+  }
   if ((p.familias_nao_mapeadas || []).length) {
     blocoConf += '<div class="aviso">Famílias sem marca cadastrada em <code>dim_familias</code>: ' +
       escapar(p.familias_nao_mapeadas.join(', ')) +

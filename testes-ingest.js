@@ -266,6 +266,17 @@ const fixoFam = parsearRelatorioEstoque([
 eq(fixoFam.registros[0].familia_codigo, '081',
    'layout fixo: família 080 já sai do parser como 081');
 
+/* Crossdocking: calçado Olympikus no AC190 sai do balanço (25/09/2026) */
+const sepCross = separarCrossdocking([
+  { armazem: 'AC190', familia_codigo: '043', qtd: 10, valor: 100 },
+  { armazem: 'AC190', familia_codigo: '054', qtd: 2, valor: 20 },
+  { armazem: 'AC190', familia_codigo: '060', qtd: 5, valor: 50 },
+  { armazem: 'ARAMO', familia_codigo: '043', qtd: 3, valor: 30 },
+]);
+eq(sepCross.registros.length, 2, 'crossdocking: sobram vestuário do AC190 e tênis do ARAMO');
+eq(sepCross.crossdocking.qtd, 12, 'crossdocking: tênis+chinelo Olympikus do AC190 contados fora');
+eq(sepCross.crossdocking.linhas, 2, 'crossdocking: 2 linhas desconsideradas');
+
 /* -------------------------------------------------------------------------- */
 console.log('\n' + (falhas === 0
   ? 'TODOS OS TESTES PASSARAM'

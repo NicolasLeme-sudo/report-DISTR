@@ -933,6 +933,32 @@ function construirSnapshotEstoque(registros, mapaFamilias, mapaArmazens, meta) {
 }
 
 /* ----------------------------------------------------------------------------
+   CROSSDOCKING FORA DO BALANÇO (pedido do usuário, 25/09/2026)
+   ----------------------------------------------------------------------------
+   A distribuidora não armazena calçado Olympikus: o que aparece no AC190 é
+   material de crossdocking (rua 20 — recebe e segue, sem estoque físico). O
+   Balanço não traz endereço, então a rua 20 não dá pra filtrar aqui como no
+   Picking/Pulmão/Kardex; a regra é pela família: calçado Olympikus (tênis e
+   chinelo) no AC190 sai do balanço, da tabela de posições e do snapshot.
+   Continua contado em payload.crossdocking pra não sumir sem rastro.
+   ---------------------------------------------------------------------------- */
+const FAMILIAS_CROSSDOCKING = { '043': 'Tênis Olympikus', '054': 'Chinelo Olympikus', '058': 'Tênis Olympikus' };
+const ARMAZENS_CROSSDOCKING = { 'AC190': true };
+
+function separarCrossdocking(registros) {
+  const ficam = [];
+  const fora = { linhas: 0, qtd: 0, valor: 0, familias: FAMILIAS_CROSSDOCKING, armazens: Object.keys(ARMAZENS_CROSSDOCKING) };
+  registros.forEach(function (r) {
+    if (ARMAZENS_CROSSDOCKING[r.armazem] && FAMILIAS_CROSSDOCKING[r.familia_codigo]) {
+      fora.linhas++; fora.qtd += r.qtd; fora.valor += r.valor;
+      return;
+    }
+    ficam.push(r);
+  });
+  return { registros: ficam, crossdocking: fora };
+}
+
+/* ----------------------------------------------------------------------------
    ORQUESTRAÇÃO
    ----------------------------------------------------------------------------
    Fluxo completo de uma atualização de estoque. O index.html chama só isto.
@@ -961,6 +987,8 @@ async function processarEstoque(supabaseClient, file, onProgresso) {
   }
 
   const dedup = deduplicarPosicoes(parsed.registros);
+  const cross = separarCrossdocking(dedup.registros);
+  dedup.registros = cross.registros;
   avisar(
     parsed.registros.length.toLocaleString('pt-BR') + ' linhas com estoque' +
     (parsed.linhas_zeradas
@@ -968,6 +996,11 @@ async function processarEstoque(supabaseClient, file, onProgresso) {
       : '') +
     (dedup.colisoes ? ' · ' + dedup.colisoes + ' somadas por chave repetida' : '') + '.'
   );
+  if (cross.crossdocking.linhas) {
+    avisar('Crossdocking desconsiderado (calçado Olympikus no AC190): ' +
+      cross.crossdocking.linhas.toLocaleString('pt-BR') + ' SKU(s), ' +
+      cross.crossdocking.qtd.toLocaleString('pt-BR') + ' pares fora do balanço.');
+  }
 
   // --- dimensões (com paginação segura, mesmo sendo tabelas pequenas hoje) ---
   avisar('Carregando gabaritos de armazém e família…');
@@ -1043,6 +1076,7 @@ async function processarEstoque(supabaseClient, file, onProgresso) {
     layout: parsed.layout,
     linhas_zeradas: parsed.linhas_zeradas || 0,
   });
+  payload.crossdocking = cross.crossdocking;
 
   const { error: errSnap } = await supabaseClient.from('dashboard_snapshots').insert({
     pagina: 'estoque',
@@ -1084,3 +1118,4 @@ window.parsearRelatorioEstoque = parsearRelatorioEstoque;
 window.parsearRelatorioPipe = parsearRelatorioPipe;
 window.construirSnapshotEstoque = construirSnapshotEstoque;
 window.deduplicarPosicoes = deduplicarPosicoes;
+window.separarCrossdocking = separarCrossdocking;
