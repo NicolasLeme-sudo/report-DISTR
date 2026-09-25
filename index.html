@@ -632,12 +632,16 @@ tr.total > th, tr.total > td {
 .card-det { display: flex; flex-direction: column; }
 .card-det .section-title { flex-shrink: 0; }
 .det-rolagem { flex: 1 1 0; min-height: 176px; overflow: auto; }
-#card-composicao { display: flex; flex-direction: column; }
-#card-composicao > .corpo-comp { flex: 1; display: flex; align-items: center; gap: 18px; }
-#card-composicao .fatia-comp { cursor: pointer; transition: opacity .15s; }
-#card-composicao .leg-comp { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 4px 8px;
+.card-comp { display: flex; flex-direction: column; }
+.card-comp > .corpo-comp { flex: 1; display: flex; align-items: center; gap: 18px; }
+.card-comp .fatia-comp { cursor: pointer; transition: opacity .15s; }
+.card-comp .leg-comp { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 4px 8px;
   margin-bottom: 2px; border-radius: 6px; cursor: default; }
-#card-composicao .leg-comp.ativo { background: var(--bg-input); font-weight: 700; }
+.card-comp .leg-comp.ativo { background: var(--bg-input); font-weight: 700; }
+/* Ressuprimento: planejado × realizado (largo) + rosca por segmento (estreito). */
+.grid-plano-seg { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 400px); gap: 16px; align-items: start; }
+.grid-plano-seg > .card { margin-bottom: 0; }
+.grid-plano-seg { margin-bottom: 16px; }
 .det-rolagem thead th { position: sticky; top: 0; z-index: 1; background: var(--bg-card); }
 .filtros-mini .chip { padding: 2px 8px; font-size: 10.5px; }
 /* Títulos da linha Detalhamento + Composição com a mesma altura: as linhas
@@ -660,7 +664,7 @@ tr.total > th, tr.total > td {
 .matriz-nf th.mz-toggle:hover { color: var(--accent); }
 .matriz-nf .mz-seta { display: inline-block; width: 12px; font-size: 10px; }
 @media (max-width: 900px) {
-  .grid2, .grid-det, .grid-start { grid-template-columns: 1fr; }
+  .grid2, .grid-det, .grid-start, .grid-plano-seg { grid-template-columns: 1fr; }
   .grid-start > .card-funil { grid-column: auto; grid-row: auto; }
   .sidebar { display: none; }
   .topbar { left: 0; }
@@ -2750,8 +2754,8 @@ function htmlComposicaoSegmento(p) {
       .sort(function (x, y) { return y.valor - x.valor; });
   })();
   const totalComp = segmentosComp.reduce(function (a, x) { return a + x.valor; }, 0);
-  compSegAtual = { segs: segmentosComp, total: totalComp };
-  return '<div class="card" id="card-composicao">' +
+  estadoRoscaSeg['card-composicao'] = { segs: segmentosComp, total: totalComp, unidade: 'itens' };
+  return '<div class="card card-comp" id="card-composicao">' +
     // Filtro ao lado do título (não embaixo) pra linha amarela alinhar com a
     // do Detalhamento (pedido do usuário, 24/09/2026).
     '<div class="section-title titulo-comp">' +
@@ -2765,38 +2769,43 @@ function htmlComposicaoSegmento(p) {
     // Horizontal (24/09/2026): rosca à esquerda, legenda à direita — o card
     // fica com a altura do Detalhamento recolhido, sem vão.
     (totalComp
-      ? '<div class="corpo-comp">' +
-        // Valores só no hover (pedido do usuário, 24/09/2026): passar na fatia
-        // ou no nome da legenda troca o centro da rosca pelo valor e %.
-        '<div style="flex-shrink:0" onmouseleave="destacarSegComp(null)">' + (function () {
-          let n = 0;
-          return donutMultiSegmento(segmentosComp, 'itens', 165).replace(/<path /g, function () {
-            const i = n++;
-            return '<path class="fatia-comp" data-i="' + i + '" onmouseenter="destacarSegComp(' + i + ')" ';
-          });
-        })() + '</div>' +
-        '<div style="flex:1;min-width:0">' +
-        segmentosComp.map(function (x, i) {
-          return '<div class="leg-comp" data-i="' + i + '" onmouseenter="destacarSegComp(' + i + ')" onmouseleave="destacarSegComp(null)">' +
-            '<span style="width:10px;height:10px;border-radius:50%;background:' + x.cor + ';flex-shrink:0"></span>' +
-            '<span>' + escapar(x.rotulo) + '</span>' +
-          '</div>';
-        }).join('') +
-        '</div></div>'
+      ? corpoRoscaSegmento('card-composicao', segmentosComp, 'itens', 165)
       : '<div class="aviso">Sem material para essa marca no recorte.</div>') +
   '</div>';
 
 }
 // Cores escolhidas pelo usuário (24/09/2026), na ordem da rosca:
 // amarelo, verde, azul marinho e gelo.
-let compSegAtual = { segs: [], total: 0 };
-// Hover na rosca/legenda da Composição: centro mostra valor e % do segmento,
-// as outras fatias apagam. null volta pro total.
-function destacarSegComp(i) {
-  const card = document.getElementById('card-composicao');
-  if (!card) return;
+const estadoRoscaSeg = {};
+// Rosca + legenda por segmento, valores só no hover (pedido do usuário,
+// 24/09/2026): passar na fatia ou no nome troca o centro da rosca pelo valor e
+// %. Usada na Composição por segmento (Estoque) e na do Ressuprimento.
+function corpoRoscaSegmento(cardId, segs, unidade, tamanho) {
+  let n = 0;
+  return '<div class="corpo-comp">' +
+    '<div style="flex-shrink:0" onmouseleave="destacarSegComp(null,\'' + cardId + '\')">' +
+      donutMultiSegmento(segs, unidade, tamanho).replace(/<path /g, function () {
+        const i = n++;
+        return '<path class="fatia-comp" data-i="' + i + '" onmouseenter="destacarSegComp(' + i + ',\'' + cardId + '\')" ';
+      }) + '</div>' +
+    '<div style="flex:1;min-width:0">' +
+    segs.map(function (x, i) {
+      return '<div class="leg-comp" data-i="' + i + '" onmouseenter="destacarSegComp(' + i + ',\'' + cardId + '\')" onmouseleave="destacarSegComp(null,\'' + cardId + '\')">' +
+        '<span style="width:10px;height:10px;border-radius:50%;background:' + x.cor + ';flex-shrink:0"></span>' +
+        '<span>' + escapar(x.rotulo) + '</span>' +
+      '</div>';
+    }).join('') +
+    '</div></div>';
+}
+// Hover na rosca/legenda: centro mostra valor e % do segmento, as outras
+// fatias apagam. null volta pro total.
+function destacarSegComp(i, cardId) {
+  cardId = cardId || 'card-composicao';
+  const card = document.getElementById(cardId);
+  const est = estadoRoscaSeg[cardId];
+  if (!card || !est) return;
   const textos = card.querySelectorAll('svg text');
-  const seg = i === null ? null : compSegAtual.segs[i];
+  const seg = i === null ? null : est.segs[i];
   card.querySelectorAll('.fatia-comp').forEach(function (el) {
     el.style.opacity = (seg && Number(el.getAttribute('data-i')) !== i) ? '.25' : '1';
   });
@@ -2804,13 +2813,13 @@ function destacarSegComp(i) {
     el.classList.toggle('ativo', seg !== null && Number(el.getAttribute('data-i')) === i);
   });
   if (textos.length < 2) return;
-  const valor = seg ? seg.valor : compSegAtual.total;
+  const valor = seg ? seg.valor : est.total;
   const txt = fmtInt(valor);
   textos[0].textContent = txt;
   textos[0].setAttribute('font-size', txt.length > 7 ? 12 : txt.length > 5 ? 14 : 17);
   textos[1].textContent = seg
-    ? fmtPct(compSegAtual.total ? seg.valor / compSegAtual.total * 100 : 0) + ' · ' + seg.rotulo.toLowerCase()
-    : 'itens';
+    ? fmtPct(est.total ? seg.valor / est.total * 100 : 0) + ' · ' + seg.rotulo.toLowerCase()
+    : est.unidade;
 }
 const COR_SEGMENTO_COMP = { 'VESTUÁRIO': '--amber', 'MEIA': '--olive', 'ACESSÓRIO': '--azul-marinho', 'CALÇADO': '--gelo' };
 let ruaBOAberta = null;
@@ -5986,17 +5995,13 @@ function blocoMovimentacoes() {
     return Array.from(porNome.values()).sort(function (a, b) { return b.pecas - a.pecas; });
   })();
   const totalSegMov = porSegmento.reduce(function (s, x) { return s + x.pecas; }, 0);
-  const maxSegMov = porSegmento.reduce(function (mx, x) { return Math.max(mx, x.pecas); }, 0);
-  let barrasSegMov = '';
-  porSegmento.forEach(function (s) {
-    const larg = maxSegMov > 0 ? s.pecas / maxSegMov * 100 : 0;
-    const cor = s.segmento === 'SEM FAMÍLIA' ? 'var(--laranja)' : 'var(--accent)';
-    barrasSegMov += '<div class="bar-item">' +
-      '<div class="nome">' + escapar(s.segmento) + '</div>' +
-      '<div class="trilho"><div class="preench" style="width:' + larg + '%;background:' + cor + '"></div></div>' +
-      '<div class="num">' + fmtInt(s.pecas) + ' · ' + fmtPct(totalSegMov ? s.pecas / totalSegMov * 100 : 0) + '</div>' +
-    '</div>';
+  // Rosca no mesmo modelo da Composição por segmento do Estoque (pedido do
+  // usuário, 25/09/2026), ao lado do Planejado × realizado.
+  const segsRoscaMov = porSegmento.filter(function (x) { return x.pecas > 0; }).map(function (x) {
+    return { rotulo: x.segmento, valor: x.pecas,
+      cor: 'var(' + (x.segmento === 'SEM FAMÍLIA' ? '--laranja' : (COR_SEGMENTO_COMP[x.segmento] || '--gelo')) + ')' };
   });
+  estadoRoscaSeg['card-comp-ressup'] = { segs: segsRoscaMov, total: totalSegMov, unidade: 'peças' };
   const avisoSemFamilia = (m && m.sem_familia && m.sem_familia.pecas > 0)
     ? '<p style="font-size:11px;color:var(--amber);margin-top:8px">' + fmtInt(m.sem_familia.artigos_distintos) +
       ' artigo(s) ainda sem entrada no dicionário artigo→família (' + fmtInt(m.sem_familia.pecas) +
@@ -6254,13 +6259,17 @@ function blocoMovimentacoes() {
         ' movimento(s); presumido pelo horário: ' + fmtInt(m.resolucao_turno.por_horario) + '.' : '') +
     '</div>' : '') +
   '</div>' +
-  '<div class="card">' +
-    '<div class="section-title">Composição do ressuprimento por segmento — ' + escapar(periodo) +
-      (filtroTurnoRessuprimento.size ? ' · ' + rotuloTurnosSelecionados(filtroTurnoRessuprimento) : '') + '</div>' +
-    '<div class="bar-list">' + barrasSegMov + '</div>' +
-    avisoSemFamilia +
-  '</div>' +
-  blocoPlanejamento;
+  '<div class="grid-plano-seg">' +
+    blocoPlanejamento +
+    '<div class="card card-comp" id="card-comp-ressup">' +
+      '<div class="section-title">Composição do ressuprimento por segmento</div>' +
+      '<p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">' + escapar(periodo) +
+        (filtroTurnoRessuprimento.size ? ' · ' + rotuloTurnosSelecionados(filtroTurnoRessuprimento) : '') + '</p>' +
+      (totalSegMov ? corpoRoscaSegmento('card-comp-ressup', segsRoscaMov, 'peças', 165)
+                   : '<div class="aviso">Sem ressuprimento no período.</div>') +
+      avisoSemFamilia +
+    '</div>' +
+  '</div>';
 }
 
 function exportarCSVMovimentacoes() {
