@@ -380,6 +380,7 @@ eq(somaRuas('picking', ['1', '2', '3', '4', '5', '6']), 14630, 'Picking vestuár
 eq(somaRuas('picking', ['7', '8']), 4352, 'Picking calçado 7–8 = 4.352');
 eq(somaRuas('picking', ['11', '12', '13']), 1598, 'Picking acessório 11–13 = 1.598');
 eq(somaRuas('picking', ['14', '15']), 408, 'Picking meia 14–15 = 408');
+eq(CAPACIDADE_RUA.picking['15'], 408, 'Picking meia: sistema mapeia 14+15 físicas como rua 15');
 eq(somaRuas('pulmao', ['1', '15']), 848, 'Pulmão meia 1 e 15 = 848');
 eq(somaRuas('pulmao', ['2', '6', '7']), 2136, 'Pulmão vestuário 2, 6, 7 = 2.136');
 eq(somaRuas('pulmao', ['3', '4', '5']), 2131, 'Pulmão calçado 3–5 = 2.131');

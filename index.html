@@ -5107,7 +5107,9 @@ function renderizarEstoqueOperacao(p) {
     const livresPorRua = function (linha) {
       const saida = [];
       if (!opr) return saida;
-      const cap = opr.capacidade[linha] || {};
+      // Capacidade por rua do código atual (window.CAPACIDADE_RUA) vale sobre a
+      // gravada no snapshot: correção de planilha entra sem reprocessar.
+      const cap = (window.CAPACIDADE_RUA && window.CAPACIDADE_RUA[linha]) || opr.capacidade[linha] || {};
       const occ = opr[linha] || {};
       // Conta POR SEGMENTO, igual aos cards (capacidade das ruas do segmento −
       // ocupados nelas): rua acima da capacidade (ex.: Picking 15) desconta das

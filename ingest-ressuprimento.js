@@ -127,7 +127,11 @@ const BUCKETS_ZONA = ['meia', 'vestuario', 'acessorio', 'calcado'];
    mesma régua dos cards de ocupação (24/09/2026). */
 const CAPACIDADE_RUA = {
   picking: { '1': 2415, '2': 2450, '3': 2450, '4': 2415, '5': 2450, '6': 2450, '7': 1865, '8': 2487,
-             '11': 1190, '12': 204, '13': 204, '14': 272, '15': 136 },
+             // Meia: fisicamente rua 14 tem 2 lados (272) e a 15 um lado só
+             // (136), mas no SISTEMA as duas são mapeadas como UMA rua — a 15
+             // (confirmado pelo usuário, 25/09/2026). Os 408 ficam todos na 15;
+             // a 14 do sistema (quase vazia) não tem capacidade própria.
+             '11': 1190, '12': 204, '13': 204, '14': 0, '15': 408 },
   pulmao: { '1': 712, '2': 712, '3': 712, '4': 707, '5': 712, '6': 712, '7': 712,
             '11': 136, '12': 272, '13': 272, '14': 272, '15': 136 },
 };
@@ -1356,6 +1360,7 @@ window.upsertArtigoFamilia = upsertArtigoFamilia;
 window.parsearPicking = parsearPicking;
 window.parsearPulmao = parsearPulmao;
 window.RUAS_ZONA = RUAS_ZONA;
+window.CAPACIDADE_RUA = CAPACIDADE_RUA;
 window.construirSnapshotRessuprimento = construirSnapshotRessuprimento;
 window.classificarPickingEPulmao = classificarPickingEPulmao;
 window.construirSaldoEnderecos = construirSaldoEnderecos;
