@@ -170,11 +170,36 @@ function mapearColunasKardex(linhaCabecalho) {
 /* ============================================================================
    PARSE — devolve as PERNAS brutas (uma por linha TL+/TL-), sem casar par ainda
    ============================================================================ */
-function parsearKardex(textoArquivo) {
-  const linhas = textoArquivo.split(/\r?\n/);
+/* Leitor linha a linha (25/09/2026): o mesmo parse de antes, mas alimentado
+   uma linha por vez — permite ler o Kardex em pedaços (ver lerLinhasEmStream)
+   sem montar o arquivo inteiro numa string só. Kardex de um ANO inteiro passa
+   de 800 MB, acima do limite de string do navegador (~512 MB).
+   opcoes.meses (Set de 'AAAA-MM'): só guarda as pernas desses meses — as de
+   outros meses nem são contadas, pra cada linha contar uma vez só entre as
+   passadas. opcoes.censo: não guarda pernas, só conta linhas TL+/TL- por mês. */
+/* Pedaço de string no V8 (split/trim) guarda referência pro texto de onde
+   saiu — num Kardex lido em partes, isso prendia o arquivo inteiro na memória
+   (pico de 2,4 GB num teste de 490 MB). ' ' + s + slice força uma cópia
+   própria; textos repetidos (descrição, nome, login) ficam uma vez só. */
+function soltarTexto(s) {
+  return s.length >= 13 ? (' ' + s).slice(1) : s;
+}
+function criarInternador() {
+  const m = new Map();
+  return function (s) {
+    let v = m.get(s);
+    if (v === undefined) { v = soltarTexto(s); m.set(v, v); }
+    return v;
+  };
+}
+
+function criarLeitorKardex(opcoes) {
+  opcoes = opcoes || {};
+  const internar = criarInternador();
   const pernas = [];
-  let idx = null;
   const periodo = { de: null, ate: null };
+  const meses = {};
+  let idx = null;
   let ignoradasOutroTipo = 0;
   // Contagem por TIPO_MOVTO (24/09/2026): só TL+/TL- entram no cálculo, mas
   // os outros tipos (recebimento, ajuste etc.) ficam contados — inclusive
@@ -183,74 +208,117 @@ function parsearKardex(textoArquivo) {
   const tiposMovimento = {};
   let ignoradasDataInvalida = 0;
 
-  for (let i = 0; i < linhas.length; i++) {
-    const linha = linhas[i];
-    if (!linha.trim()) continue;
+  function linha(texto) {
+    if (!texto.trim()) return;
 
     if (!idx) {
       // Cabeçalho do relatório: "...|de:03/08/2026|ate:31/08/2026|..."
-      const mDe = linha.match(/de:\s*(\d{2}\/\d{2}\/\d{4})/i);
-      const mAte = linha.match(/ate:\s*(\d{2}\/\d{2}\/\d{4})/i);
+      const mDe = texto.match(/de:\s*(\d{2}\/\d{2}\/\d{4})/i);
+      const mAte = texto.match(/ate:\s*(\d{2}\/\d{2}\/\d{4})/i);
       if (mDe) periodo.de = mDe[1];
       if (mAte) periodo.ate = mAte[1];
-      if (/(^|\|)\s*artigo\s*\|/i.test(linha)) idx = mapearColunasKardex(linha);
-      continue;
+      if (/(^|\|)\s*artigo\s*\|/i.test(texto)) idx = mapearColunasKardex(texto);
+      return;
     }
 
-    const p = linha.split('|');
-    if (p.length < 10) continue;
+    const p = texto.split('|');
+    if (p.length < 10) return;
 
     const tipo = (p[idx.tipo] || '').trim().toUpperCase();
+    let dh;
+    if (opcoes.meses) {
+      dh = parsearDataHora(p[idx.data]);
+      if (!dh || !opcoes.meses.has(dh.dia.slice(0, 7))) return;
+    }
+    if (opcoes.censo) {
+      if (tipo !== 'TL+' && tipo !== 'TL-') return;
+      dh = parsearDataHora(p[idx.data]);
+      if (!dh) { ignoradasDataInvalida++; return; }
+      const mes = dh.dia.slice(0, 7);
+      meses[mes] = (meses[mes] || 0) + 1;
+      return;
+    }
+
     const endTipo = (p[idx.endereco] || '').trim().split(',');
     const tm = tiposMovimento[tipo || '(vazio)'] || (tiposMovimento[tipo || '(vazio)'] = { linhas: 0, na_rua_98: 0, com_volume: 0, com_login: 0 });
     tm.linhas++;
     if (Number(endTipo[0]) === 98) tm.na_rua_98++;
     if ((p[idx.volume] || '').trim()) tm.com_volume++;
     if (idx.login !== undefined && (p[idx.login] || '').trim()) tm.com_login++;
-    if (tipo !== 'TL+' && tipo !== 'TL-') { ignoradasOutroTipo++; continue; }
+    if (tipo !== 'TL+' && tipo !== 'TL-') { ignoradasOutroTipo++; return; }
 
-    const dh = parsearDataHora(p[idx.data]);
-    if (!dh) { ignoradasDataInvalida++; continue; }
+    dh = dh || parsearDataHora(p[idx.data]);
+    if (!dh) { ignoradasDataInvalida++; return; }
 
     const endereco = (p[idx.endereco] || '').trim();
     const partes = endereco.split(',');
 
     pernas.push({
-      artigo: (p[idx.artigo] || '').trim(),
-      descricao: idx.descricao !== undefined ? (p[idx.descricao] || '').trim() : '',
-      cor: (p[idx.cor] || '').trim(),
-      tamanho: (p[idx.tamanho] || '').trim(),
+      artigo: internar((p[idx.artigo] || '').trim()),
+      descricao: idx.descricao !== undefined ? internar((p[idx.descricao] || '').trim()) : '',
+      cor: internar((p[idx.cor] || '').trim()),
+      tamanho: internar((p[idx.tamanho] || '').trim()),
       dia: dh.dia,
       minutos: dh.minutos,
-      data_bruta: (p[idx.data] || '').trim(),
+      data_bruta: internar((p[idx.data] || '').trim()),
       tipo: tipo,
-      ref: (p[idx.ref] || '').trim(),
+      ref: soltarTexto((p[idx.ref] || '').trim()),
       qtd: window.numeroBR(p[idx.qtd]),
-      endereco: endereco,
-      rua: (partes[0] || '').trim(),
-      nivel: (partes[1] || '').trim(),
-      box: (partes[2] || '').trim(),
-      volume: (p[idx.volume] || '').trim(),
-      login: idx.login !== undefined ? (p[idx.login] || '').trim() : '',
-      nome: idx.nome !== undefined ? (p[idx.nome] || '').trim() : '',
+      endereco: internar(endereco),
+      rua: internar((partes[0] || '').trim()),
+      nivel: internar((partes[1] || '').trim()),
+      box: internar((partes[2] || '').trim()),
+      volume: soltarTexto((p[idx.volume] || '').trim()),
+      login: idx.login !== undefined ? internar((p[idx.login] || '').trim()) : '',
+      nome: idx.nome !== undefined ? internar((p[idx.nome] || '').trim()) : '',
     });
   }
 
-  if (!idx) {
-    throw new Error(
-      'Cabeçalho de colunas não encontrado no Kardex. A linha de cabeçalho é ' +
-      'localizada por uma coluna chamada "ARTIGO" — se o sistema renomeou essa ' +
-      'coluna, o alias precisa ser ajustado em ingest-movimentacoes.js.'
-    );
+  function fim() {
+    if (!idx) {
+      throw new Error(
+        'Cabeçalho de colunas não encontrado no Kardex. A linha de cabeçalho é ' +
+        'localizada por uma coluna chamada "ARTIGO" — se o sistema renomeou essa ' +
+        'coluna, o alias precisa ser ajustado em ingest-movimentacoes.js.'
+      );
+    }
+    return {
+      pernas: pernas,
+      periodo: periodo,
+      meses: meses,
+      ignoradas_outro_tipo: ignoradasOutroTipo,
+      tipos_movimento: tiposMovimento,
+      ignoradas_data_invalida: ignoradasDataInvalida,
+    };
   }
 
-  return {
-    pernas: pernas,
-    periodo: periodo,
-    ignoradas_outro_tipo: ignoradasOutroTipo,
-    tipos_movimento: tiposMovimento,
-    ignoradas_data_invalida: ignoradasDataInvalida,
-  };
+  return { linha: linha, fim: fim };
+}
+
+function parsearKardex(textoArquivo) {
+  const leitor = criarLeitorKardex();
+  textoArquivo.split(/\r?\n/).forEach(leitor.linha);
+  return leitor.fim();
+}
+
+/* Lê o arquivo em pedaços (file.stream) e entrega linha por linha, sem nunca
+   montar o texto inteiro — mesma decodificação UTF-8 do file.text(). */
+async function lerLinhasEmStream(file, aoLer, aoProgresso) {
+  const reader = file.stream().getReader();
+  const dec = new TextDecoder('utf-8');
+  let resto = '';
+  let lidos = 0;
+  for (;;) {
+    const r = await reader.read();
+    if (r.done) break;
+    lidos += r.value.length;
+    const partes = (resto + dec.decode(r.value, { stream: true })).split(/\r?\n/);
+    resto = partes.pop();
+    for (let i = 0; i < partes.length; i++) aoLer(partes[i]);
+    if (aoProgresso) aoProgresso(lidos / (file.size || 1));
+  }
+  resto += dec.decode();
+  if (resto) aoLer(resto);
 }
 
 /* Ruas de sinalização/passagem cujo material aparece no card "B.O. em
@@ -779,16 +847,13 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
 /* ============================================================================
    ORQUESTRAÇÃO — chamado pelo index.html (tela de Abastecimento)
    ============================================================================ */
-async function processarMovimentacoes(supabaseClient, file, onProgresso) {
-  const avisar = onProgresso || function () {};
+/* Acima disto o Kardex é lido em partes, mês a mês (ver processarKardexGrande).
+   Um mês de Kardex tem ~70 MB; o arquivo de um ano, 660–860 MB. */
+const LIMITE_LEITURA_INTEIRA = 150 * 1024 * 1024;
+// Teto de linhas TL+/TL- em memória por passada no modo em partes.
+const MAX_PERNAS_POR_LOTE = 600000;
 
-  avisar('Lendo o Kardex…');
-  const texto = await file.text();
-
-  avisar('Interpretando as movimentações…');
-  const parsed = parsearKardex(texto);
-  avisar(parsed.pernas.length.toLocaleString('pt-BR') + ' linhas TL+/TL- lidas.');
-
+async function carregarDimensoesKardex(supabaseClient, avisar) {
   avisar('Carregando dicionário artigo→família, famílias, planejamento e turno dos colaboradores…');
   const [linhasArtigoFamilia, linhasFam, linhasPlanejamento, linhasColaboradores] = await Promise.all([
     // ordenarPor='artigo_codigo': o default de lerTudoPaginado ('codigo') é a
@@ -831,6 +896,26 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
     avisar('Aviso: base de turno dos colaboradores está vazia — todo o turno deste Kardex será ' +
       'presumido pelo horário do movimento. Envie a base de Ativos em Admin › Abastecimento.');
   }
+  return { mapaArtigoFamilia: mapaArtigoFamilia, mapaFamilias: mapaFamilias,
+    planejamento: linhasPlanejamento, mapaColaboradorTurno: mapaColaboradorTurno };
+}
+
+async function processarMovimentacoes(supabaseClient, file, onProgresso) {
+  const avisar = onProgresso || function () {};
+  if (file.size > LIMITE_LEITURA_INTEIRA && typeof file.stream === 'function') {
+    return processarKardexGrande(supabaseClient, file, avisar);
+  }
+
+  avisar('Lendo o Kardex…');
+  const texto = await file.text();
+
+  avisar('Interpretando as movimentações…');
+  const parsed = parsearKardex(texto);
+  avisar(parsed.pernas.length.toLocaleString('pt-BR') + ' linhas TL+/TL- lidas.');
+
+  const dims = await carregarDimensoesKardex(supabaseClient, avisar);
+  const mapaArtigoFamilia = dims.mapaArtigoFamilia, mapaFamilias = dims.mapaFamilias;
+  const linhasPlanejamento = dims.planejamento, mapaColaboradorTurno = dims.mapaColaboradorTurno;
 
   avisar('Casando pares e classificando zonas…');
   const payload = construirSnapshotMovimentacoes(
@@ -844,6 +929,7 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
     payload.resolucao_turno.por_horario.toLocaleString('pt-BR') + ' presumido(s) pelo horário.'
   );
 
+  let payloadAnterior = null;
   // Acumula entradas por volume com o snapshot anterior (ver
   // mesclarEntradasPorVolume) — falha de leitura só perde o acúmulo, nunca
   // derruba o processamento.
@@ -851,8 +937,8 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
     const anterior = await supabaseClient.from('dashboard_snapshots')
       .select('payload').eq('pagina', 'ressuprimento_mov')
       .order('gerado_em', { ascending: false }).limit(1);
-    const mapaAnterior = anterior && anterior.data && anterior.data[0] && anterior.data[0].payload
-      ? anterior.data[0].payload.entradas_volume : null;
+    payloadAnterior = anterior && anterior.data && anterior.data[0] ? anterior.data[0].payload : null;
+    const mapaAnterior = payloadAnterior ? payloadAnterior.entradas_volume : null;
     payload.entradas_volume = mesclarEntradasPorVolume(mapaAnterior, parsed.pernas, payload.entradas_volume);
   } catch (e) {
     avisar('Aviso: não deu pra acumular as entradas por volume do Kardex anterior (' + (e && e.message) + ').');
@@ -860,10 +946,21 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
   avisar(Object.keys(payload.entradas_volume).length.toLocaleString('pt-BR') +
     ' volume(s) com data de entrada em endereço transitório/sinalização.');
 
+  // Kardex ANTIGO (carga de histórico, ex.: um ano passado subido depois do
+  // mês atual) não troca a tela: grava o histórico diário e só soma as
+  // entradas por volume no snapshot atual (25/09/2026).
+  let snapshotPublicar = payload;
+  const ateArquivo = dataBrParaIso(parsed.periodo.ate);
+  const ateAnterior = payloadAnterior && payloadAnterior.periodo ? dataBrParaIso(payloadAnterior.periodo.ate) : null;
+  if (ateArquivo && ateAnterior && ateArquivo < ateAnterior) {
+    snapshotPublicar = Object.assign({}, payloadAnterior, { entradas_volume: payload.entradas_volume, gerado_em: new Date().toISOString() });
+    avisar('Carga de histórico (arquivo até ' + ateArquivo + ', anterior ao último Kardex publicado) — a tela continua com o Kardex atual; só o histórico diário e as entradas por volume foram atualizados.');
+  }
+
   avisar('Publicando o snapshot…');
   const { error } = await supabaseClient.from('dashboard_snapshots').insert({
     pagina: 'ressuprimento_mov',
-    payload: payload,
+    payload: snapshotPublicar,
     gerado_em: new Date().toISOString(),
   });
   if (error) throw error;
@@ -874,6 +971,126 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
 
   avisar('Concluído.');
   return payload;
+}
+
+/* ============================================================================
+   KARDEX GRANDE (um ano inteiro) — lido em partes, mês a mês (25/09/2026)
+   ============================================================================
+   1ª passada (censo): conta as linhas TL+/TL- por mês, sem guardar nada.
+   Depois, os meses são agrupados em lotes de até MAX_PERNAS_POR_LOTE linhas e
+   cada lote é uma nova passada pelo arquivo: casa os pares (o par TL-/TL+ tem
+   a mesma data/hora, então nunca atravessa mês), grava o histórico diário
+   (dia × segmento × turno, família e operador — upsert, reprocessar não
+   duplica) e acumula as entradas por volume. Só um lote fica na memória.
+
+   Snapshot da tela: se o arquivo vai até a data do último Kardex publicado ou
+   depois, o snapshot novo sai do lote mais recente; se é carga de ano antigo,
+   o snapshot atual é mantido e só ganha as entradas por volume acumuladas —
+   subir 2023 depois de 2026 não troca a tela pelo ano velho.
+   ============================================================================ */
+async function processarKardexGrande(supabaseClient, file, avisar, opcoes) {
+  const maxPernas = (opcoes && opcoes.maxPernas) || MAX_PERNAS_POR_LOTE;
+  const mb = function (n) { return Math.round(n / 1024 / 1024).toLocaleString('pt-BR'); };
+  avisar('Kardex grande (' + mb(file.size) + ' MB) — leitura em partes, mês a mês.');
+
+  let ultimoPct = -1;
+  const progresso = function (rotulo) {
+    return function (f) {
+      const pct = Math.floor(f * 100);
+      if (pct >= ultimoPct + 10) { ultimoPct = pct; avisar(rotulo + ' ' + pct + '%'); }
+    };
+  };
+
+  ultimoPct = -1;
+  const censo = criarLeitorKardex({ censo: true });
+  await lerLinhasEmStream(file, censo.linha, progresso('Contando linhas por mês…'));
+  const infoCenso = censo.fim();
+  const mesesOrdem = Object.keys(infoCenso.meses).sort();
+  if (!mesesOrdem.length) throw new Error('Nenhuma linha TL+/TL- com data válida no Kardex.');
+  avisar(mesesOrdem.length + ' mês(es) no arquivo (' + mesesOrdem[0] + ' a ' + mesesOrdem[mesesOrdem.length - 1] + '), ' +
+    mesesOrdem.reduce(function (t, m) { return t + infoCenso.meses[m]; }, 0).toLocaleString('pt-BR') + ' linhas TL+/TL-.');
+
+  const lotes = [];
+  let atual = [], soma = 0;
+  mesesOrdem.forEach(function (m) {
+    const n = infoCenso.meses[m];
+    if (atual.length && soma + n > maxPernas) { lotes.push(atual); atual = []; soma = 0; }
+    atual.push(m); soma += n;
+  });
+  if (atual.length) lotes.push(atual);
+
+  const dims = await carregarDimensoesKardex(supabaseClient, avisar);
+
+  let anterior = null;
+  try {
+    const r = await supabaseClient.from('dashboard_snapshots')
+      .select('payload').eq('pagina', 'ressuprimento_mov')
+      .order('gerado_em', { ascending: false }).limit(1);
+    anterior = r && r.data && r.data[0] ? r.data[0].payload : null;
+  } catch (e) {
+    avisar('Aviso: não deu pra ler o snapshot anterior (' + (e && e.message) + ').');
+  }
+
+  let entradas = anterior ? (anterior.entradas_volume || {}) : {};
+  let ultimoPayload = null;
+  const descartados = { sem_par_exato: 0, fiscal_mesmo_endereco: 0, sem_volume: 0, rua_crossdocking: 0 };
+  let pecasTotal = 0, movsTotal = 0, ignoradasOutroTipo = 0;
+
+  for (let i = 0; i < lotes.length; i++) {
+    const lote = lotes[i];
+    const rot = 'Parte ' + (i + 1) + '/' + lotes.length + ' (' + lote[0] + (lote.length > 1 ? ' a ' + lote[lote.length - 1] : '') + ')';
+    ultimoPct = -1;
+    const leitor = criarLeitorKardex({ meses: new Set(lote) });
+    await lerLinhasEmStream(file, leitor.linha, progresso(rot + ': lendo…'));
+    const parsed = leitor.fim();
+    // O período do lote (não o do cabeçalho do arquivo) é o que vale pro
+    // cruzamento com planejamento dentro do lote.
+    const ultimoDiaLote = parsed.pernas.reduce(function (mx, p) { return p.dia > mx ? p.dia : mx; }, '');
+    const primeiroDiaLote = parsed.pernas.reduce(function (mn, p) { return !mn || p.dia < mn ? p.dia : mn; }, '');
+    const iso2br = function (iso) { return iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : null; };
+    parsed.periodo = { de: iso2br(primeiroDiaLote), ate: iso2br(ultimoDiaLote) };
+
+    const payload = construirSnapshotMovimentacoes(parsed, { arquivo: file.name }, dims.mapaArtigoFamilia,
+      dims.mapaFamilias, dims.planejamento, dims.mapaColaboradorTurno);
+    avisar(rot + ': ' + payload.total.movimentos_ressuprimento.toLocaleString('pt-BR') + ' movimentos de ressuprimento · ' +
+      payload.total.pecas_ressupridas.toLocaleString('pt-BR') + ' peças em ' + payload.total.dias_com_movimento + ' dias.');
+
+    await upsertHistoricoDiario(supabaseClient, payload.historico_diario, avisar);
+    await upsertHistoricoFamiliaDiario(supabaseClient, payload.historico_diario_familia, avisar);
+    await upsertHistoricoOperadorDiario(supabaseClient, payload.historico_diario_operador, avisar);
+
+    entradas = mesclarEntradasPorVolume(entradas, parsed.pernas, payload.entradas_volume);
+    Object.keys(descartados).forEach(function (k) { descartados[k] += payload.descartados[k] || 0; });
+    pecasTotal += payload.total.pecas_ressupridas;
+    movsTotal += payload.total.movimentos_ressuprimento;
+    ignoradasOutroTipo += payload.ignoradas_outro_tipo || 0;
+    delete payload.historico_diario; delete payload.historico_diario_familia; delete payload.historico_diario_operador;
+    ultimoPayload = payload;
+  }
+
+  const ateArquivo = dataBrParaIso(infoCenso.periodo.ate) || (mesesOrdem[mesesOrdem.length - 1] + '-31');
+  const ateAnterior = anterior && anterior.periodo ? dataBrParaIso(anterior.periodo.ate) : null;
+  const resumoCarga = { arquivo: file.name, meses: mesesOrdem, pecas_ressupridas: pecasTotal,
+    movimentos_ressuprimento: movsTotal, descartados: descartados, ignoradas_outro_tipo: ignoradasOutroTipo };
+  let snapshot;
+  if (!anterior || !ateAnterior || ateArquivo >= ateAnterior) {
+    snapshot = Object.assign(ultimoPayload, { entradas_volume: entradas, carga_em_partes: resumoCarga });
+    avisar('Arquivo é o mais recente — a tela passa a mostrar o último lote (' + lotes[lotes.length - 1].join(', ') + ') com o histórico completo.');
+  } else {
+    snapshot = Object.assign({}, anterior, { entradas_volume: entradas, gerado_em: new Date().toISOString(), carga_em_partes: resumoCarga });
+    avisar('Carga de histórico (arquivo até ' + ateArquivo + ', anterior ao último Kardex publicado) — a tela continua com o Kardex atual; só o histórico diário e as entradas por volume foram atualizados.');
+  }
+
+  avisar('Publicando o snapshot…');
+  const { error } = await supabaseClient.from('dashboard_snapshots').insert({
+    pagina: 'ressuprimento_mov', payload: snapshot, gerado_em: new Date().toISOString(),
+  });
+  if (error) throw error;
+
+  avisar('Total do arquivo: ' + movsTotal.toLocaleString('pt-BR') + ' movimentos de ressuprimento · ' +
+    pecasTotal.toLocaleString('pt-BR') + ' peças em ' + mesesOrdem.length + ' mês(es).');
+  avisar('Concluído.');
+  return snapshot;
 }
 
 /* ============================================================================
@@ -967,6 +1184,9 @@ async function upsertHistoricoOperadorDiario(supabaseClient, linhas, onAviso) {
 
 window.processarMovimentacoes = processarMovimentacoes;
 window.upsertHistoricoDiario = upsertHistoricoDiario;
+window.processarKardexGrande = processarKardexGrande;
+window.criarLeitorKardex = criarLeitorKardex;
+window.lerLinhasEmStream = lerLinhasEmStream;
 window.upsertHistoricoFamiliaDiario = upsertHistoricoFamiliaDiario;
 window.upsertHistoricoOperadorDiario = upsertHistoricoOperadorDiario;
 window.parsearKardex = parsearKardex;

@@ -8,7 +8,7 @@ const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
 
-const ctx = { window: {}, console };
+const ctx = { window: {}, console, TextDecoder };
 ctx.window = ctx;
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(__dirname, 'ingest.js'), 'utf8'), ctx);
@@ -514,6 +514,79 @@ console.log('\n=== processarMovimentacoes — dim_artigo_familia NÃO tem coluna
   eq(chamadasOp[0].tabela, 'ressuprimento_operador_diario', 'mira a tabela ressuprimento_operador_diario');
   eq(chamadasOp[0].opts.onConflict, 'dia,turno,login', 'onConflict é dia+turno+login');
   ok(avisosOp.some(function (a) { return /1 linha/.test(a); }), 'avisa quantas linhas foram gravadas');
+
+  /* ---------------------------------------------------------------- */
+  console.log('\n=== Kardex grande (ano inteiro) — lido em partes, mês a mês ===');
+  function clienteCarga(anterior) {
+    const reg = { upserts: {}, snapshots: [] };
+    const cli = {
+      from: function (nome) {
+        if (nome === 'dashboard_snapshots') {
+          const q = { select: function () { return q; }, eq: function () { return q; }, order: function () { return q; },
+            limit: async function () { return { data: anterior ? [{ payload: anterior }] : [], error: null }; },
+            insert: async function (row) { reg.snapshots.push(row); return { error: null }; } };
+          return q;
+        }
+        if (nome === 'ressuprimento_planejamento') {
+          return { select: function () { return this; }, then: function (res) { return Promise.resolve({ data: [], error: null }).then(res); } };
+        }
+        const q = { select: function () { return q; }, order: function () { return q; },
+          range: async function (de) {
+            const linhas = nome === 'dim_artigo_familia' ? [{ artigo_codigo: 'K1', familia_codigo: '060' }]
+              : nome === 'dim_familias' ? [{ codigo: '060', marca: 'OLYMPIKUS', categoria: 'VESTUÁRIO OLYMPIKUS', segmento: 'TÊXTIL/ACESSÓRIOS OLYMPIKUS' }] : [];
+            return { data: de === 0 ? linhas : [], error: null };
+          },
+          upsert: async function (linhas) { (reg.upserts[nome] = reg.upserts[nome] || []).push.apply(reg.upserts[nome], linhas); return { error: null }; } };
+        return q;
+      },
+    };
+    return { cli: cli, reg: reg };
+  }
+  const somaDiaDe = function (h, d) { return (h || []).filter(function (x) { return x.dia === d; }).reduce(function (t, x) { return t + x.pecas; }, 0); };
+  const par = function (art, data, ref, qtd, de, para, vol) {
+    return [linha(art, 'PT', '40', data, 'TL-', ref, qtd, de, vol, 'EX1', 'OP 1'),
+            linha(art, 'PT', '40', data, 'TL+', ref, qtd, para, vol, 'EX1', 'OP 1')];
+  };
+  const textoAno = ['VULSP|MOVIMENTOS|de:01/01/2025|ate:31/03/2025', CAB]
+    .concat(par('K1', '10/01/25 08:00', 'R1', '10,000', ' 02,08,001', ' 02,01,001', 'V1'))   // jan: ressup 10
+    .concat(par('K1', '15/03/25 09:00', 'R3', '5,000', ' 02,08,001', ' 02,01,002', 'V3'))    // mar: ressup 5 (fora de ordem no arquivo)
+    .concat(par('K1', '20/02/25 10:00', 'R2', '7,000', ' 02,08,001', ' 02,01,003', 'V2'))    // fev: ressup 7
+    .concat(par('K1', '21/02/25 10:00', 'R4', '4,000', ' 02,08,001', ' 500,01,001', 'V4'))   // fev: foi pro corredor (rua 500)
+    .concat([linha('K1', 'PT', '40', '22/02/25 11:00', 'IN', 'X', '1,000', ' 98,01,001', 'V9', 'EX1', 'OP 1')])
+    .join('\r\n');
+  const FileCtor = typeof File !== 'undefined' ? File : require('buffer').File;
+  const arqAno = new FileCtor([textoAno], 'Kardex 2025.txt');
+
+  // Carga de ano ANTIGO em cima de um snapshot mais recente: histórico grava, tela fica.
+  const anteriorRecente = { periodo: { de: '01/09/2026', ate: '25/09/2026' }, arquivo: 'Kardex.txt', marca: 'atual',
+    entradas_volume: { VX: ['500', '1', '1', '2026-09-20', 600, 'A', 'Ana'] } };
+  const c1 = clienteCarga(anteriorRecente);
+  const av1 = [];
+  await ctx.processarKardexGrande(c1.cli, arqAno, function (m) { av1.push(m); }, { maxPernas: 4 });
+  const hist = c1.reg.upserts.ressuprimento_historico_diario || [];
+  const somaDia = function (d) { return hist.filter(function (h) { return h.dia === d; }).reduce(function (t, h) { return t + h.pecas; }, 0); };
+  eq([somaDia('2025-01-10'), somaDia('2025-02-20'), somaDia('2025-03-15')], [10, 7, 5], 'histórico diário gravado pros 3 meses, mesmo com linhas fora de ordem');
+  ok(av1.some(function (a) { return /Parte 3\/3/.test(a); }), 'maxPernas pequeno divide em 3 partes (uma por mês)');
+  eq(c1.reg.snapshots.length, 1, 'publica um snapshot só');
+  eq(c1.reg.snapshots[0].payload.marca, 'atual', 'carga de ano antigo mantém o snapshot atual da tela');
+  eq(c1.reg.snapshots[0].payload.entradas_volume.VX[3], '2026-09-20', '… preservando as entradas por volume que já existiam');
+  eq(c1.reg.snapshots[0].payload.entradas_volume.V4 && c1.reg.snapshots[0].payload.entradas_volume.V4[0], '500', '… e somando a entrada do volume que ficou na rua 500');
+  eq(c1.reg.snapshots[0].payload.carga_em_partes.pecas_ressupridas, 22, 'total do arquivo inteiro (10+7+5)');
+  ok(c1.reg.upserts.ressuprimento_familia_diario.length > 0 && c1.reg.upserts.ressuprimento_operador_diario.length > 0, 'grava família e operador também');
+
+  // Arquivo mais recente que o snapshot: vira a tela (último lote), sem historico_* no payload.
+  const c2 = clienteCarga({ periodo: { de: '01/12/2024', ate: '31/12/2024' }, entradas_volume: {} });
+  await ctx.processarKardexGrande(c2.cli, arqAno, function () {}, { maxPernas: 4 });
+  const snap2 = c2.reg.snapshots[0].payload;
+  eq(snap2.periodo.ate, '15/03/2025', 'arquivo mais recente: snapshot sai do último lote (março)');
+  eq(snap2.historico_diario, undefined, 'histórico diário não vai pro payload do snapshot (já foi pras tabelas)');
+  eq(snap2.carga_em_partes.meses, ['2025-01', '2025-02', '2025-03'], 'registra os meses processados');
+
+  // Arquivo pequeno (caminho normal) de ano antigo: também não troca a tela.
+  const c3 = clienteCarga(anteriorRecente);
+  await ctx.processarMovimentacoes(c3.cli, new FileCtor([textoAno], 'Kardex 2023.txt'), function () {});
+  eq(c3.reg.snapshots[0].payload.marca, 'atual', 'Kardex pequeno e antigo: snapshot atual da tela é mantido');
+  eq(somaDiaDe(c3.reg.upserts.ressuprimento_historico_diario, '2025-02-20'), 7, '… e o histórico diário é gravado');
 })().then(function () {
   console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
   process.exit(falhas === 0 ? 0 : 1);
