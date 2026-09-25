@@ -656,6 +656,9 @@ tr.total > th, tr.total > td {
 .matriz-nf tr.mz-total th, .matriz-nf tr.mz-total td { border-top: 1px solid var(--border); font-weight: 700; background: var(--bg-input); }
 .matriz-nf tr.mz-subtotal th, .matriz-nf tr.mz-subtotal td { font-weight: 700; background: var(--accent-soft); color: var(--text); }
 .matriz-nf tr.mz-data th { padding-left: 18px; color: var(--text-muted); font-size: 11.5px; }
+.matriz-nf th.mz-toggle { cursor: pointer; user-select: none; }
+.matriz-nf th.mz-toggle:hover { color: var(--accent); }
+.matriz-nf .mz-seta { display: inline-block; width: 12px; font-size: 10px; }
 @media (max-width: 900px) {
   .grid2, .grid-det, .grid-start { grid-template-columns: 1fr; }
   .grid-start > .card-funil { grid-column: auto; grid-row: auto; }
@@ -3785,6 +3788,15 @@ function botaoFiltroPopover(nome, rotulo, set, opcoes, fn) {
 }
 
 let modoMatrizNf = 'pecas';
+// Datas de NF da Matriz recolhidas por padrão; clicar em "Com NF emitida"
+// abre/fecha sem redesenhar a tela (24/09/2026).
+let datasNfAbertas = false;
+function alternarDatasNf() {
+  datasNfAbertas = !datasNfAbertas;
+  document.querySelectorAll('.matriz-nf tr.mz-data').forEach(function (tr) { tr.style.display = datasNfAbertas ? '' : 'none'; });
+  const seta = document.querySelector('.matriz-nf .mz-seta');
+  if (seta) seta.textContent = datasNfAbertas ? '▾' : '▸';
+}
 function alternarModoMatrizNf(modo) {
   modoMatrizNf = modo;
   const scrollY = window.scrollY;
@@ -4350,7 +4362,8 @@ function renderizarPfas() {
       // Subtotal "Com NF emitida" = soma de todas as datas (pedido do usuário,
       // 24/09/2026); as datas ficam logo abaixo, recuadas, como detalhe.
       (datasNotaMz.length
-        ? '<tr class="mz-subtotal"><th class="esq">Com NF emitida</th>' +
+        ? '<tr class="mz-subtotal"><th class="esq mz-toggle" onclick="alternarDatasNf()" title="Mostrar/ocultar as datas de NF">' +
+            '<span class="mz-seta">' + (datasNfAbertas ? '▾' : '▸') + '</span> Com NF emitida</th>' +
             colsMatriz.map(function (c) {
               const v = valorCelula(celulasDe(datasNotaMz, c.chave));
               return v ? '<td class="mz-clicavel" title="Clique para ver por dias desde a emissão da NF" ' +
@@ -4359,14 +4372,15 @@ function renderizarPfas() {
             '<td>' + fmtInt(valorCelula(celulasDe(datasNotaMz, null))) + '</td></tr>'
         : '') +
       datasNotaMz.map(function (d) {
-        return linhaMatriz(formatarDataSimples(d), [d], true).replace('<tr><th class="esq">', '<tr class="mz-data"><th class="esq">↳ ');
+        return linhaMatriz(formatarDataSimples(d), [d], true).replace('<tr><th class="esq">',
+          '<tr class="mz-data"' + (datasNfAbertas ? '' : ' style="display:none"') + '><th class="esq">↳ ');
       }).join('') +
       '<tr class="mz-total"><th class="esq">Total</th>' +
         colsMatriz.map(function (c) { return '<td>' + fmtInt(valorCelula(celulasDe(todasLinhasMz, c.chave))) + '</td>'; }).join('') +
         '<td>' + fmtInt(valorCelula(celulasDe(todasLinhasMz, null))) + '</td></tr>' +
     '</tbody></table></div>' +
     '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">' +
-      'Com data = NF emitida nessa data, aguardando coleta. Calçados inclui chinelos e chuteiras.' +
+      'Clique em "Com NF emitida" para abrir as datas. Calçados inclui chinelos e chuteiras.' +
       (emPecasMz ? '' : ' Totais contam cada PFA uma vez.') + ' Clique num valor com data para ver os dias desde a NF.</p>' +
     detalheSegColeta +
   '</div>';
