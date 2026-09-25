@@ -910,42 +910,6 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     apoioPorCodigo.set(r.codbar, (apoioPorCodigo.get(r.codbar) || 0) + r.qtd);
   });
 
-  /* ---------- saldo NEGATIVO no Picking × saldo de ressuprimento no Pulmão ----------
-     Pedido do usuário (25/09/2026): pra cada endereço de Picking com saldo
-     negativo (disponível ou cativado), ver se o MESMO SKU (EAN = CODBAR) tem
-     saldo confiável no Pulmão pra repor. Status: coberto (Pulmão ≥ negativo),
-     parcial (tem, mas menos) ou sem saldo. Leva o endereço do Pulmão com mais
-     peça do SKU, pra operação saber de onde puxar. */
-  const melhorEnderecoPulmao = new Map(); // codbar -> { end, qtd }
-  (function () {
-    const porCodEnd = new Map();
-    pulmaoTudo.forEach(function (r) {
-      if (!r.apoio_confiavel || !r.codbar) return;
-      const k = r.codbar + '§' + r.rua + '-' + r.nivel + '-' + r.box;
-      porCodEnd.set(k, (porCodEnd.get(k) || 0) + r.qtd);
-    });
-    porCodEnd.forEach(function (qtd, k) {
-      const partes = k.split('§');
-      const atual = melhorEnderecoPulmao.get(partes[0]);
-      if (!atual || qtd > atual.qtd) melhorEnderecoPulmao.set(partes[0], { end: partes[1], qtd: qtd });
-    });
-  })();
-  const negativosPicking = pickingReal.filter(function (r) { return (r.qtd_gap_reservado || 0) > 0; }).map(function (r) {
-    const neg = r.qtd_gap_reservado;
-    const noPulmao = apoioPorCodigo.get(r.ean) || 0;
-    const status = noPulmao >= neg ? 'coberto' : noPulmao > 0 ? 'parcial' : 'sem_saldo';
-    const melhor = melhorEnderecoPulmao.get(r.ean);
-    return [r.rua, r.nivel, r.box, r.artigo_codigo, r.cor, r.tamanho, r.descricao || '', r.segmento_macro || '',
-      neg, noPulmao, melhor ? melhor.end : '', status];
-  });
-  const resumoNegativos = { enderecos: negativosPicking.length, unidades: 0, coberto: 0, parcial: 0, sem_saldo: 0,
-    unidades_coberto: 0, unidades_parcial: 0, unidades_sem_saldo: 0 };
-  negativosPicking.forEach(function (l) {
-    resumoNegativos.unidades += l[8];
-    resumoNegativos[l[11]]++;
-    resumoNegativos['unidades_' + l[11]] += l[8];
-  });
-
   const ressuprimentoPorBucket = {};
   ['meia', 'vestuario', 'calcado'].forEach(function (bucket) {
     // Gabarito da gestão (planilha de análise de estoque, 05/09/2026): o
@@ -1018,11 +982,6 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
       ruas: RUAS_DESCONSIDERADAS,
       picking: picking.desconsiderado || novoContadorDesconsiderado(),
       pulmao: pulmao.desconsiderado || novoContadorDesconsiderado(),
-    },
-    saldo_negativo_picking: {
-      colunas: ['rua', 'nivel', 'box', 'artigo', 'cor', 'tamanho', 'descricao', 'segmento', 'saldo_negativo', 'saldo_pulmao', 'endereco_pulmao', 'status'],
-      linhas: negativosPicking,
-      resumo: resumoNegativos,
     },
     ocupacao: ocupacao,
     ocupacao_por_rua: ocupacaoPorRua,

@@ -389,7 +389,7 @@ eq(somaRuas('pulmao', ['3', '4', '5']), 2131, 'Pulmão calçado 3–5 = 2.131');
 eq(somaRuas('pulmao', ['11', '12', '13', '14']), 952, 'Pulmão acessório 11–14 = 952');
 eq(payloadSkuZero.ocupacao_por_rua.picking['7'], 2, 'ocupado por rua conta endereço alocado (2 na rua 7)');
 
-secao('saldo negativo no Picking × saldo de ressuprimento no Pulmão (25/09/2026)');
+secao('saldo negativo no Picking conta como estoque ocupado (25/09/2026)');
 const payloadNeg = construirSnapshotRessuprimento({ registros: [
   { familia_codigo: '101', artigo_codigo: 'N1', cor: 'PT', tamanho: '40', ean: 'E-N1', rua: '7', nivel: '1', box: '1', qtd: 0, qtd_cativado: 0, qtd_gap_reservado: 5 },
   { familia_codigo: '101', artigo_codigo: 'N2', cor: 'PT', tamanho: '41', ean: 'E-N2', rua: '7', nivel: '1', box: '2', qtd: 0, qtd_cativado: 0, qtd_gap_reservado: 10 },
@@ -398,12 +398,6 @@ const payloadNeg = construirSnapshotRessuprimento({ registros: [
   { familia_codigo: '101', artigo_codigo: 'N1', cor: 'PT', tamanho: '40', rua: '3', nivel: '5', box: '9', qtd: 12, codbar: 'E-N1', dt_cri: new Date('2026-01-01') },
   { familia_codigo: '101', artigo_codigo: 'N2', cor: 'PT', tamanho: '41', rua: '4', nivel: '5', box: '1', qtd: 3, codbar: 'E-N2', dt_cri: new Date('2026-01-01') },
 ], colisoes_volume: 0 }, mapaFamilias, {}, { arquivo_picking: 'p', arquivo_pulmao: 'x' });
-const negPor = function (art) { return payloadNeg.saldo_negativo_picking.linhas.find(function (l) { return l[3] === art; }); };
-eq(negPor('N1')[11], 'coberto', 'N1: -5 no Picking, 12 no Pulmão -> coberto');
-eq(negPor('N1')[10], '3-5-9', '… com o endereço do Pulmão pra puxar');
-eq(negPor('N2')[11], 'parcial', 'N2: -10 no Picking, só 3 no Pulmão -> parcial');
-eq(negPor('N3')[11], 'sem_saldo', 'N3: sem nada no Pulmão -> sem saldo');
-eq(payloadNeg.saldo_negativo_picking.resumo.unidades, 17, 'resumo soma as unidades negativas');
 eq(payloadNeg.stats_picking.geral.enderecos_distintos, 3, 'endereço com saldo negativo conta como ocupado');
 eq(payloadNeg.stats_picking.geral.pecas, 4, 'peças = disponível + cativado (o negativo não vira peça)');
 
