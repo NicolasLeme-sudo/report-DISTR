@@ -277,6 +277,33 @@ eq(sepCross.registros.length, 2, 'crossdocking: sobram vestuário do AC190 e tê
 eq(sepCross.crossdocking.qtd, 12, 'crossdocking: tênis+chinelo Olympikus do AC190 contados fora');
 eq(sepCross.crossdocking.linhas, 2, 'crossdocking: 2 linhas desconsideradas');
 
+/* Crossdocking ponta a ponta: parse -> dedup -> separa -> snapshot */
+(function () {
+  const txt = arquivoPipe(CAB, [
+    linhaPipe('EXTRE-AC190', '100,000', '5.000,00'),                                    // 043 AC190 -> fora
+    'V|S|060|60100|CAMISETA|PRETO|G|UN|EXTRE-AC190||0|40,000|10,00|400,00',             // fica
+    linhaPipe('EXTRE-ARAMO', '7,000', '350,00'),                                        // 043 ARAMO -> fica
+  ]);
+  const parsed = parsearRelatorioPipe(txt);
+  const cross = separarCrossdocking(deduplicarPosicoes(parsed.registros).registros);
+  const mapaFam = new Map([['043', { marca: 'OLYMPIKUS', categoria: 'TÊNIS OLYMPIKUS', segmento: 'TÊNIS OLYMPIKUS' }],
+                           ['060', { marca: 'OLYMPIKUS', categoria: 'VESTUÁRIO OLYMPIKUS', segmento: 'TÊXTIL' }]]);
+  const mapaArm = new Map([['AC190', { descricao: 'Disp', categoria: 'DISPONIVEL', ordem: 1 }],
+                           ['ARAMO', { descricao: 'Análise', categoria: 'EM_ANALISE', ordem: 2 }]]);
+  const snap = construirSnapshotEstoque(cross.registros, mapaFam, mapaArm,
+    { total_geral_sistema: { qtd: 147, valor: 5750 }, crossdocking: cross.crossdocking });
+  eq(snap.total.qtd, 47, 'crossdocking e2e: total sem os 100 pares do AC190');
+  const ac = snap.armazens.find(function (a) { return a.codigo === 'AC190'; });
+  const famsAc = [];
+  (ac.filhos || ac.marcas || []).forEach(function (m) { (m.filhos || m.familias || []).forEach(function (f) { famsAc.push(f.codigo); }); });
+  eq(famsAc.join(), '060', 'crossdocking e2e: AC190 só com a família 060 (sem 043)');
+  eq(ac.qtd, 40, 'crossdocking e2e: AC190 só com a camiseta');
+  const ar = snap.armazens.find(function (a) { return a.codigo === 'ARAMO'; });
+  eq(ar.qtd, 7, 'crossdocking e2e: tênis do ARAMO continua');
+  eq(snap.conferencia.ok, true, 'crossdocking e2e: conferência com TOTAL GERAL soma o crossdocking de volta');
+  eq(snap.conferencia.diff_valor, 0, 'crossdocking e2e: valor também confere');
+})();
+
 /* -------------------------------------------------------------------------- */
 console.log('\n' + (falhas === 0
   ? 'TODOS OS TESTES PASSARAM'

@@ -897,16 +897,22 @@ function construirSnapshotEstoque(registros, mapaFamilias, mapaArmazens, meta) {
   // arredondados linha a linha. Uma diferença de QUANTIDADE, não — essa
   // significaria linha perdida no parse, e o dashboard mostra o alerta.
   const sis = meta.total_geral_sistema || {};
+  // O TOTAL GERAL do sistema inclui o crossdocking que saiu do balanço
+  // (separarCrossdocking) — a conferência soma ele de volta, senão acusaria
+  // "não bateu" num parse que leu tudo certo.
+  const foraQtd = (meta.crossdocking && meta.crossdocking.qtd) || 0;
+  const foraValor = (meta.crossdocking && meta.crossdocking.valor) || 0;
   const conferencia = {
     qtd_parseada: totalQtd,
     valor_parseado: totalValor,
     qtd_sistema: sis.qtd,
     valor_sistema: sis.valor,
-    diff_qtd: sis.qtd != null ? totalQtd - sis.qtd : null,
-    diff_valor: sis.valor != null ? totalValor - sis.valor : null,
+    diff_qtd: sis.qtd != null ? totalQtd + foraQtd - sis.qtd : null,
+    diff_valor: sis.valor != null ? totalValor + foraValor - sis.valor : null,
     // ok = null significa "este layout não imprime total do sistema", e não
     // "conferiu". A tela precisa dizer isso, não fingir uma validação.
-    ok: sis.qtd != null ? Math.abs(totalQtd - sis.qtd) < 0.001 : null,
+    ok: sis.qtd != null ? Math.abs(totalQtd + foraQtd - sis.qtd) < 0.001 : null,
+    qtd_crossdocking: foraQtd,
   };
 
   return {
@@ -1075,6 +1081,7 @@ async function processarEstoque(supabaseClient, file, onProgresso) {
     total_geral_sistema: parsed.total_geral_sistema,
     layout: parsed.layout,
     linhas_zeradas: parsed.linhas_zeradas || 0,
+    crossdocking: cross.crossdocking,
   });
   payload.crossdocking = cross.crossdocking;
 

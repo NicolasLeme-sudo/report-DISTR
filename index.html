@@ -5107,9 +5107,22 @@ function renderizarEstoqueOperacao(p) {
     const livresPorRua = function (linha) {
       const saida = [];
       if (!opr) return saida;
-      Object.keys(opr.capacidade[linha] || {}).forEach(function (rua) {
-        const n = Math.max(0, opr.capacidade[linha][rua] - ((opr[linha] || {})[rua] || 0));
-        for (let i = 0; i < n; i++) saida.push([rua, '', '', 0]);
+      const cap = opr.capacidade[linha] || {};
+      const occ = opr[linha] || {};
+      // Conta POR SEGMENTO, igual aos cards (capacidade das ruas do segmento −
+      // ocupados nelas): rua acima da capacidade (ex.: Picking 15) desconta das
+      // outras ruas do mesmo segmento em vez de só zerar — senão o bloco e o
+      // card davam números diferentes. Sem RUAS_ZONA, cai na conta por rua.
+      const zonas = (window.RUAS_ZONA && window.RUAS_ZONA[linha])
+        ? Object.keys(window.RUAS_ZONA[linha]).map(function (b) { return window.RUAS_ZONA[linha][b]; })
+        : Object.keys(cap).map(function (rua) { return [rua]; });
+      zonas.forEach(function (ruas) {
+        let livres = Math.max(0, ruas.reduce(function (t, rua) { return t + (cap[rua] || 0) - (occ[rua] || 0); }, 0));
+        ruas.forEach(function (rua) {
+          const n = Math.min(livres, Math.max(0, (cap[rua] || 0) - (occ[rua] || 0)));
+          for (let i = 0; i < n; i++) saida.push([rua, '', '', 0]);
+          livres -= n;
+        });
       });
       return saida;
     };
