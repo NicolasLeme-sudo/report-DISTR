@@ -2954,6 +2954,34 @@ function exportarPosicoesOciosas(lado, tipo) {
   a.click();
   URL.revokeObjectURL(a.href);
 }
+const ROT_STATUS_NEG = { coberto: 'Coberto pelo Pulmão', parcial: 'Parcial no Pulmão', sem_saldo: 'Sem saldo no Pulmão' };
+const ORDEM_STATUS_NEG = { sem_saldo: 0, parcial: 1, coberto: 2 };
+function linhasNegativosOrdenadas(p) {
+  const neg = p && p.saldo_negativo_picking;
+  if (!neg) return [];
+  return neg.linhas.slice().sort(function (a, b) {
+    return (ORDEM_STATUS_NEG[a[11]] - ORDEM_STATUS_NEG[b[11]]) || (b[8] - a[8]);
+  });
+}
+function exportarNegativosPicking() {
+  const p = window._snapshotRessuprimento;
+  const linhas = linhasNegativosOrdenadas(p);
+  if (!linhas.length) { alert(p && p.saldo_negativo_picking ? 'Nenhum saldo negativo no Picking.' : 'Reprocesse Picking + Pulmão para gerar esta lista.'); return; }
+  const saida = [['Endereco Picking', 'Artigo', 'Cor', 'Tamanho', 'Descricao', 'Segmento', 'Saldo negativo',
+    'Saldo no Pulmao', 'Endereco Pulmao (maior saldo)', 'Status']];
+  linhas.forEach(function (l) {
+    saida.push([formatarEndereco(l[0], l[1], l[2]), l[3], l[4], l[5], l[6], l[7], l[8], l[9],
+      l[10] ? formatarEndereco.apply(null, l[10].split('-')) : '', ROT_STATUS_NEG[l[11]] || l[11]]);
+  });
+  const csv = saida.map(function (r) {
+    return r.map(function (c) { return '"' + String(c == null ? '' : c).replace(/"/g, '""') + '"'; }).join(';');
+  }).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'saldo-negativo-picking-x-pulmao.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 function exportarCSVFila() {
   const itens = filaItensVisiveis();
   if (!itens || !itens.length) { alert('Nada na fila para exportar' + (itens ? ' neste recorte.' : ' — reprocesse o Kardex.')); return; }
@@ -5178,6 +5206,48 @@ function renderizarEstoqueOperacao(p) {
     '</div>';
   }
 
+  /* ---------- saldo negativo no Picking × reposição no Pulmão (25/09/2026) ---------- */
+  let blocoNegativos = '';
+  const neg = p.saldo_negativo_picking;
+  if (neg && neg.resumo.enderecos) {
+    const r = neg.resumo;
+    const ordenadas = linhasNegativosOrdenadas(p);
+    const LIM_NEG = 300;
+    const corStatus = { coberto: 'var(--olive)', parcial: 'var(--amber)', sem_saldo: 'var(--red)' };
+    blocoNegativos = '<div class="card">' +
+      '<div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<span>Saldo negativo no Picking — tem reposição no Pulmão?</span>' +
+        '<button class="btn-mini" onclick="exportarNegativosPicking()">⬇ CSV</button>' +
+      '</div>' +
+      '<div class="kpi-row">' +
+        '<div class="kpi"><div class="rot">Endereços com saldo negativo</div><div class="val forte">' + fmtInt(r.enderecos) + '</div>' +
+          '<div class="sub">' + fmtInt(r.unidades) + ' unidades negativas</div></div>' +
+        '<div class="kpi"><div class="rot">Coberto pelo Pulmão</div><div class="val forte" style="color:var(--olive)">' + fmtInt(r.coberto) + '</div>' +
+          '<div class="sub">' + fmtInt(r.unidades_coberto) + ' un. · Pulmão tem o suficiente</div></div>' +
+        '<div class="kpi"><div class="rot">Parcial</div><div class="val forte" style="color:var(--amber)">' + fmtInt(r.parcial) + '</div>' +
+          '<div class="sub">' + fmtInt(r.unidades_parcial) + ' un. · Pulmão tem menos que o negativo</div></div>' +
+        '<div class="kpi"><div class="rot">Sem saldo no Pulmão</div><div class="val forte" style="color:var(--red)">' + fmtInt(r.sem_saldo) + '</div>' +
+          '<div class="sub">' + fmtInt(r.unidades_sem_saldo) + ' un. · nada pra repor</div></div>' +
+      '</div>' +
+      '<div class="tabela-rolavel tabela-5-linhas" style="margin-top:12px"><table class="arvore"><thead><tr>' +
+        '<th class="centro">Endereço</th><th class="centro">SKU</th><th class="centro">Descrição</th>' +
+        '<th>Negativo</th><th>No Pulmão</th><th class="centro">Puxar de</th><th class="centro">Status</th>' +
+      '</tr></thead><tbody>' +
+        ordenadas.slice(0, LIM_NEG).map(function (l) {
+          return '<tr><td class="centro">' + escapar(formatarEndereco(l[0], l[1], l[2])) + '</td>' +
+            '<td class="centro">' + escapar(l[3] + ' ' + l[4] + ' ' + l[5]) + '</td>' +
+            '<td class="centro" style="font-size:11px">' + escapar(l[6]) + '</td>' +
+            '<td style="color:var(--red)">−' + fmtInt(l[8]) + '</td>' +
+            '<td>' + (l[9] ? fmtInt(l[9]) : '—') + '</td>' +
+            '<td class="centro">' + escapar(l[10] ? formatarEndereco.apply(null, l[10].split('-')) : '—') + '</td>' +
+            '<td class="centro" style="color:' + corStatus[l[11]] + ';font-weight:600">' + escapar(ROT_STATUS_NEG[l[11]] || l[11]) + '</td></tr>';
+        }).join('') +
+      '</tbody></table></div>' +
+      '<p style="font-size:11px;color:var(--text-muted);margin-top:8px">Mesmo SKU (EAN = código de barras do volume) com saldo no Pulmão. ' +
+        (ordenadas.length > LIM_NEG ? 'Mostrando os ' + LIM_NEG + ' primeiros (sem saldo primeiro) de ' + fmtInt(ordenadas.length) + ' — o CSV tem todos.' : '') + '</p>' +
+    '</div>';
+  }
+
   const arvoreAtual = arvoreFiltradaRessuprimento(p);
   const totalGeral = arvoreAtual.reduce(function (s, m) { return s + m.qtd; }, 0);
   const skusGeral = arvoreAtual.reduce(function (s, m) { return s + m.skus; }, 0);
@@ -5516,6 +5586,7 @@ function renderizarEstoqueOperacao(p) {
       blocoComposicao +
     '</div>' +
     blocoOciosos +
+    blocoNegativos +
     blocoBO +
     '<div style="font-size:11px;color:var(--text-muted);margin-top:12px">' +
       'Picking: ' + escapar(p.arquivo_picking || '—') + ' · Pulmão: ' + escapar(p.arquivo_pulmao || '—') +
