@@ -603,6 +603,24 @@ console.log('\n=== processarMovimentacoes — dim_artigo_familia NÃO tem coluna
   const fm = ctx.mesclarFilaItens(filaAnt, pernasDia, filaNova);
   eq(fm.map(function (i) { return i.volume + '@' + i.dia; }).sort(), ['F1@2026-09-24', 'F3@2026-09-25', 'F4@2026-09-25'],
      'F1 continua, F2 saiu do corredor, F3 vale a baixa nova, F4 entra');
+
+  /* ---------------------------------------------------------------- */
+  console.log('\n=== recebimento (RFE/RFI/DCI) marca a entrada do volume na rua 98 ===');
+  const txtRec = ['VULSP|MOVIMENTOS|de:24/09/2026|ate:25/09/2026', CAB,
+    linha('K1', 'PT', '40', '24/09/26 09:00', 'RFE', 'NF1', '6,000', ' 98,01,001', 'VR1', 'REC1', 'Recebedor'),
+    linha('K1', 'PT', '40', '24/09/26 09:00', 'DCI', 'NF1', '2,000', ' 98,01,002', 'VR2', 'REC1', 'Recebedor'),
+    // VR3 recebido e depois armazenado no Pulmão: não fica como parado na 98
+    linha('K1', 'PT', '40', '24/09/26 10:00', 'RFI', 'NF2', '3,000', ' 98,01,003', 'VR3', 'REC1', 'Recebedor'),
+    linha('K1', 'PT', '40', '25/09/26 08:00', 'TL-', 'R9', '3,000', ' 98,01,003', 'VR3', 'ARM', 'Armazenador'),
+    linha('K1', 'PT', '40', '25/09/26 08:00', 'TL+', 'R9', '3,000', ' 02,08,001', 'VR3', 'ARM', 'Armazenador'),
+  ].join('\r\n');
+  const pr = ctx.parsearKardex(txtRec);
+  const snapRec = ctx.construirSnapshotMovimentacoes(pr, { arquivo: 'k' });
+  eq(snapRec.entradas_volume.VR1, ['98', '1', '1', '2026-09-24', 540, 'REC1', 'Recebedor'], 'RFE: volume com data e login do recebimento na 98');
+  ok(!!snapRec.entradas_volume.VR2, 'DCI também conta como entrada');
+  eq(snapRec.entradas_volume.VR3, undefined, 'recebido e depois armazenado no Pulmão: sai da lista');
+  eq(snapRec.descartados.sem_par_exato, 0, 'linha de recebimento não entra no casamento de pares');
+  eq(snapRec.total.movimentos_ressuprimento, 0, 'recebimento não conta como ressuprimento');
 })().then(function () {
   console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
   process.exit(falhas === 0 ? 0 : 1);

@@ -193,6 +193,15 @@ function criarInternador() {
   };
 }
 
+/* Recebimento (26/09/2026): o volume chega na rua 98 por RFE/RFI/DCI, não por
+   TL+ — sem isso, 5.525 volumes da 98 apareciam "sem registro no Kardex".
+   Essas linhas entram só como ENTRADA do volume no endereço (data, login);
+   nunca no casamento de pares nem na conta de ressuprimento. */
+const TIPOS_RECEBIMENTO = { RFE: 1, RFI: 1, DCI: 1 };
+function ehEntradaNoEndereco(p) {
+  return p.tipo === 'TL+' || !!TIPOS_RECEBIMENTO[p.tipo];
+}
+
 function criarLeitorKardex(opcoes) {
   opcoes = opcoes || {};
   const internar = criarInternador();
@@ -245,7 +254,9 @@ function criarLeitorKardex(opcoes) {
     if (Number(endTipo[0]) === 98) tm.na_rua_98++;
     if ((p[idx.volume] || '').trim()) tm.com_volume++;
     if (idx.login !== undefined && (p[idx.login] || '').trim()) tm.com_login++;
-    if (tipo !== 'TL+' && tipo !== 'TL-') { ignoradasOutroTipo++; return; }
+    const recebimento = TIPOS_RECEBIMENTO[tipo] && (p[idx.volume] || '').trim();
+    if (tipo !== 'TL+' && tipo !== 'TL-' && !recebimento) { ignoradasOutroTipo++; return; }
+    if (recebimento) ignoradasOutroTipo++; // não é movimento de ressuprimento; só marca a entrada do volume
 
     dh = dh || parsearDataHora(p[idx.data]);
     if (!dh) { ignoradasDataInvalida++; return; }
@@ -337,7 +348,7 @@ const RUAS_ENTRADA_RASTREADA = { 10: 1, 21: 1, 24: 1, 26: 1, 27: 1, 98: 1, 99: 1
 function construirEntradasPorVolume(pernas) {
   const ultimo = new Map();
   pernas.forEach(function (p) {
-    if (p.tipo !== 'TL+' || !p.volume) return;
+    if (!ehEntradaNoEndereco(p) || !p.volume) return;
     const atual = ultimo.get(p.volume);
     if (!atual || p.dia > atual.dia || (p.dia === atual.dia && p.minutos > atual.minutos)) ultimo.set(p.volume, p);
   });
@@ -363,7 +374,7 @@ function mesclarEntradasPorVolume(anterior, pernas, novo) {
   const resultado = Object.assign({}, anterior || {});
   const ultimoNovo = new Map();
   pernas.forEach(function (p) {
-    if (p.tipo !== 'TL+' || !p.volume) return;
+    if (!ehEntradaNoEndereco(p) || !p.volume) return;
     const a = ultimoNovo.get(p.volume);
     if (!a || p.dia > a.dia || (p.dia === a.dia && p.minutos > a.minutos)) ultimoNovo.set(p.volume, p);
   });
@@ -385,7 +396,7 @@ function mesclarEntradasPorVolume(anterior, pernas, novo) {
 function mesclarFilaItens(anterior, pernas, nova) {
   const ultimo = new Map();
   pernas.forEach(function (p) {
-    if (p.tipo !== 'TL+' || !p.volume) return;
+    if (!ehEntradaNoEndereco(p) || !p.volume) return;
     const a = ultimo.get(p.volume);
     if (!a || p.dia > a.dia || (p.dia === a.dia && p.minutos > a.minutos)) ultimo.set(p.volume, p);
   });
@@ -417,6 +428,7 @@ const SEP = '|#|';
 function casarMovimentos(pernas) {
   const grupos = new Map();
   pernas.forEach(function (p) {
+    if (p.tipo !== 'TL+' && p.tipo !== 'TL-') return; // recebimento não forma par
     const chave = [p.artigo, p.cor, p.tamanho, p.data_bruta, p.ref].join(SEP);
     if (!grupos.has(chave)) grupos.set(chave, []);
     grupos.get(chave).push(p);
@@ -622,7 +634,7 @@ function calcularSemPlanejamento(pecasPorFamiliaDia, planejamento, mapaFamilias,
 function construirFilaItens(movs, pernas) {
   const ultimo = new Map();
   pernas.forEach(function (p) {
-    if (p.tipo !== 'TL+' || !p.volume) return;
+    if (!ehEntradaNoEndereco(p) || !p.volume) return;
     const a = ultimo.get(p.volume);
     if (!a || p.dia > a.dia || (p.dia === a.dia && p.minutos > a.minutos)) ultimo.set(p.volume, p);
   });
