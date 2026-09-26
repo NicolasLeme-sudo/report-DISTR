@@ -377,6 +377,30 @@ function mesclarEntradasPorVolume(anterior, pernas, novo) {
   return resultado;
 }
 
+/* Fila em andamento acumulada entre uploads (26/09/2026): cada Kardex só
+   enxerga as baixas Pulmão -> corredor do PRÓPRIO período, então com upload
+   diário a fila mostraria só o que desceu naquele dia. Item da fila anterior
+   continua enquanto o volume não tiver TL+ mais novo no arquivo novo (se
+   teve, saiu do corredor); item que aparece nas duas vale o novo. */
+function mesclarFilaItens(anterior, pernas, nova) {
+  const ultimo = new Map();
+  pernas.forEach(function (p) {
+    if (p.tipo !== 'TL+' || !p.volume) return;
+    const a = ultimo.get(p.volume);
+    if (!a || p.dia > a.dia || (p.dia === a.dia && p.minutos > a.minutos)) ultimo.set(p.volume, p);
+  });
+  const naNova = new Set((nova || []).map(function (i) { return i.volume; }));
+  const mantidos = (anterior || []).filter(function (i) {
+    if (naNova.has(i.volume)) return false;
+    const u = ultimo.get(i.volume);
+    if (!u) return true;
+    const hm = String(i.hora || '00:00').split(':');
+    const min = Number(hm[0]) * 60 + Number(hm[1]);
+    return u.dia < i.dia || (u.dia === i.dia && u.minutos <= min);
+  });
+  return mantidos.concat(nova || []);
+}
+
 /* ============================================================================
    CASAMENTO DAS PERNAS EM MOVIMENTOS
    ============================================================================
@@ -952,6 +976,9 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
   let snapshotPublicar = payload;
   const ateArquivo = dataBrParaIso(parsed.periodo.ate);
   const ateAnterior = payloadAnterior && payloadAnterior.periodo ? dataBrParaIso(payloadAnterior.periodo.ate) : null;
+  if (payloadAnterior && !(ateArquivo && ateAnterior && ateArquivo < ateAnterior)) {
+    payload.fila_itens = mesclarFilaItens(payloadAnterior.fila_itens, parsed.pernas, payload.fila_itens);
+  }
   if (ateArquivo && ateAnterior && ateArquivo < ateAnterior) {
     snapshotPublicar = Object.assign({}, payloadAnterior, { entradas_volume: payload.entradas_volume, gerado_em: new Date().toISOString() });
     avisar('Carga de histórico (arquivo até ' + ateArquivo + ', anterior ao último Kardex publicado) — a tela continua com o Kardex atual; só o histórico diário e as entradas por volume foram atualizados.');
@@ -1032,6 +1059,10 @@ async function processarKardexGrande(supabaseClient, file, avisar, opcoes) {
   }
 
   let entradas = anterior ? (anterior.entradas_volume || {}) : {};
+  const ateArquivo = dataBrParaIso(infoCenso.periodo.ate) || (mesesOrdem[mesesOrdem.length - 1] + '-31');
+  const ateAnterior = anterior && anterior.periodo ? dataBrParaIso(anterior.periodo.ate) : null;
+  const arquivoEhAtual = !anterior || !ateAnterior || ateArquivo >= ateAnterior;
+  let fila = arquivoEhAtual && anterior ? (anterior.fila_itens || []) : [];
   let ultimoPayload = null;
   const descartados = { sem_par_exato: 0, fiscal_mesmo_endereco: 0, sem_volume: 0, rua_crossdocking: 0 };
   let pecasTotal = 0, movsTotal = 0, ignoradasOutroTipo = 0;
@@ -1060,6 +1091,7 @@ async function processarKardexGrande(supabaseClient, file, avisar, opcoes) {
     await upsertHistoricoOperadorDiario(supabaseClient, payload.historico_diario_operador, avisar);
 
     entradas = mesclarEntradasPorVolume(entradas, parsed.pernas, payload.entradas_volume);
+    if (arquivoEhAtual) fila = mesclarFilaItens(fila, parsed.pernas, payload.fila_itens);
     Object.keys(descartados).forEach(function (k) { descartados[k] += payload.descartados[k] || 0; });
     pecasTotal += payload.total.pecas_ressupridas;
     movsTotal += payload.total.movimentos_ressuprimento;
@@ -1068,13 +1100,11 @@ async function processarKardexGrande(supabaseClient, file, avisar, opcoes) {
     ultimoPayload = payload;
   }
 
-  const ateArquivo = dataBrParaIso(infoCenso.periodo.ate) || (mesesOrdem[mesesOrdem.length - 1] + '-31');
-  const ateAnterior = anterior && anterior.periodo ? dataBrParaIso(anterior.periodo.ate) : null;
   const resumoCarga = { arquivo: file.name, meses: mesesOrdem, pecas_ressupridas: pecasTotal,
     movimentos_ressuprimento: movsTotal, descartados: descartados, ignoradas_outro_tipo: ignoradasOutroTipo };
   let snapshot;
-  if (!anterior || !ateAnterior || ateArquivo >= ateAnterior) {
-    snapshot = Object.assign(ultimoPayload, { entradas_volume: entradas, carga_em_partes: resumoCarga });
+  if (arquivoEhAtual) {
+    snapshot = Object.assign(ultimoPayload, { entradas_volume: entradas, fila_itens: fila, carga_em_partes: resumoCarga });
     avisar('Arquivo é o mais recente — a tela passa a mostrar o último lote (' + lotes[lotes.length - 1].join(', ') + ') com o histórico completo.');
   } else {
     snapshot = Object.assign({}, anterior, { entradas_volume: entradas, gerado_em: new Date().toISOString(), carga_em_partes: resumoCarga });
@@ -1186,6 +1216,7 @@ window.processarMovimentacoes = processarMovimentacoes;
 window.upsertHistoricoDiario = upsertHistoricoDiario;
 window.processarKardexGrande = processarKardexGrande;
 window.criarLeitorKardex = criarLeitorKardex;
+window.mesclarFilaItens = mesclarFilaItens;
 window.lerLinhasEmStream = lerLinhasEmStream;
 window.upsertHistoricoFamiliaDiario = upsertHistoricoFamiliaDiario;
 window.upsertHistoricoOperadorDiario = upsertHistoricoOperadorDiario;

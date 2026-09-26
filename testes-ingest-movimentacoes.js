@@ -587,6 +587,22 @@ console.log('\n=== processarMovimentacoes — dim_artigo_familia NÃO tem coluna
   await ctx.processarMovimentacoes(c3.cli, new FileCtor([textoAno], 'Kardex 2023.txt'), function () {});
   eq(c3.reg.snapshots[0].payload.marca, 'atual', 'Kardex pequeno e antigo: snapshot atual da tela é mantido');
   eq(somaDiaDe(c3.reg.upserts.ressuprimento_historico_diario, '2025-02-20'), 7, '… e o histórico diário é gravado');
+
+  /* ---------------------------------------------------------------- */
+  console.log('\n=== fila em andamento acumula entre uploads diários ===');
+  const filaAnt = [
+    { volume: 'F1', dia: '2026-09-24', hora: '10:00', qtd: 5 },   // continua no corredor
+    { volume: 'F2', dia: '2026-09-24', hora: '11:00', qtd: 3 },   // sai no dia seguinte
+    { volume: 'F3', dia: '2026-09-24', hora: '12:00', qtd: 2 },   // desce de novo (aparece na nova)
+  ];
+  const pernasDia = [
+    { tipo: 'TL+', volume: 'F2', dia: '2026-09-25', minutos: 480 },
+    { tipo: 'TL+', volume: 'F3', dia: '2026-09-25', minutos: 500 },
+  ];
+  const filaNova = [{ volume: 'F3', dia: '2026-09-25', hora: '08:20', qtd: 2 }, { volume: 'F4', dia: '2026-09-25', hora: '09:00', qtd: 1 }];
+  const fm = ctx.mesclarFilaItens(filaAnt, pernasDia, filaNova);
+  eq(fm.map(function (i) { return i.volume + '@' + i.dia; }).sort(), ['F1@2026-09-24', 'F3@2026-09-25', 'F4@2026-09-25'],
+     'F1 continua, F2 saiu do corredor, F3 vale a baixa nova, F4 entra');
 })().then(function () {
   console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
   process.exit(falhas === 0 ? 0 : 1);
