@@ -2815,11 +2815,10 @@ function destacarSegComp(i, cardId) {
   if (textos.length < 2) return;
   const valor = seg ? seg.valor : est.total;
   const txt = fmtInt(valor);
+  // Fonte fixa (a do total, que é o maior número) e só a % embaixo — o
+  // centro não muda de tamanho ao passar o mouse (pedido do usuário, 26/09/2026).
   textos[0].textContent = txt;
-  textos[0].setAttribute('font-size', txt.length > 7 ? 12 : txt.length > 5 ? 14 : 17);
-  textos[1].textContent = seg
-    ? fmtPct(est.total ? seg.valor / est.total * 100 : 0) + ' · ' + seg.rotulo.toLowerCase()
-    : est.unidade;
+  textos[1].textContent = seg ? fmtPct(est.total ? seg.valor / est.total * 100 : 0) : est.unidade;
 }
 const COR_SEGMENTO_COMP = { 'VESTUÁRIO': '--amber', 'MEIA': '--olive', 'ACESSÓRIO': '--azul-marinho', 'CALÇADO': '--gelo' };
 let ruaBOAberta = null;
