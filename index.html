@@ -6913,6 +6913,7 @@ function renderizarEmailsAjustes(falhas, semSnapshot) {
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0">' +
       '<button class="btn-mini" onclick="baixarPlanilhaEmailsAjustes()"' + (prontas.length ? '' : ' disabled') + '>⬇ Planilha de ajustes (.xlsx) — ' + fmtInt(prontas.length) + ' linha(s)</button>' +
       '<button class="btn-mini" id="btnGravarEmailsAjustes" onclick="gravarEmailsAjustes()"' + (prontas.length ? '' : ' disabled') + '>Gravar em Ajustes de PFA</button>' +
+      '<button class="btn-mini" onclick="baixarPendentesComercial()"' + (aguardando ? '' : ' disabled') + ' title="Linhas com NF ainda sem instrução EMBARCAR/DEVOLVER — com o arquivo .msg de onde cada uma veio">⬇ Pendentes com o comercial (.xlsx) — ' + fmtInt(aguardando) + ' linha(s)</button>' +
     '</div>' +
     '<div class="tabela-rolavel"><table class="arvore"><thead><tr>' +
       '<th class="centro">Tipo</th><th class="centro">NF</th><th class="centro">PFA</th><th class="centro">Artigo</th><th class="centro">Cor/Tam</th>' +
@@ -6930,6 +6931,36 @@ async function montarXlsxEmailsAjustes() {
     .forEach(function (l) { ws.addRow(window.linhaPlanilhaAjuste(l)); });
   ws.getRow(1).font = { bold: true };
   return wb.xlsx.writeBuffer();
+}
+/* Lista do que ainda está sem resposta do comercial (28/09/2026) — pra
+   assistente saber exatamente quais e-mails/NFs cobrar ou reenviar. */
+async function baixarPendentesComercial() {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Sem instrução');
+  ws.columns = [
+    { header: 'NF', key: 'nf', width: 10 }, { header: 'PFA', key: 'pfa', width: 10 },
+    { header: 'Cliente', key: 'cliente', width: 40 }, { header: 'Encomenda', key: 'encomenda', width: 12 },
+    { header: 'Artigo', key: 'artigo', width: 14 }, { header: 'Descrição', key: 'descricao', width: 28 },
+    { header: 'Cor', key: 'cor', width: 10 }, { header: 'Tam', key: 'tam', width: 8 },
+    { header: 'Pedido', key: 'pedido', width: 9 }, { header: 'Faltante', key: 'faltante', width: 9 },
+    { header: 'Situação', key: 'situacao', width: 14 }, { header: 'Assunto do e-mail', key: 'assunto', width: 30 },
+    { header: 'Data do e-mail', key: 'data', width: 13 }, { header: 'Arquivo .msg', key: 'arquivo', width: 40 },
+  ];
+  linhasEmailsAjustes.filter(function (l) { return !l.tipo; })
+    .sort(function (a, b) { return String(a.nf).localeCompare(String(b.nf)) || String(a.pfa).localeCompare(String(b.pfa)); })
+    .forEach(function (l) {
+      ws.addRow({ nf: l.nf || '', pfa: l.pfa, cliente: l.cliente || '', encomenda: l.encomenda || '',
+        artigo: l.artigo, descricao: l.descricao || '', cor: l.cor, tam: l.tam,
+        pedido: l.qtde_total_pedido, faltante: l.qtde_faltante, situacao: l.situacao,
+        assunto: l.assunto || '', data: l.data_solicitacao ? formatarDataSimples(l.data_solicitacao) : '', arquivo: l._arquivo || '' });
+    });
+  ws.getRow(1).font = { bold: true };
+  const buffer = await wb.xlsx.writeBuffer();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  a.download = 'pendentes-com-o-comercial.xlsx';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 async function baixarPlanilhaEmailsAjustes() {
   const buffer = await montarXlsxEmailsAjustes();
