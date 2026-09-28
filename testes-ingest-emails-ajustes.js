@@ -52,6 +52,15 @@ ok(v[0].ja_lancado, 'linha já lançada antes é marcada');
 ok(v[1].alertas.some(function (a) { return /pares da PFA em Pendentes/.test(a); }), 'CANCELAMENTO cuja falta (1) ≠ pares em Pendentes (2) gera alerta');
 ok(v[2].alertas.some(function (a) { return /NF do e-mail/.test(a); }), 'NF divergente do sistema gera alerta');
 eq(v[3].alertas, [], 'NF que bate e FALTA TOTAL = qtde da NF: sem alerta');
+
+/* Resposta curta da gerente: só NF | INSTRUÇÃO, NF repetida sem instrução
+   quando tem mais de um item (e-mail real de 28/09/2026). */
+const instCurta = E.extrairInstrucoes(['Bom dia a todos!', 'Segue instrução.', 'NF', 'INSTRUÇÃO',
+  '221115', 'EMBARCAR', '222472', 'EMBARCAR', '222472', '221127', 'DEVOLVER', '221127',
+  'De: Erika', 'NF', 'INSTRUÇÃO', '221115', 'DEVOLVER']);
+eq(instCurta.get('221115'), 'EMBARCAR', 'tabela curta NF|INSTRUÇÃO é lida (e vale a mensagem mais nova, em cima)');
+eq(instCurta.get('222472'), 'EMBARCAR', 'NF repetida sem instrução continua com a da NF');
+eq(instCurta.get('221127'), 'DEVOLVER', 'DEVOLVER na tabela curta');
 const antigo = Object.assign({}, l2[1], { tipo: null, data_hora_email: '2026-09-17T14:52:00Z' });
 const novo = Object.assign({}, l2[1], { data_hora_email: '2026-09-17T18:00:00Z' });
 eq(E.consolidarLinhasEmails([[novo], [antigo]])[0].tipo, 'AD_DEVOLUCAO', 'mesma linha em 2 e-mails: vale o mais recente, independente da ordem dos arquivos');

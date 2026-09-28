@@ -115,19 +115,40 @@ function extrairRegistrosDivergencia(linhas, comNf) {
 /* Tabela de instrução do comercial: NF|PFA|CLIENTE|SITUAÇÃO|COD. REP|INSTRUÇÃO
    (a INSTRUÇÃO pode vir só na 1ª linha de uma NF repetida). */
 function extrairInstrucoes(linhas) {
-  const out = new Map(); // nf -> instrução
+  const out = new Map(); // nf -> { inst, pos }
+  const guardar = function (nf, inst, pos) {
+    // Em thread a mensagem mais nova vem em cima: vale a 1ª ocorrência.
+    if (!out.has(nf) || pos < out.get(nf).pos) out.set(nf, { inst: inst, pos: pos });
+  };
+  const normalizar = function (t) {
+    const m = RE_INSTRUCAO.exec(t)[1].toUpperCase();
+    return /^DEVOL/.test(m) ? 'DEVOLVER' : m;
+  };
   for (let i = 0; i + 4 < linhas.length; i++) {
     const nf = linhas[i].trim();
     if (!RE_6DIG.test(nf) || !RE_6DIG.test((linhas[i + 1] || '').trim())) continue;
     if (!/^CL[\s-]/i.test((linhas[i + 2] || '').trim())) continue;
     if (!RE_SITUACAO.test(linhas[i + 3] || '')) continue;
     const talvez = (linhas[i + 5] || '').trim();
-    if (RE_INSTRUCAO.test(talvez)) {
-      const m = RE_INSTRUCAO.exec(talvez)[1].toUpperCase();
-      out.set(nf, /^DEVOL/.test(m) ? 'DEVOLVER' : m);
+    if (RE_INSTRUCAO.test(talvez)) guardar(nf, normalizar(talvez), i);
+  }
+  /* Tabela CURTA (28/09/2026): a gerente responde só NF | INSTRUÇÃO, com a NF
+     repetida em linhas sem instrução quando ela tem mais de um item (a
+     instrução vale pra NF inteira). Termina na 1ª linha que não é NF nem
+     instrução (ex.: "De: ..." da mensagem citada). */
+  for (let i = 0; i + 1 < linhas.length; i++) {
+    if (linhas[i].trim().toUpperCase() !== 'NF' || !/^\s*INSTRU[CÇ][AÃ]O\s*$/i.test(linhas[i + 1])) continue;
+    let nfAtual = null;
+    for (let j = i + 2; j < linhas.length; j++) {
+      const t = linhas[j].trim();
+      if (RE_6DIG.test(t)) { nfAtual = t; continue; }
+      if (nfAtual && RE_INSTRUCAO.test(t)) { guardar(nfAtual, normalizar(t), j); continue; }
+      break;
     }
   }
-  return out;
+  const saida = new Map();
+  out.forEach(function (v, nf) { saida.set(nf, v.inst); });
+  return saida;
 }
 
 /* NFs citadas em TEXTO LIVRE da conversa ("a Nota 215880 falta total também")
@@ -259,8 +280,11 @@ function validarLinhasEmail(linhas, snapshotPfas) {
       const nfSnap = notaPorPfa.get(String(l.pfa));
       if (!nfSnap) alertas.push('PFA sem NF no sistema (nem no Pendentes nem no Analítico)');
       else if (nfSnap !== numeroNf(l.nf)) alertas.push('NF do e-mail (' + l.nf + ') ≠ NF no sistema (' + nfSnap + ')');
-      if (l.situacao === 'FALTA TOTAL' && pfasComNota.has(String(l.pfa)) && faltaPorPfa.get(l.pfa) !== pfasComNota.get(String(l.pfa))) {
-        alertas.push('FALTA TOTAL: soma das faltas (' + faltaPorPfa.get(l.pfa) + ') ≠ qtde da NF no sistema (' + pfasComNota.get(String(l.pfa)) + ')');
+      // "FALTA TOTAL" no e-mail com NF é do ITEM (o item inteiro não foi), não
+      // da NF — comparar com a qtde da NF inteira dava alerta falso (28/09/2026:
+      // falta 1 × NF de 124). Só alerta falta MAIOR que a NF, que é erro.
+      if (pfasComNota.has(String(l.pfa)) && pfasComNota.get(String(l.pfa)) > 0 && faltaPorPfa.get(l.pfa) > pfasComNota.get(String(l.pfa))) {
+        alertas.push('soma das faltas (' + faltaPorPfa.get(l.pfa) + ') maior que a qtde da NF no sistema (' + pfasComNota.get(String(l.pfa)) + ')');
       }
     } else {
       if (!p) alertas.push('PFA não está no Pendentes atual');
