@@ -61,6 +61,18 @@ const instCurta = E.extrairInstrucoes(['Bom dia a todos!', 'Segue instrução.',
 eq(instCurta.get('221115'), 'EMBARCAR', 'tabela curta NF|INSTRUÇÃO é lida (e vale a mensagem mais nova, em cima)');
 eq(instCurta.get('222472'), 'EMBARCAR', 'NF repetida sem instrução continua com a da NF');
 eq(instCurta.get('221127'), 'DEVOLVER', 'DEVOLVER na tabela curta');
+/* PFA que já saiu do Pendentes (embarcada): NF vem do relatório de NFs
+   Embarcadas ou, se não estiver nele, do histórico de Pendentes. */
+const linhaEmb = Object.assign({}, l2[0], { pfa: '247576', nf: '222472', qtde_faltante: 1, situacao: 'FALTA PARCIAL' });
+const linhaHist = Object.assign({}, l2[0], { pfa: '248000', nf: '222999', qtde_faltante: 1, situacao: 'FALTA PARCIAL' });
+const linhaNada = Object.assign({}, l2[0], { pfa: '248001', nf: '223000', qtde_faltante: 1, situacao: 'FALTA PARCIAL' });
+const vEmb = E.validarLinhasEmail([linhaEmb, linhaHist, linhaNada],
+  { pendentes: [], embarcadas_nf: { '247576': ['222472', '2026-09-25', 868] } },
+  [{ pfa: '248000', nota_fiscal: '1-1-222999', pares: 50 }]);
+eq(vEmb[0].alertas, [], 'NF do relatório de NFs Embarcadas: sem alerta de "sem NF"');
+eq(vEmb[1].alertas, [], 'NF do histórico de Pendentes: sem alerta');
+ok(vEmb[1].nf_do_historico, '… marcada como vinda do histórico');
+ok(/sem NF no sistema/.test(vEmb[2].alertas.join()), 'sem NF em lugar nenhum: continua alertando');
 const antigo = Object.assign({}, l2[1], { tipo: null, data_hora_email: '2026-09-17T14:52:00Z' });
 const novo = Object.assign({}, l2[1], { data_hora_email: '2026-09-17T18:00:00Z' });
 eq(E.consolidarLinhasEmails([[novo], [antigo]])[0].tipo, 'AD_DEVOLUCAO', 'mesma linha em 2 e-mails: vale o mais recente, independente da ordem dos arquivos');

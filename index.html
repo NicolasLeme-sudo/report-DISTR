@@ -6863,7 +6863,18 @@ document.getElementById('inputEmailsAjustes').addEventListener('change', async f
         .order('gerado_em', { ascending: false }).limit(1);
       snap = r.data && r.data[0] ? r.data[0].payload : null;
     }
-    linhasEmailsAjustes = window.validarLinhasEmail(window.consolidarLinhasEmails(listas), snap);
+    const consolidadas = window.consolidarLinhasEmails(listas);
+    // NF de PFA que já saiu do Pendentes (expedida) vem do histórico de
+    // Pendentes no banco — sem isso dava "PFA sem NF no sistema".
+    let historicoNf = [];
+    try {
+      const pfasNf = Array.from(new Set(consolidadas.filter(function (l) { return l.nf; }).map(function (l) { return String(l.pfa); })));
+      if (pfasNf.length) {
+        const h = await supabaseClient.rpc('nf_historico_pfas', { p_pfas: pfasNf });
+        historicoNf = (h && h.data) || [];
+      }
+    } catch (e) { console.warn('Histórico de NF indisponível:', e); }
+    linhasEmailsAjustes = window.validarLinhasEmail(consolidadas, snap, historicoNf);
     renderizarEmailsAjustes(falhas, !snap);
   } catch (e) {
     alvo.innerHTML = '<div class="aviso erro">Erro ao ler os e-mails: ' + escapar(e && e.message ? e.message : String(e)) + '</div>';

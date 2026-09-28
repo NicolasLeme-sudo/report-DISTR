@@ -250,8 +250,8 @@ function numeroNf(nf) {
   const n = partes[partes.length - 1].replace(/\D/g, '').replace(/^0+/, '');
   return n || null;
 }
-function validarLinhasEmail(linhas, snapshotPfas) {
-  const pend = new Map(), notaPorPfa = new Map(), pfasComNota = new Map();
+function validarLinhasEmail(linhas, snapshotPfas, historicoNf) {
+  const pend = new Map(), notaPorPfa = new Map(), pfasComNota = new Map(), notaDoHistorico = new Set();
   ((snapshotPfas && snapshotPfas.pendentes) || []).forEach(function (r) {
     pend.set(String(r.pfa), r);
     // NF do Pendentes (24/09/2026) — cobre PFA faturada que já saiu do Analítico.
@@ -264,6 +264,22 @@ function validarLinhasEmail(linhas, snapshotPfas) {
     if (!r.nota || notaPorPfa.has(String(r.pfa))) return;
     notaPorPfa.set(String(r.pfa), numeroNf(r.nota));
     pfasComNota.set(String(r.pfa), (pfasComNota.get(String(r.pfa)) || 0) + (r.qtde || 0));
+  });
+  // PFA embarcada: NF do relatório de NFs Embarcadas (notas_expedidas).
+  const emb = (snapshotPfas && snapshotPfas.embarcadas_nf) || {};
+  Object.keys(emb).forEach(function (pfa) {
+    if (notaPorPfa.has(pfa) || !emb[pfa] || !emb[pfa][0]) return;
+    notaPorPfa.set(pfa, numeroNf(emb[pfa][0]));
+    pfasComNota.set(pfa, Number(emb[pfa][2]) || 0);
+  });
+  // PFA que já saiu do Pendentes atual (expedida): NF do histórico de
+  // Pendentes (função nf_historico_pfas no banco, 28/09/2026).
+  (historicoNf || []).forEach(function (h) {
+    const k = String(h.pfa);
+    if (!h.nota_fiscal || notaPorPfa.has(k)) return;
+    notaPorPfa.set(k, numeroNf(h.nota_fiscal));
+    pfasComNota.set(k, Number(h.pares) || 0);
+    notaDoHistorico.add(k);
   });
   const jaLancados = new Set(((snapshotPfas && snapshotPfas.ajustes) || []).map(function (a) {
     return [a.pfa_antiga, a.artigo, (a.cor_tam || '').replace(/\s+/g, ' ').trim()].join('|');
@@ -278,7 +294,7 @@ function validarLinhasEmail(linhas, snapshotPfas) {
     else if (l.qtde_total_pedido != null && l.qtde_faltante > l.qtde_total_pedido) alertas.push('falta maior que o pedido');
     if (l.nf) {
       const nfSnap = notaPorPfa.get(String(l.pfa));
-      if (!nfSnap) alertas.push('PFA sem NF no sistema (nem no Pendentes nem no Analítico)');
+      if (!nfSnap) alertas.push('PFA sem NF no sistema (nem no Pendentes, Analítico, NFs Embarcadas ou histórico)');
       else if (nfSnap !== numeroNf(l.nf)) alertas.push('NF do e-mail (' + l.nf + ') ≠ NF no sistema (' + nfSnap + ')');
       // "FALTA TOTAL" no e-mail com NF é do ITEM (o item inteiro não foi), não
       // da NF — comparar com a qtde da NF inteira dava alerta falso (28/09/2026:
@@ -297,7 +313,8 @@ function validarLinhasEmail(linhas, snapshotPfas) {
     }
     const chave = [l.pfa, l.artigo, (l.cor + ' ' + l.tam).trim()].join('|');
     const duplicado = jaLancados.has(chave);
-    return Object.assign({}, l, { alertas: alertas, ja_lancado: duplicado });
+    return Object.assign({}, l, { alertas: alertas, ja_lancado: duplicado,
+      nf_do_historico: notaDoHistorico.has(String(l.pfa)) });
   });
 }
 

@@ -1085,6 +1085,12 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
     // Último conjunto de PFAs embarcadas conhecido — reaplicado sozinho
     // quando um upload futuro não reenviar o arquivo de Embarcadas.
     embarcadas_pfas: Array.from(pfasEmbarcadas),
+    // NF de cada PFA embarcada: pfa -> [nota, data_nota, qtd] (28/09/2026) —
+    // a validação dos e-mails de ajuste usa quando a PFA já saiu do
+    // Pendentes. Sem arquivo novo, carrega a do último snapshot.
+    embarcadas_nf: embarcadasFornecido
+      ? embarcadas.registros.reduce(function (m, e) { if (e.nota) m[e.pfa] = [e.nota, e.data_nota, e.qtd_total]; return m; }, {})
+      : ((ultimo && ultimo.embarcadas_nf) || {}),
     // Ajuste/cancelamento/B.O. pós-NF/AD — lançados manualmente, cruzados por
     // encomenda/PFA com o que está em tela. A tela agrega e filtra por
     // período em cima deste array; nada aqui já vem somado por tipo.
