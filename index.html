@@ -2953,6 +2953,8 @@ function exportarPosicoesOciosas(lado, tipo) {
   const linhas = [['Area', 'Endereco', 'Rua', 'Nivel', 'Box', 'Segmento', 'Pecas', 'SKUs', 'Observacao']];
   lados.forEach(function (l) {
     (oc[l][tipo] || []).forEach(function (e) {
+      // Endereço validado como passagem/inexistente sai já (sem reprocessar).
+      if (l === 'pulmao' && window.foraCapacidadePulmao && window.foraCapacidadePulmao(e[0], e[1], e[2])) return;
       linhas.push([l === 'picking' ? 'Picking' : 'Pulmao', formatarEndereco(e[0], e[1], e[2]), e[0], e[1], e[2],
         ROT_BUCKET[e[5]] || e[5], e[3], e[4],
         tipo === 'vazios' ? (l === 'pulmao' ? 'Vazio estimado (box sem volume)' : 'Alocado sem saldo') : 'Menos de ' + oc.limite_picado + ' pecas']);

@@ -375,7 +375,8 @@ eq(payloadSkuZero.ocupacao.picking.calcado.ocupado, 2, 'mas o endereço alocado 
 eq(payloadSkuZero.ocupacao.picking.calcado.detalhe.ruas.join(','), '7,8', 'zona de calçado do Picking = ruas 7 e 8 (81 e 102 desativadas)');
 
 secao('capacidade por rua bate com a capacidade por zona (planilha da operação)');
-const somaRuas = function (linha, ruas) { return ruas.reduce(function (a, r) { return a + payloadSkuZero.ocupacao_por_rua.capacidade[linha][r]; }, 0); };
+const somaRuas = function (linha, ruas) { return ruas.reduce(function (a, r) { return a + CAPACIDADE_RUA_PLANILHA[linha][r]; }, 0); };
+const somaRuasTela = function (linha, ruas) { return ruas.reduce(function (a, r) { return a + payloadSkuZero.ocupacao_por_rua.capacidade[linha][r]; }, 0); };
 eq(somaRuas('picking', ['1', '2', '3', '4', '5', '6']), 14630, 'Picking vestuário 1–6 = 14.630');
 eq(somaRuas('picking', ['7', '8']), 4352, 'Picking calçado 7–8 = 4.352');
 eq(somaRuas('picking', ['11', '12', '13']), 1598, 'Picking acessório 11–13 = 1.598');
@@ -383,6 +384,23 @@ eq(somaRuas('picking', ['14', '15']), 408, 'Picking meia 14–15 = 408');
 eq(CAPACIDADE_RUA.picking['15'], 408, 'Picking meia: sistema mapeia 14+15 físicas como rua 15');
 eq(somaRuas('pulmao', ['1']), 712, 'Pulmão meia só rua 1 = 712 (rua 15 = alocação da reversa)');
 eq(CAPACIDADE_RUA.pulmao['15'], undefined, 'Pulmão rua 15 fora da capacidade');
+// Endereços validados pela operação (28/09/2026): passagem e inexistentes saem da capacidade.
+eq(somaRuasTela('pulmao', ['1']), 702, 'Pulmão rua 1: 712 − 10 de passagem = 702');
+eq(somaRuasTela('pulmao', ['2', '6', '7']), 2104, 'Pulmão vestuário: 2.136 − 32 de passagem = 2.104');
+eq(somaRuasTela('pulmao', ['3', '4', '5']), 2110, 'Pulmão calçado: 2.131 − 21 (o nível 04 da rua 5 não estava nos 712)');
+eq(foraCapacidadePulmao('05', '04', '001'), 'nao_existe', '05-04-001 (nível que não existe) fica fora');
+eq(foraCapacidadePulmao(6, 10, 143), null, 'endereço não marcado continua valendo');
+(function () {
+  const fam = { familia_codigo: '101', artigo_codigo: 'X', cor: 'PT', tamanho: '40', qtd: 5, codbar: 'E', dt_cri: new Date('2026-01-01') };
+  const pl = construirSnapshotRessuprimento({ registros: [] }, { registros: [
+    Object.assign({}, fam, { rua: '5', nivel: '4', box: '1' }),
+    Object.assign({}, fam, { rua: '5', nivel: '8', box: '1' }),
+    Object.assign({}, fam, { rua: '5', nivel: '8', box: '65' }),
+  ], colisoes_volume: 0 }, mapaFamilias, { pulmao_calcado: 2131 }, { arquivo_picking: 'p', arquivo_pulmao: 'x' });
+  eq(pl.ocupacao_por_rua.pulmao['5'], 1, 'ocupado na rua 5 ignora 05-04-001 e a passagem 05-08-065');
+  eq(pl.ocupacao.pulmao.calcado.capacidade, 2110, 'capacidade da zona (dim_capacidade_zonas) também desconta');
+  ok(!pl.enderecos_ociosos.pulmao.vazios.some(function (v) { return foraCapacidadePulmao(v[0], v[1], v[2]); }), 'lista de vazios não traz endereço validado como fora');
+})();
 eq(RUAS_ZONA.pulmao.meia.join(), '1', 'Pulmão meia: zona só com a rua 1');
 eq(somaRuas('pulmao', ['2', '6', '7']), 2136, 'Pulmão vestuário 2, 6, 7 = 2.136');
 eq(somaRuas('pulmao', ['3', '4', '5']), 2131, 'Pulmão calçado 3–5 = 2.131');

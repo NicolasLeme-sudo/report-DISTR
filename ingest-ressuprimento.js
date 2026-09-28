@@ -126,7 +126,63 @@ const BUCKETS_ZONA = ['meia', 'vestuario', 'acessorio', 'calcado'];
    planilha: dividido pela quantidade de níveis (rua 7 = 3, rua 8 = 4). Usada
    pra "livre por rua" (capacidade − ocupado) no bloco de endereços vazios,
    mesma régua dos cards de ocupação (24/09/2026). */
-const CAPACIDADE_RUA = {
+/* Endereços do Pulmão validados fisicamente pela operação (28/09/2026, CSV
+   "posicoes-livres-pulmao"): saem da capacidade, da contagem de ocupados e
+   da lista de posições vazias. 'passagem' = corredor/passagem, não guarda
+   pallet; 'nao_existe' = endereço que não existe fisicamente (rua 5 nível 04
+   inteiro — T.I. tem que arrumar o cadastro). Faixa 'r-n-b1..b2' = boxes
+   b1 a b2. Só o que cai nos níveis contados na capacidade (08 a 12) é
+   descontado dela — o nível 04 da rua 5 nunca esteve nos 712 da planilha. */
+const ENDERECOS_FORA_CAPACIDADE_PULMAO = {
+  nao_existe: [
+    '5-4-1..144',
+  ],
+  passagem: [
+    '1-8-7', '1-8-68',
+    '1-9-5', '1-9-7', '1-9-65', '1-9-66', '1-9-68',
+    '1-10-65', '1-10-66', '1-10-68',
+    '2-8-65', '2-8-67', '2-8-68',
+    '2-9-65', '2-9-66', '2-9-67', '2-9-68',
+    '3-8-65', '3-8-66', '3-8-67', '3-8-68',
+    '3-9-65', '3-9-66', '3-9-67', '3-9-68',
+    '4-8-65', '4-8-66', '4-8-67', '4-8-68',
+    '4-9-65', '4-9-66', '4-9-68',
+    '5-8-65', '5-8-67',
+    '5-9-65', '5-9-66', '5-9-67', '5-9-68',
+    '6-8-66', '6-8-67', '6-8-68',
+    '6-9-66', '6-9-67', '6-9-138', '6-9-140', '6-9-142', '6-9-144',
+    '6-10-65', '6-10-66', '6-10-67', '6-10-68', '6-10-134', '6-10-136', '6-10-138', '6-10-140', '6-10-142', '6-10-144',
+    '7-8-65', '7-8-67', '7-8-68',
+    '7-9-66', '7-9-67', '7-9-68',
+    '11-9-1',
+  ],
+};
+
+const FORA_CAPACIDADE_PULMAO = (function () {
+  const m = {};
+  Object.keys(ENDERECOS_FORA_CAPACIDADE_PULMAO).forEach(function (motivo) {
+    ENDERECOS_FORA_CAPACIDADE_PULMAO[motivo].forEach(function (e) {
+      const p = e.split('-');
+      const faixa = p[2].split('..');
+      for (let b = Number(faixa[0]); b <= Number(faixa[1] || faixa[0]); b++) m[Number(p[0]) + '-' + Number(p[1]) + '-' + b] = motivo;
+    });
+  });
+  return m;
+})();
+function foraCapacidadePulmao(rua, nivel, box) {
+  return FORA_CAPACIDADE_PULMAO[Number(rua) + '-' + Number(nivel) + '-' + Number(box)] || null;
+}
+// Quantos endereços fora da capacidade caem nos níveis contados (08–12), por rua.
+const DESCONTO_CAPACIDADE_PULMAO = (function () {
+  const d = {};
+  Object.keys(FORA_CAPACIDADE_PULMAO).forEach(function (k) {
+    const p = k.split('-');
+    if (Number(p[1]) >= 8 && Number(p[1]) <= 12) d[p[0]] = (d[p[0]] || 0) + 1;
+  });
+  return d;
+})();
+
+const CAPACIDADE_RUA_PLANILHA = {
   picking: { '1': 2415, '2': 2450, '3': 2450, '4': 2415, '5': 2450, '6': 2450, '7': 1865, '8': 2487,
              // Meia: fisicamente rua 14 tem 2 lados (272) e a 15 um lado só
              // (136), mas no SISTEMA as duas são mapeadas como UMA rua — a 15
@@ -135,6 +191,17 @@ const CAPACIDADE_RUA = {
              '11': 1190, '12': 204, '13': 204, '14': 0, '15': 408 },
   pulmao: { '1': 712, '2': 712, '3': 712, '4': 707, '5': 712, '6': 712, '7': 712,
             '11': 136, '12': 272, '13': 272, '14': 272 },
+};
+// Capacidade usada na tela = planilha − endereços validados como fora (Pulmão).
+const CAPACIDADE_RUA = {
+  picking: CAPACIDADE_RUA_PLANILHA.picking,
+  pulmao: (function () {
+    const out = {};
+    Object.keys(CAPACIDADE_RUA_PLANILHA.pulmao).forEach(function (r) {
+      out[r] = CAPACIDADE_RUA_PLANILHA.pulmao[r] - (DESCONTO_CAPACIDADE_PULMAO[r] || 0);
+    });
+    return out;
+  })(),
 };
 
 /* Ruas que NÃO são estoque e saem de tudo já na leitura (Picking e Pulmão):
@@ -553,7 +620,14 @@ function construirSaldoEnderecos(pickingReal, pulmaoTudo) {
 function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidadesManual, meta, capacidadesItensManual) {
   picking = semRuasDesconsideradas(picking);
   pulmao = semRuasDesconsideradas(pulmao);
-  const cap = capacidadesManual || {};
+  const cap = Object.assign({}, capacidadesManual || {});
+  // Zona do Pulmão (dim_capacidade_zonas = planilha) menos os endereços
+  // validados como fora da capacidade nas ruas da zona.
+  Object.keys(RUAS_ZONA.pulmao).forEach(function (b) {
+    const z = 'pulmao_' + b;
+    if (!cap[z]) return;
+    cap[z] -= RUAS_ZONA.pulmao[b].reduce(function (t, r) { return t + (DESCONTO_CAPACIDADE_PULMAO[r] || 0); }, 0);
+  });
   const capItens = capacidadesItensManual || {};
   const classif = classificarPickingEPulmao(picking, pulmao, mapaFamilias);
   const pickingReal = classif.pickingReal;
@@ -617,6 +691,9 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
      "Ressuprimento pendente em trânsito" (transito_pulmao), pra mostrar o
      B.O. sem misturar com a ocupação física real. */
   const pulmaoFisico = pulmaoTudo.filter(function (r) { return r.origem === 'pulmao' && r.classif_grupo === 'PULMAO'; });
+  // Pra OCUPAÇÃO (não pro estoque): endereço fora da capacidade não conta como
+  // ocupado — ex.: 05-04-001 tem saldo no sistema mas o nível não existe.
+  const pulmaoCapacidade = pulmaoFisico.filter(function (r) { return !foraCapacidadePulmao(r.rua, r.nivel, r.box); });
 
   /* Ocupação vira 2 LINHAS (Picking e Pulmão), cada uma com as mesmas 4 zonas
      de bucket (Meia/Vestuário/Acessório/Calçado) + um Total que soma as 4
@@ -692,10 +769,10 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
       calcado: fazZonaRua(capMap, medir, 'picking', 'calcado', pickingReal),
     };
     const uB = {
-      meia: fazZonaRua(capMap, medir, 'pulmao', 'meia', pulmaoFisico),
-      vestuario: fazZonaRua(capMap, medir, 'pulmao', 'vestuario', pulmaoFisico),
-      acessorio: fazZonaRua(capMap, medir, 'pulmao', 'acessorio', pulmaoFisico),
-      calcado: fazZonaRua(capMap, medir, 'pulmao', 'calcado', pulmaoFisico),
+      meia: fazZonaRua(capMap, medir, 'pulmao', 'meia', pulmaoCapacidade),
+      vestuario: fazZonaRua(capMap, medir, 'pulmao', 'vestuario', pulmaoCapacidade),
+      acessorio: fazZonaRua(capMap, medir, 'pulmao', 'acessorio', pulmaoCapacidade),
+      calcado: fazZonaRua(capMap, medir, 'pulmao', 'calcado', pulmaoCapacidade),
     };
     return {
       picking: Object.assign({ total: fazZonaTotal([pB.meia, pB.vestuario, pB.acessorio, pB.calcado]) }, pB),
@@ -715,7 +792,7 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     Object.keys(porRua).forEach(function (rua) { saida[rua] = porRua[rua].size; });
     return saida;
   }
-  const ocupacaoPorRua = { picking: ocupadosPorRua(pickingReal), pulmao: ocupadosPorRua(pulmaoFisico), capacidade: CAPACIDADE_RUA };
+  const ocupacaoPorRua = { picking: ocupadosPorRua(pickingReal), pulmao: ocupadosPorRua(pulmaoCapacidade), capacidade: CAPACIDADE_RUA };
   // Segunda árvore, mesma forma, medida em peças — recalculada do zero (não
   // é o número de endereço convertido) com a capacidade já segregada por
   // item (pedido da operação, 09/09/2026).
@@ -1094,7 +1171,7 @@ function mapearEnderecosOciosos(pickingReal, pulmaoFisico) {
   Object.keys(boxesPorRua).forEach(function (rua) {
     niveisPorRua[rua].forEach(function (nivel) {
       boxesPorRua[rua].forEach(function (box) {
-        if (!endPulm.has(rua + '|' + nivel + '|' + box)) {
+        if (!endPulm.has(rua + '|' + nivel + '|' + box) && !foraCapacidadePulmao(rua, nivel, box)) {
           saida.pulmao.vazios.push([rua, nivel, box, 0, 0, segRuaPulm[rua]]);
         }
       });
@@ -1321,6 +1398,8 @@ window.parsearPicking = parsearPicking;
 window.parsearPulmao = parsearPulmao;
 window.RUAS_ZONA = RUAS_ZONA;
 window.CAPACIDADE_RUA = CAPACIDADE_RUA;
+window.CAPACIDADE_RUA_PLANILHA = CAPACIDADE_RUA_PLANILHA;
+window.foraCapacidadePulmao = foraCapacidadePulmao;
 window.construirSnapshotRessuprimento = construirSnapshotRessuprimento;
 window.classificarPickingEPulmao = classificarPickingEPulmao;
 window.construirSaldoEnderecos = construirSaldoEnderecos;
