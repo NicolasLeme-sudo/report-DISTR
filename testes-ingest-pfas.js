@@ -142,6 +142,7 @@ const snap = construirSnapshotPfas(pendCompleto, anaCompleto, embCompleto, mapaF
 });
 
 eq(snap.pendentes.length, 4, 'a PFA já embarcada (243305) sai do pendente');
+eq(snap.embarcadas_nf['243305'][0], '216604', 'NF da PFA embarcada fica guardada (validação dos e-mails de ajuste)');
 eq(snap.stats.excluidas_por_embarque.pfas, 1, 'e o que saiu vira número visível, não sumiço silencioso');
 eq(snap.stats.excluidas_por_embarque.pares, 500, 'com os pares que ela levava junto');
 ok(snap.pendentes.every(function (r) { return r.pfa !== '243305'; }), '243305 não aparece em nenhuma linha de pendente');
