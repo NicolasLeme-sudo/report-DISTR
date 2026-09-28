@@ -4538,6 +4538,7 @@ async function carregarRessuprimento() {
     dataSnapshotRessuprimento = resPosicao.data[0].gerado_em;
     atualizarSubtituloSecao('estoqueop');
     window._snapshotRessuprimento = resPosicao.data[0].payload;
+    await carregarUltimoMovimentoVolumes(window._snapshotRessuprimento);
     renderizarEstoqueOperacao();
   }
 
@@ -5397,7 +5398,7 @@ function renderizarEstoqueOperacao(p) {
         case 'endereco': return r.rua.padStart(4, '0') + '|' + r.nivel.padStart(4, '0') + '|' + r.box.padStart(6, '0');
         case 'sku': return r.artigo_codigo + '/' + r.cor + '/' + r.tamanho;
         case 'nome': return r.descricao || '';
-        case 'data': return r.data || '0000'; // sem registro no Kardex vai pro fim (desc)
+        case 'data': return r.data || (r.mov_outro && r.mov_outro.dia) || r.cri || '0000'; // sem registro no Kardex vai pro fim (desc)
         case 'login': return r.login || '';
         case 'volume': return r.volume || '';
         default: return r.qtd;
@@ -5430,7 +5431,12 @@ function renderizarEstoqueOperacao(p) {
           (r.volume ? escapar(r.volume) : '<span style="color:var(--text-muted)">sem nº de volume</span>') + '</td>' +
         '<td class="centro">' +
           (r.data ? formatarDataSimples(r.data) + ' <span style="color:var(--text-muted)">(' + fmtInt(r.dias) + 'd)</span>'
-            : '<span style="color:var(--text-muted)" title="Nenhuma movimentação deste volume para este endereço nos Kardex já processados">sem registro no Kardex</span>') +
+            : r.mov_outro
+              ? '<span style="color:var(--amber)" title="O último movimento deste volume no Kardex levou ele para outro endereço — o saldo ainda aponta aqui. Conferir fisicamente.">' +
+                formatarDataSimples(r.mov_outro.dia) + ' · foi p/ ' + escapar(formatarEndereco(r.mov_outro.rua, r.mov_outro.nivel, r.mov_outro.box)) + '</span>'
+              : r.cri
+                ? '<span style="color:var(--text-muted)" title="Sem movimento no Kardex — data de criação do volume (DT. CRI. do Pulmão)">criado ' + formatarDataSimples(r.cri) + '</span>'
+                : '<span style="color:var(--text-muted)" title="Nenhuma movimentação deste volume nos Kardex já processados">sem registro no Kardex</span>') +
         '</td></tr>';
     }).join('');
 
@@ -6384,6 +6390,22 @@ function diasUteisDesde(yyyymmdd) {
   while (d < h) { d.setDate(d.getDate() + 1); const w = d.getDay(); if (w !== 0 && w !== 6 && d <= h) n++; }
   return n;
 }
+/* Último movimento de cada volume parado, em QUALQUER endereço
+   (volume_ultimo_movimento, 29/09/2026) — pra quando a entrada no endereço
+   atual não está no Kardex. Falha em silêncio: sem a tabela, fica como antes. */
+let ultimoMovPorVolume = new Map();
+async function carregarUltimoMovimentoVolumes(p) {
+  ultimoMovPorVolume = new Map();
+  try {
+    const vols = [];
+    ((p && p.validacao) || []).forEach(function (v) { (v.volumes || []).forEach(function (x) { if (x.v) vols.push(x.v); }); });
+    for (let i = 0; i < vols.length; i += 1000) {
+      const r = await supabaseClient.rpc('ultimos_movimentos_volumes', { p_volumes: vols.slice(i, i + 1000) });
+      if (r.error) throw r.error;
+      (r.data || []).forEach(function (m) { ultimoMovPorVolume.set(m.volume, m); });
+    }
+  } catch (e) { console.warn('Último movimento por volume indisponível:', e); }
+}
 function enriquecerValidacaoComKardex(lista) {
   const entradas = (dadosMovimentacoes && dadosMovimentacoes.entradas_volume) || {};
   const n = function (x) { return String(Number(x) || 0); };
@@ -6401,7 +6423,15 @@ function enriquecerValidacaoComKardex(lista) {
       const dt = bate ? e[3] : null;
       if (dt && (!entrada || dt < entrada)) { entrada = dt; login = e[5] || ''; nome = e[6] || ''; }
       if (dt && (!ultimaMov || dt > ultimaMov)) { ultimaMov = dt; ultimaLogin = e[5] || ''; ultimaNome = e[6] || ''; }
-      return { v: vol.v, q: vol.q, cri: vol.cri, entrada: dt, hora: bate ? e[4] : null, login: bate ? (e[5] || '') : '', nome: bate ? (e[6] || '') : '' };
+      // Sem entrada NESTE endereço: último movimento conhecido do volume em
+      // qualquer lugar (Kardex diz que foi pra outro endereço — saldo e Kardex
+      // divergem). Não entra na idade/FIFO: é só pra rastrear.
+      const um = !bate ? ultimoMovPorVolume.get(vol.v) : null;
+      const mesmoEnd = um && String(Number(um.rua)) === n(v.rua) && String(Number(um.nivel)) === n(v.nivel) && String(Number(um.box)) === n(v.box);
+      return { v: vol.v, q: vol.q, cri: vol.cri, entrada: dt || (mesmoEnd ? um.dia : null),
+        hora: bate ? e[4] : (mesmoEnd ? um.minutos : null),
+        login: bate ? (e[5] || '') : (um ? (um.login || '') : ''), nome: bate ? (e[6] || '') : (um ? (um.nome || '') : ''),
+        mov_outro: um && !mesmoEnd ? { dia: um.dia, rua: um.rua, nivel: um.nivel, box: um.box } : null };
     });
     const dias = entrada ? Math.max(0, Math.round((Date.now() - new Date(entrada + 'T12:00:00').getTime()) / 86400000)) : null;
     /* Rua 98 é usada pelo recebimento E pelo estoque (23/09/2026): até 2 dias
@@ -6442,6 +6472,7 @@ function linhasVolumeValidacao(enriquecidas) {
         qtd: vol.q || 0, volume: vol.v, data: vol.entrada || null, hora: vol.hora,
         dias: vol.entrada ? Math.max(0, Math.round((hoje - new Date(vol.entrada + 'T12:00:00').getTime()) / 86400000)) : null,
         login: vol.login || '', nome: vol.nome || '',
+        mov_outro: vol.mov_outro || null, cri: vol.cri || null,
       }));
     });
     const resto = (v.qtd || 0) - somaVolumes;
@@ -6470,14 +6501,17 @@ function exportarCSVValidacao() {
   if (!p || !(p.validacao || []).length) return;
   const linhasVol = linhasVolumeValidacao(enriquecerValidacaoComKardex(p.validacao));
   const linhas = [['Endereco', 'Classificacao', 'SKU', 'Nome do produto', 'Volume', 'QTDE do volume',
-    'Ultima movimentacao', 'Hora', 'Dias desde a ultima movimentacao', 'Login que movimentou', 'Nome de quem movimentou']];
+    'Ultima movimentacao', 'Hora', 'Dias desde a ultima movimentacao', 'Login que movimentou', 'Nome de quem movimentou',
+    'Ultimo movimento do volume em OUTRO endereco (Kardex)', 'Data desse movimento', 'Criacao do volume (DT. CRI.)']];
   linhasVol.forEach(function (r) {
     const hora = r.hora != null ? String(Math.floor(r.hora / 60)).padStart(2, '0') + ':' + String(r.hora % 60).padStart(2, '0') : '';
     // ="..." = Excel lê o volume como texto e não vira 1,79E+17.
     linhas.push([formatarEndereco(r.rua, r.nivel, r.box), r.classificacao,
       r.artigo_codigo + '/' + r.cor + '/' + r.tamanho, r.descricao,
       r.volume ? '="' + r.volume + '"' : 'sem nº de volume', r.qtd,
-      r.data || 'sem registro no Kardex', hora, r.dias != null ? r.dias : '', r.login, r.nome]);
+      r.data || 'sem registro no Kardex', hora, r.dias != null ? r.dias : '', r.login, r.nome,
+      r.mov_outro ? formatarEndereco(r.mov_outro.rua, r.mov_outro.nivel, r.mov_outro.box) : '',
+      r.mov_outro ? r.mov_outro.dia : '', r.cri || '']);
   });
   const csv = linhas.map(function (l) {
     return l.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(';');

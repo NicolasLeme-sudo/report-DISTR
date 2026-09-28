@@ -360,6 +360,41 @@ function construirEntradasPorVolume(pernas) {
   return saida;
 }
 
+/* Último movimento de CADA volume, em qualquer endereço (29/09/2026) — vira
+   volume_ultimo_movimento no banco. entradas_volume só guarda quando o
+   destino é rua de trânsito; quando o volume foi pra estante e o saldo ainda
+   aponta pra rua de trânsito, a tela usa isto pra mostrar "último movimento:
+   foi pra X em dd/mm" em vez de "sem registro". */
+function construirUltimosMovimentos(pernas) {
+  const ultimo = new Map();
+  pernas.forEach(function (p) {
+    if (!ehEntradaNoEndereco(p) || !p.volume) return;
+    const a = ultimo.get(p.volume);
+    if (!a || p.dia > a.dia || (p.dia === a.dia && p.minutos > a.minutos)) ultimo.set(p.volume, p);
+  });
+  const out = [];
+  ultimo.forEach(function (p, volume) {
+    out.push({ volume: volume, rua: String(Number(p.rua) || p.rua), nivel: String(Number(p.nivel) || p.nivel),
+      box: String(Number(p.box) || p.box), dia: p.dia, minutos: p.minutos, tipo: p.tipo, login: p.login || '', nome: p.nome || '' });
+  });
+  return out;
+}
+async function registrarUltimosMovimentos(supabaseClient, linhas, avisar) {
+  if (!linhas.length) return;
+  let gravados = 0;
+  try {
+    for (let i = 0; i < linhas.length; i += 2000) {
+      const r = await supabaseClient.rpc('registrar_ultimos_movimentos', { p: linhas.slice(i, i + 2000) });
+      if (r.error) throw r.error;
+      gravados += r.data || 0;
+    }
+    avisar('Último movimento por volume: ' + linhas.length.toLocaleString('pt-BR') + ' volume(s) lidos, ' +
+      gravados.toLocaleString('pt-BR') + ' atualizados (mais recentes que o já gravado).');
+  } catch (e) {
+    avisar('Aviso: não deu pra gravar o último movimento por volume (' + (e && e.message) + ') — rodou a migração volume_ultimo_movimento?');
+  }
+}
+
 /* Junta o mapa acumulado com o Kardex novo, por volume, valendo SEMPRE o
    TL+ mais recente — não a ordem de upload. Antes "o novo mandava": subir
    um Kardex antigo depois de um recente (carga histórica mês a mês, pedido
@@ -1007,6 +1042,7 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
   await upsertHistoricoDiario(supabaseClient, payload.historico_diario, avisar);
   await upsertHistoricoFamiliaDiario(supabaseClient, payload.historico_diario_familia, avisar);
   await upsertHistoricoOperadorDiario(supabaseClient, payload.historico_diario_operador, avisar);
+  await registrarUltimosMovimentos(supabaseClient, construirUltimosMovimentos(parsed.pernas), avisar);
 
   avisar('Concluído.');
   return payload;
@@ -1101,6 +1137,7 @@ async function processarKardexGrande(supabaseClient, file, avisar, opcoes) {
     await upsertHistoricoDiario(supabaseClient, payload.historico_diario, avisar);
     await upsertHistoricoFamiliaDiario(supabaseClient, payload.historico_diario_familia, avisar);
     await upsertHistoricoOperadorDiario(supabaseClient, payload.historico_diario_operador, avisar);
+    await registrarUltimosMovimentos(supabaseClient, construirUltimosMovimentos(parsed.pernas), avisar);
 
     entradas = mesclarEntradasPorVolume(entradas, parsed.pernas, payload.entradas_volume);
     if (arquivoEhAtual) fila = mesclarFilaItens(fila, parsed.pernas, payload.fila_itens);
@@ -1229,6 +1266,7 @@ window.upsertHistoricoDiario = upsertHistoricoDiario;
 window.processarKardexGrande = processarKardexGrande;
 window.criarLeitorKardex = criarLeitorKardex;
 window.mesclarFilaItens = mesclarFilaItens;
+window.construirUltimosMovimentos = construirUltimosMovimentos;
 window.lerLinhasEmStream = lerLinhasEmStream;
 window.upsertHistoricoFamiliaDiario = upsertHistoricoFamiliaDiario;
 window.upsertHistoricoOperadorDiario = upsertHistoricoOperadorDiario;

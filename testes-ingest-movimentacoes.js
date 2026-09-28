@@ -621,6 +621,10 @@ console.log('\n=== processarMovimentacoes — dim_artigo_familia NÃO tem coluna
   eq(snapRec.entradas_volume.VR3, undefined, 'recebido e depois armazenado no Pulmão: sai da lista');
   eq(snapRec.descartados.sem_par_exato, 0, 'linha de recebimento não entra no casamento de pares');
   eq(snapRec.total.movimentos_ressuprimento, 0, 'recebimento não conta como ressuprimento');
+  const um = ctx.construirUltimosMovimentos(pr.pernas);
+  const vr3 = um.find(function (x) { return x.volume === 'VR3'; });
+  eq([vr3.rua, vr3.nivel, vr3.box, vr3.dia, vr3.login], ['2', '8', '1', '2026-09-25', 'ARM'], 'último movimento do volume vale mesmo indo pra estante (rua 2)');
+  eq(um.find(function (x) { return x.volume === 'VR1'; }).tipo, 'RFE', 'recebimento entra como último movimento');
 })().then(function () {
   console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
   process.exit(falhas === 0 ? 0 : 1);

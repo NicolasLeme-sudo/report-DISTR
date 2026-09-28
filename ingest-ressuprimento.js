@@ -143,7 +143,9 @@ const ENDERECOS_FORA_CAPACIDADE_PULMAO = {
   ],
   passagem: [
     '1-8-7', '1-8-68',
-    '1-9-5', '1-9-7', '1-9-65', '1-9-66', '1-9-68',
+    // Rua 1: 065/067 ficam no canto do galpão, sem passagem (usuário, 29/09/2026);
+    // a passagem é o lado par e o começo do ímpar.
+    '1-9-5', '1-9-7', '1-9-66', '1-9-68',
     '2-8-65', '2-8-67', '2-8-68',
     '2-9-65', '2-9-66', '2-9-67', '2-9-68',
     '3-8-65', '3-8-66', '3-8-67', '3-8-68',
