@@ -904,8 +904,12 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
         dias_nota: g.data_nota ? diasEntre(g.data_nota, hoje) : null,
       });
     };
-    semNota = ((ultimo && ultimo.aguardando_nf) || []).map(recarregarGrupo);
-    comNota = ((ultimo && ultimo.aguardando_coleta) || []).map(recarregarGrupo);
+    // Mesmas exclusões do Analítico novo (embarcada, ajustada, AD) — senão
+    // PFA que embarcou depois do último Analítico ficava "aguardando coleta"
+    // até alguém reenviar o Analítico (28/09/2026).
+    const aindaAtiva = function (g) { return !pfasEmbarcadas.has(g.pfa) && !pfasAjustadas.has(g.pfa) && !pfasComAD.has(g.pfa); };
+    semNota = ((ultimo && ultimo.aguardando_nf) || []).filter(aindaAtiva).map(recarregarGrupo);
+    comNota = ((ultimo && ultimo.aguardando_coleta) || []).filter(aindaAtiva).map(recarregarGrupo);
     totalSemNota = totalizarCongelado(semNota, statsAnteriores.aguardando_nf);
     totalComNota = totalizarCongelado(comNota, statsAnteriores.aguardando_coleta);
   }
@@ -1193,6 +1197,38 @@ async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileE
     avisar('Lendo NFs Embarcadas…');
     embarcadas = parsearPfasEmbarcadas(await fileEmbarcadas.text());
   }
+  /* NFs Embarcadas ACUMULA (28/09/2026): cada arquivo cobre só um período, e
+     antes o novo SUBSTITUÍA o anterior — PFA embarcada fora do período do
+     arquivo novo voltava a contar como pendente. Agora o arquivo faz upsert
+     na tabela pfas_embarcadas (nada é apagado) e o cruzamento usa a tabela
+     inteira. Sem a tabela (migração não rodada), cai no comportamento antigo. */
+  const nomeEmbarcadas = fileEmbarcadas ? fileEmbarcadas.name : null;
+  try {
+    if (embarcadas && embarcadas.registros.length) {
+      const porPfa = new Map();
+      embarcadas.registros.forEach(function (e) { porPfa.set(e.pfa, e); });
+      const linhasUp = Array.from(porPfa.values()).map(function (e) {
+        return { pfa: e.pfa, nota: e.nota || null, data_nota: e.data_nota || null, qtd_total: e.qtd_total,
+          valor_total: e.valor_total, operacao: e.operacao || null, atualizado_em: new Date().toISOString() };
+      });
+      for (let i = 0; i < linhasUp.length; i += 500) {
+        const { error } = await supabaseClient.from('pfas_embarcadas').upsert(linhasUp.slice(i, i + 500), { onConflict: 'pfa' });
+        if (error) throw error;
+      }
+      avisar(linhasUp.length.toLocaleString('pt-BR') + ' NF(s) embarcada(s) gravadas no histórico acumulado.');
+    }
+    const acumuladas = await window.lerTudoPaginado(supabaseClient, 'pfas_embarcadas',
+      'pfa, nota, data_nota, qtd_total, valor_total, operacao', null, 'pfa');
+    if (acumuladas.length) {
+      embarcadas = { registros: acumuladas.map(function (e) {
+        return { pfa: e.pfa, nota: e.nota || '', data_nota: e.data_nota || null, qtd_total: Number(e.qtd_total) || 0,
+          valor_total: Number(e.valor_total) || 0, operacao: e.operacao || '' };
+      }) };
+      avisar('Histórico de NFs Embarcadas: ' + acumuladas.length.toLocaleString('pt-BR') + ' PFA(s) já embarcadas no total.');
+    }
+  } catch (e) {
+    avisar('Aviso: histórico acumulado de NFs Embarcadas indisponível (' + (e && e.message) + ') — usando só o arquivo enviado/último abastecimento.');
+  }
 
   let ultimoPayload = null;
   if (!pendentes || !analitico || !embarcadas) {
@@ -1240,7 +1276,7 @@ async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileE
   const payload = construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, {
     arquivo_pendentes: filePendentes ? filePendentes.name : null,
     arquivo_analitico: fileAnalitico ? fileAnalitico.name : null,
-    arquivo_embarcadas: fileEmbarcadas ? fileEmbarcadas.name : null,
+    arquivo_embarcadas: nomeEmbarcadas || (ultimoPayload && ultimoPayload.arquivo_embarcadas) || null,
   }, ajustes, mapaArtigoFamiliaPfa, ultimoPayload);
 
   if (payload.stats.excluidas_por_embarque.pfas) {

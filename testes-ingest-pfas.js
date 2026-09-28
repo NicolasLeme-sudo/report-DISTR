@@ -764,5 +764,18 @@ eq(diasUteisEntre('2026-09-08', '2026-09-08'), 0, 'mesma data, zero dias úteis'
 eq(diasUteisEntre('2026-09-03', '2026-09-08'), 3, 'qui 03/09 → ter 08/09 = 3 dias úteis (sex, seg, ter — fim de semana fora)');
 
 /* -------------------------------------------------------------------------- */
+secao('sem Analítico novo: PFA que embarcou depois sai de "aguardando coleta"');
+(function () {
+  const ultimoColeta = { pendentes: [], stats: {}, aguardando_nf: [],
+    aguardando_coleta: [
+      { pfa: '500001', familia_codigo: '101', nota: '900001', data_nota: '2026-09-01', qtde: 10 },
+      { pfa: '500002', familia_codigo: '101', nota: '900002', data_nota: '2026-09-02', qtde: 7 },
+    ] };
+  const embNova = parsearPfasEmbarcadas([CAB_EMB, linhaEmb('500001', '05/09/2026', '900001', '10,0')].join('\n'));
+  const sc = construirSnapshotPfas(null, null, embNova, mapaFamilias, { referencia: HOJE }, null, null, ultimoColeta);
+  eq(sc.aguardando_coleta.map(function (g) { return g.pfa; }).join(), '500002', 'só a 500002 continua aguardando coleta');
+})();
+
+/* -------------------------------------------------------------------------- */
 console.log(falhas === 0 ? '\nTODOS OS TESTES PASSARAM' : '\n' + falhas + ' TESTE(S) FALHARAM');
 process.exit(falhas === 0 ? 0 : 1);
