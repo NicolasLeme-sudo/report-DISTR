@@ -385,9 +385,11 @@ eq(CAPACIDADE_RUA.picking['15'], 408, 'Picking meia: sistema mapeia 14+15 físic
 eq(somaRuas('pulmao', ['1']), 712, 'Pulmão meia só rua 1 = 712 (rua 15 = alocação da reversa)');
 eq(CAPACIDADE_RUA.pulmao['15'], undefined, 'Pulmão rua 15 fora da capacidade');
 // Endereços validados pela operação (28/09/2026): passagem e inexistentes saem da capacidade.
-eq(somaRuasTela('pulmao', ['1']), 702, 'Pulmão rua 1: 712 − 10 de passagem = 702');
-eq(somaRuasTela('pulmao', ['2', '6', '7']), 2104, 'Pulmão vestuário: 2.136 − 32 de passagem = 2.104');
-eq(somaRuasTela('pulmao', ['3', '4', '5']), 2110, 'Pulmão calçado: 2.131 − 21 (o nível 04 da rua 5 não estava nos 712)');
+eq(somaRuasTela('pulmao', ['1']), 712, 'Pulmão rua 1: capacidade da planilha (já desconta a passagem)');
+eq(somaRuasTela('pulmao', ['2', '6', '7']), 2136, 'Pulmão vestuário: planilha 2.136');
+eq(foraCapacidadePulmao(6, 10, 65), null, 'nível 10 guarda pallet: não é passagem');
+eq(foraCapacidadePulmao(6, 9, 66), 'passagem', 'nível 09 box 066 continua passagem');
+eq(somaRuasTela('pulmao', ['3', '4', '5']), 2131, 'Pulmão calçado: planilha 2.131');
 eq(foraCapacidadePulmao('05', '04', '001'), 'nao_existe', '05-04-001 (nível que não existe) fica fora');
 eq(foraCapacidadePulmao(6, 10, 143), null, 'endereço não marcado continua valendo');
 (function () {
@@ -398,7 +400,7 @@ eq(foraCapacidadePulmao(6, 10, 143), null, 'endereço não marcado continua vale
     Object.assign({}, fam, { rua: '5', nivel: '8', box: '65' }),
   ], colisoes_volume: 0 }, mapaFamilias, { pulmao_calcado: 2131 }, { arquivo_picking: 'p', arquivo_pulmao: 'x' });
   eq(pl.ocupacao_por_rua.pulmao['5'], 1, 'ocupado na rua 5 ignora 05-04-001 e a passagem 05-08-065');
-  eq(pl.ocupacao.pulmao.calcado.capacidade, 2110, 'capacidade da zona (dim_capacidade_zonas) também desconta');
+  eq(pl.ocupacao.pulmao.calcado.capacidade, 2131, 'capacidade da zona = planilha, sem desconto');
   ok(!pl.enderecos_ociosos.pulmao.vazios.some(function (v) { return foraCapacidadePulmao(v[0], v[1], v[2]); }), 'lista de vazios não traz endereço validado como fora');
 })();
 eq(RUAS_ZONA.pulmao.meia.join(), '1', 'Pulmão meia: zona só com a rua 1');
