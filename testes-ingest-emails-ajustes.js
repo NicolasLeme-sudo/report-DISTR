@@ -76,6 +76,9 @@ ok(/sem NF no sistema/.test(vEmb[2].alertas.join()), 'sem NF em lugar nenhum: co
 const antigo = Object.assign({}, l2[1], { tipo: null, data_hora_email: '2026-09-17T14:52:00Z' });
 const novo = Object.assign({}, l2[1], { data_hora_email: '2026-09-17T18:00:00Z' });
 eq(E.consolidarLinhasEmails([[novo], [antigo]])[0].tipo, 'AD_DEVOLUCAO', 'mesma linha em 2 e-mails: vale o mais recente, independente da ordem dos arquivos');
+const respondida = Object.assign({}, l2[1], { tipo: 'BO_POS_NF', data_hora_email: '2026-09-28T12:29:00Z' });
+const repetidaDepois = Object.assign({}, l2[1], { tipo: null, data_hora_email: '2026-09-28T13:00:00Z' });
+eq(E.consolidarLinhasEmails([[respondida], [repetidaDepois]])[0].tipo, 'BO_POS_NF', 'e-mail posterior sem instrução não apaga a instrução já dada');
 
 console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
 process.exit(falhas === 0 ? 0 : 1);

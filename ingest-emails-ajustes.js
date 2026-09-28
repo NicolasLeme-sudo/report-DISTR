@@ -237,7 +237,16 @@ function consolidarLinhasEmails(listas) {
   const porChave = new Map();
   listas.reduce(function (a, l) { return a.concat(l); }, [])
     .sort(function (a, b) { return String(a.data_hora_email || '').localeCompare(String(b.data_hora_email || '')) || (a._ordem || 0) - (b._ordem || 0); })
-    .forEach(function (l) { porChave.set([l.nf, l.pfa, l.artigo, l.cor, l.tam].join('|'), l); });
+    .forEach(function (l) {
+      const k = [l.nf, l.pfa, l.artigo, l.cor, l.tam].join('|');
+      const ja = porChave.get(k);
+      // Linha COM NF que já tem instrução do comercial não volta pra "sem
+      // instrução" só porque um e-mail posterior (encaminhamento, nova
+      // cobrança, resposta da assistente) repetiu a tabela sem a resposta
+      // (28/09/2026). Instrução nova (EMBARCAR -> DEVOLVER) continua valendo.
+      if (ja && l.nf && ja.tipo && !l.tipo) return;
+      porChave.set(k, l);
+    });
   return Array.from(porChave.values());
 }
 
