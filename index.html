@@ -3268,7 +3268,12 @@ let ordemPfa = { campo: 'dias', direcao: 'desc' };
    expedicao" de cliente que personaliza (lista em Admin › Abastecimento),
    reclassificada na tela — ver aplicarEtapaPersona. */
 const ETAPA_PERSONA = 'Material em personalizacao';
-const ORDEM_ETAPA_TELA = ['Nao disp. picking', 'Disp. p/ picking', 'Em picking', 'Gerar Nota Fiscal', ETAPA_PERSONA, 'Leitura expedicao'];
+/* "Lido na esteira" (29/09/2026, regra do usuário): PFA em Leitura expedição
+   que NÃO está no Analítico (lá só fica volume que ainda falta passar na
+   esteira) e NÃO está nas NFs Embarcadas (embarcada já sai do Pendentes) =
+   todos os volumes lidos, esperando o embarque. É a conferência "completa". */
+const ETAPA_LIDA = 'Lido na esteira';
+const ORDEM_ETAPA_TELA = ['Nao disp. picking', 'Disp. p/ picking', 'Em picking', 'Gerar Nota Fiscal', ETAPA_PERSONA, 'Leitura expedicao', ETAPA_LIDA];
 const ROT_ETAPA_PFA = {
   'Nao disp. picking': '00 - Não Disp. Picking',
   'Disp. p/ picking': '01 - Disp. p/ Picking',
@@ -3276,6 +3281,7 @@ const ROT_ETAPA_PFA = {
   'Gerar Nota Fiscal': '03 - Gerar Nota Fiscal',
   'Material em personalizacao': '04 - Material em Personalização',
   'Leitura expedicao': '05 - Leitura Expedição',
+  'Lido na esteira': '06 - Lido na Esteira (Ag. Embarque)',
 };
 
 /* ---------- Clientes que personalizam ----------
@@ -3434,8 +3440,10 @@ function aplicarEtapaPersona(p) {
   }
   (p.pendentes || []).forEach(function (r) {
     if (r.situacao_arquivo === undefined) r.situacao_arquivo = r.situacao;
-    r.situacao = r.situacao_arquivo === 'Leitura expedicao' && ehClientePersona(r.cliente_nome)
-      ? ETAPA_PERSONA : r.situacao_arquivo;
+    r.situacao = r.situacao_arquivo !== 'Leitura expedicao' ? r.situacao_arquivo
+      : r.conferencia === 'completa' ? ETAPA_LIDA
+      : ehClientePersona(r.cliente_nome) ? ETAPA_PERSONA
+      : r.situacao_arquivo;
   });
   const extras = (p.etapas || []).filter(function (e) { return ORDEM_ETAPA_TELA.indexOf(e) === -1; });
   p.etapas = ORDEM_ETAPA_TELA.concat(extras);
@@ -3463,6 +3471,7 @@ const COR_ETAPA_PFA = {
   'Gerar Nota Fiscal': '--laranja',
   'Material em personalizacao': '--amber',
   'Leitura expedicao': '--accent',
+  'Lido na esteira': '--roxo',
 };
 const COR_FAIXA_FIFO = { '0-2': '--olive', '3-5': '--verde-musgo', '6-10': '--amber', '11+': '--red' };
 
@@ -4414,7 +4423,7 @@ function renderizarPfas() {
         '<div class="section-title">Funil — PFAs pendentes por etapa</div>' +
         '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Pares por etapa, picking → ' +
           'expedição · ' + fmtInt(filtrados.length) + ' PFAs no recorte. ' +
-          '"04 - Material em Personalização" = Leitura expedição de cliente que personaliza.</p>' +
+          '"04 - Material em Personalização" = Leitura expedição de cliente que personaliza. "06 - Lido na Esteira" = todos os volumes lidos (fora do Analítico) e ainda sem embarque.</p>' +
         '<div class="bar-list-funil" style="grid-template-rows:auto minmax(38px, 1fr)' +
           ' repeat(' + Math.max(nEtapasFunil - 1, 0) + ', 1px minmax(38px, 1fr)) auto">' + barrasEtapa + '</div>' +
       '</div>' +
