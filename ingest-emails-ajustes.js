@@ -191,6 +191,15 @@ function interpretarEmailAjuste(msg) {
     faltaPorPfa.set(r.pfa, (faltaPorPfa.get(r.pfa) || 0) + (r.qtde_faltante || 0));
   });
   const liberadaCancelamento = /liberada para cancelamento/i.test(msg.corpo);
+  /* Resposta do comercial ("Encomenda ajustada", "Segue PFA gerada"): só vale o
+     texto da mensagem MAIS NOVA (acima do primeiro "De:" citado). Quando ela
+     traz um nº de PFA diferente das do quadro, é a PFA nova. */
+  const iDe = linhas.findIndex(function (l) { return /^\s*De:\s/i.test(l); });
+  const topo = (iDe === -1 ? linhas : linhas.slice(0, iDe)).join('\n');
+  const ajustadoPeloComercial = /encomenda\s+ajustada|pfa\s+(gerada|criada|nova)|ajuste\s+(realizado|conclu[ií]do|feito)|\bajustad[oa]\b/i.test(topo);
+  const pfasDoQuadro = new Set(registros.map(function (r) { return r.pfa; }));
+  const novasNoTopo = (topo.match(/\b\d{6}\b/g) || []).filter(function (n) { return !pfasDoQuadro.has(n); });
+  const pfaNovaEmail = novasNoTopo.length === 1 ? novasNoTopo[0] : null;
   const data = msg.data ? new Date(msg.data.getTime() - msg.data.getTimezoneOffset() * 60000).toISOString().slice(0, 10) : null;
   const saida = [];
   const porSku = new Map();
@@ -220,7 +229,10 @@ function interpretarEmailAjuste(msg) {
         ? (pedidoTodo ? 'PFA liberada para cancelamento (falta o pedido inteiro)' : 'PFA liberada para refazer sem o item faltante')
         : 'Solicitado ajuste';
     }
+    const respondido = ajustadoPeloComercial && tipo === 'AJUSTE';
+    if (respondido) status = 'Comercial informou: encomenda ajustada / PFA gerada' + (pfaNovaEmail ? ' (' + pfaNovaEmail + ')' : '');
     const linha = Object.assign({}, r, {
+      ajustado_pelo_comercial: respondido, pfa_nova_email: respondido ? pfaNovaEmail : null,
       tipo: tipo, status: status, data_solicitacao: data,
       data_hora_email: msg.data ? msg.data.toISOString() : '',
       assunto: msg.assunto, solicitante: msg.remetente,
@@ -312,7 +324,11 @@ function validarLinhasEmail(linhas, snapshotPfas, historicoNf) {
         alertas.push('soma das faltas (' + faltaPorPfa.get(l.pfa) + ') maior que a qtde da NF no sistema (' + pfasComNota.get(String(l.pfa)) + ')');
       }
     } else {
-      if (!p) alertas.push('PFA não está no Pendentes atual');
+      // Num AJUSTE já lançado (ou respondido pelo comercial) a PFA antiga sai do
+      // Pendentes de propósito: a PFA nova nasce com o mesmo nº de encomenda.
+      const ajusteEsperadoForaPendentes = l.tipo === 'AJUSTE' &&
+        (l.ajustado_pelo_comercial || jaLancados.has([l.pfa, l.artigo, (l.cor + ' ' + l.tam).trim()].join('|')));
+      if (!p) { if (!ajusteEsperadoForaPendentes) alertas.push('PFA não está no Pendentes atual'); }
       else if (l.situacao === 'FALTA TOTAL' && faltaPorPfa.get(l.pfa) !== p.pares) {
         alertas.push('FALTA TOTAL: soma das faltas (' + faltaPorPfa.get(l.pfa) + ') ≠ pares da PFA em Pendentes (' + p.pares + ')');
       }

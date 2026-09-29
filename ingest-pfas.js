@@ -1081,7 +1081,10 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
       // PFA original já embarcada (NFs Embarcadas acumulado): saiu sem os itens
       // faltantes, não vai ter PFA nova — ajuste resolvido (29/09/2026).
       fechado_por_embarque: a.tipo === 'AJUSTE' && !a.pfa_nova && !pfaNovaPorEncomenda && pfasEmbarcadas.has(a.pfa_antiga),
-      em_aberto: a.tipo === 'AJUSTE' && !a.pfa_nova && !pfaNovaPorEncomenda && !pfasEmbarcadas.has(a.pfa_antiga),
+      // Comercial respondeu o e-mail dizendo que a encomenda foi ajustada / PFA gerada
+      // (marcado na tela de Leitura Automática) — fecha mesmo sem o nº da PFA nova.
+      fechado_por_comercial: !!a.concluido_comercial_em,
+      em_aberto: a.tipo === 'AJUSTE' && !a.pfa_nova && !pfaNovaPorEncomenda && !a.concluido_comercial_em && !pfasEmbarcadas.has(a.pfa_antiga),
     };
   });
   const ajustesAbertos = ajustesPayload.filter(function (a) { return a.em_aberto; });
@@ -1270,7 +1273,7 @@ async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileE
   // pras dimensões dim_armazens/dim_familias). Sem passar isso explícito
   // a paginação tentava ORDER BY numa coluna que não existe na tabela.
   const linhasAjustes = await window.lerTudoPaginado(supabaseClient, 'ajustes_pfa',
-    'tipo, encomenda, pfa_antiga, pfa_nova, cliente, familia_codigo, artigo, cor_tam, qtde_total_pedido, qtde_faltante, motivo, data_solicitacao, solicitante',
+    'tipo, encomenda, pfa_antiga, pfa_nova, cliente, familia_codigo, artigo, cor_tam, qtde_total_pedido, qtde_faltante, motivo, data_solicitacao, solicitante, concluido_comercial_em',
     null, 'id');
   const ajustes = { registros: linhasAjustes };
 

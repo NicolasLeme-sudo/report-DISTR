@@ -80,5 +80,23 @@ const respondida = Object.assign({}, l2[1], { tipo: 'BO_POS_NF', data_hora_email
 const repetidaDepois = Object.assign({}, l2[1], { tipo: null, data_hora_email: '2026-09-28T13:00:00Z' });
 eq(E.consolidarLinhasEmails([[respondida], [repetidaDepois]])[0].tipo, 'BO_POS_NF', 'e-mail posterior sem instrução não apaga a instrução já dada');
 
+
+console.log('\n=== resposta do comercial "Encomenda ajustada" fecha o ajuste (243452, 24/09/2026) ===');
+const respAjuste = ['Oie,', 'Segue PFA gerada.', 'Obrigada!', 'De: Carla', 'Enviada em: quinta-feira', 'Assunto: RES: PFA COM DIVERGÊNCIA', 'Boa tarde!', 'Encomenda ajustada',
+  'De: Erika', 'Assunto: PFA COM DIVERGÊNCIA', 'Gentileza, ajustar pedido abaixo :',
+  'PFA', 'CLIENTE', 'ENC', 'QUANT. PARES ', 'VOL', 'FAM', 'ART', 'DES', 'COR', 'TAM', 'TOTAL DE FALTAS', 'TOTAL DE FALTAS', 'SITUAÇÃO', 'COD. REP',
+  '243452', 'CL-41431 VULCABRAS BA', '977576', '102', '1', '60', 'OBWWT23307', 'BERMUDA', 'PRETO', 'M', '2', '2', 'FALTA TOTAL', '99997',
+  'PFA liberada para cancelamento. '].join('\n');
+const lr = E.interpretarEmailAjuste({ assunto: 'RES: PFA COM DIVERGÊNCIA', remetente: 'Fernanda', data: d, corpo: respAjuste });
+eq(lr.length, 1, 'uma linha');
+ok(lr[0].ajustado_pelo_comercial, 'texto da mensagem mais nova ("PFA gerada") marca como respondido');
+const pedidoSemResposta = respAjuste.replace('Segue PFA gerada.', 'Bom dia').replace('Encomenda ajustada', 'Estamos vendo');
+ok(!E.interpretarEmailAjuste({ assunto: 'PFA COM DIVERGÊNCIA', remetente: 'Erika', data: d, corpo: pedidoSemResposta })[0].ajustado_pelo_comercial, 'sem resposta do comercial: não marca');
+const vr = E.validarLinhasEmail(lr, { pendentes: [], ajustes: [{ pfa_antiga: '243452', artigo: 'OBWWT23307', cor_tam: 'PRETO M' }] });
+eq(vr[0].alertas, [], 'AJUSTE cuja PFA antiga já saiu do Pendentes não gera alerta');
+ok(vr[0].ja_lancado, '… e continua marcado como já lançado');
+const vr2 = E.validarLinhasEmail(E.interpretarEmailAjuste({ assunto: 'PFA COM DIVERGÊNCIA', remetente: 'Erika', data: d, corpo: pedidoSemResposta }), { pendentes: [] });
+ok(vr2[0].alertas.some(function (a) { return /não está no Pendentes/.test(a); }), 'ajuste novo (não lançado) fora do Pendentes continua alertando');
+
 console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
 process.exit(falhas === 0 ? 0 : 1);

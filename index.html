@@ -6855,6 +6855,7 @@ function renderizarEmailsAjustes(falhas, semSnapshot) {
   const prontas = L.filter(function (l) { return l.tipo && !l.ja_lancado; });
   const comAlerta = L.filter(function (l) { return l.alertas.length; }).length;
   const aguardando = L.filter(function (l) { return !l.tipo; }).length;
+  const concluiveis = L.filter(function (l) { return l.ajustado_pelo_comercial && l.ja_lancado; }).length;
   const jaLancadas = L.filter(function (l) { return l.ja_lancado; }).length;
   const linhasHtml = L.map(function (l) {
     const cor = l.alertas.length ? 'var(--red)' : !l.tipo ? 'var(--amber)' : l.ja_lancado ? 'var(--text-muted)' : 'var(--olive)';
@@ -6886,6 +6887,7 @@ function renderizarEmailsAjustes(falhas, semSnapshot) {
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0">' +
       '<button class="btn-mini" onclick="baixarPlanilhaEmailsAjustes()"' + (prontas.length ? '' : ' disabled') + '>⬇ Planilha de ajustes (.xlsx) — ' + fmtInt(prontas.length) + ' linha(s)</button>' +
       '<button class="btn-mini" id="btnGravarEmailsAjustes" onclick="gravarEmailsAjustes()"' + (prontas.length ? '' : ' disabled') + '>Gravar em Ajustes de PFA</button>' +
+      (concluiveis ? '<button class="btn-mini" id="btnConcluirAjustes" onclick="concluirAjustesRespondidos()" title="O comercial respondeu que a encomenda foi ajustada / PFA gerada — tira do card Ajustes de PFA em aberto">✔ Marcar como ajustado pelo comercial — ' + fmtInt(concluiveis) + ' linha(s)</button>' : '') +
       (aguardando ? '<button class="btn-mini" onclick="baixarPendentesComercial()">⬇ Sem tipo (.xlsx) — ' + fmtInt(aguardando) + ' linha(s)</button>' : '') +
       '<button class="btn-mini" onclick="limparEmailsAjustes()" title="Tira todos os e-mails carregados nos 4 campos">Limpar e-mails</button>' +
     '</div>' +
@@ -6983,6 +6985,39 @@ async function baixarPlanilhaEmailsAjustes() {
   a.download = 'ajustes-pfa-dos-emails.xlsx';
   a.click();
   URL.revokeObjectURL(a.href);
+}
+/* Resposta do comercial "Encomenda ajustada / PFA gerada" (30/09/2026): o ajuste já
+   está em ajustes_pfa (lançado no e-mail de pedido); aqui só carimba a conclusão
+   e recalcula o snapshot — sem isso ele ficava "em aberto" pra sempre quando o
+   e-mail de resposta não traz o nº da PFA nova. */
+async function concluirAjustesRespondidos() {
+  const alvo = linhasEmailsAjustes.filter(function (l) { return l.ajustado_pelo_comercial && l.ja_lancado; });
+  if (!alvo.length) return;
+  if (!confirm('Marcar ' + alvo.length + ' linha(s) como ajustadas pelo comercial? Elas saem de "Ajustes de PFA em aberto".')) return;
+  const log = document.getElementById('logEmailsAjustes');
+  const escrever = function (m) { log.textContent += m + '\n'; };
+  const btn = document.getElementById('btnConcluirAjustes');
+  if (btn) btn.disabled = true;
+  try {
+    const agora = new Date().toISOString();
+    let atualizadas = 0;
+    for (const l of alvo) {
+      const ct = (l.cor + ' ' + l.tam).replace(/\s+/g, ' ').trim();
+      const upd = { concluido_comercial_em: agora };
+      if (l.pfa_nova_email) upd.pfa_nova = l.pfa_nova_email;
+      const r = await supabaseClient.from('ajustes_pfa').update(upd)
+        .eq('pfa_antiga', String(l.pfa)).eq('artigo', l.artigo).eq('cor_tam', ct).select('id');
+      if (r.error) throw r.error;
+      atualizadas += (r.data || []).length;
+    }
+    escrever(atualizadas + ' ajuste(s) marcado(s) como ajustado(s) pelo comercial.');
+    escrever('Recalculando os cards de "PFAs em tela"…');
+    await window.processarPfas(supabaseClient, null, null, null, escrever, { permitirRecalculoSemArquivo: true });
+    escrever('✔ Concluído — o card "Ajustes de PFA em aberto" já reflete (reabra a aba se estiver aberta).');
+  } catch (e) {
+    escrever('ERRO: ' + (e && e.message ? e.message : String(e)));
+    if (btn) btn.disabled = false;
+  }
 }
 async function gravarEmailsAjustes() {
   const prontas = linhasEmailsAjustes.filter(function (l) { return l.tipo && !l.ja_lancado; });
