@@ -516,6 +516,16 @@ const snapEncomendaReal = construirSnapshotPfas(pendComParenteses, { registros: 
 ] }, mapaArtFamTeste);
 eq(snapEncomendaReal.ajustes[0].pfa_nova_por_encomenda, '245900',
    'encomenda "967708" da planilha bate com "EBM - ... (967708)" de Pendentes — acha a PFA nova real');
+// PFA nova que JÁ SAIU do Pendentes: achada no histórico pfa_encomenda (29/09/2026).
+const snapHistEnc = construirSnapshotPfas({ registros: [] }, { registros: [] }, { registros: [] }, mapaFamilias,
+  { referencia: HOJE, pfas_por_encomenda: new Map([['971827', ['245586', '249100']]]) }, { registros: [
+  { tipo: 'AJUSTE', encomenda: '971827', pfa_antiga: '245586', pfa_nova: null, cliente: 'C', artigo: 'A',
+    cor_tam: 'PT M', qtde_total_pedido: 1069, qtde_faltante: 60, motivo: 'Ajuste', data_solicitacao: '2026-09-26', solicitante: 'E' },
+  { tipo: 'AJUSTE', encomenda: '978607', pfa_antiga: '246287', pfa_nova: null, cliente: 'C', artigo: 'B',
+    cor_tam: 'PT M', qtde_total_pedido: 60, qtde_faltante: 3, motivo: 'Ajuste', data_solicitacao: '2026-09-26', solicitante: 'E' },
+] }, mapaArtFamTeste);
+eq(snapHistEnc.ajustes[0].pfa_nova_por_encomenda, '249100', 'PFA nova achada no histórico PFA × encomenda (já fora do Pendentes)');
+eq(snapHistEnc.ajustes_em_aberto, 1, 'só a encomenda sem PFA nova no histórico continua em aberto');
 
 // PFA retrabalhada — dentro do SLA vs atrasada
 const pfaNovaNoPrazo = snapAju.pendentes.find(function (r) { return r.pfa === '242305'; });

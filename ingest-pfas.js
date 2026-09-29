@@ -1054,6 +1054,14 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
         return extrairNumeroEncomenda(r.encomenda) === numEncomendaAjuste && r.pfa !== a.pfa_antiga;
       });
       if (achado) pfaNovaPorEncomenda = achado.pfa;
+      // Histórico PFA × encomenda de todos os Pendentes já enviados
+      // (pfa_encomenda, 29/09/2026): acha a PFA nova mesmo que ela já tenha
+      // saído do Pendentes (embarcou) — o comercial sempre gera PFA nova e a
+      // encomenda nunca muda.
+      if (!pfaNovaPorEncomenda && meta && meta.pfas_por_encomenda) {
+        const outras = (meta.pfas_por_encomenda.get(numEncomendaAjuste) || []).filter(function (x) { return x !== a.pfa_antiga; });
+        if (outras.length) pfaNovaPorEncomenda = outras[outras.length - 1];
+      }
     }
     return {
       tipo: a.tipo, encomenda: a.encomenda, pfa_antiga: a.pfa_antiga, pfa_nova: a.pfa_nova,
@@ -1275,8 +1283,33 @@ async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileE
     'artigo_codigo, familia_codigo', null, 'artigo_codigo');
   const mapaArtigoFamiliaPfa = new Map(linhasArtigoFamilia.map(function (a) { return [a.artigo_codigo, a.familia_codigo]; }));
 
+  // Histórico PFA × encomenda (29/09/2026): grava o Pendentes novo e lê tudo
+  // pra o cruzamento ajuste × PFA nova achar PFA que já saiu do Pendentes.
+  let pfasPorEncomenda = null;
+  try {
+    if (pendentes && pendentes.registros.length) {
+      const linhasEnc = pendentes.registros.filter(function (r) { return r.encomenda; }).map(function (r) {
+        return { pfa: r.pfa, encomenda: extrairNumeroEncomenda(r.encomenda), ultima_vez: new Date().toISOString() };
+      });
+      for (let i = 0; i < linhasEnc.length; i += 500) {
+        const { error } = await supabaseClient.from('pfa_encomenda').upsert(linhasEnc.slice(i, i + 500), { onConflict: 'pfa' });
+        if (error) throw error;
+      }
+    }
+    const hist = await window.lerTudoPaginado(supabaseClient, 'pfa_encomenda', 'pfa, encomenda, primeira_vez', null, 'pfa');
+    hist.sort(function (x, y) { return String(x.primeira_vez).localeCompare(String(y.primeira_vez)); });
+    pfasPorEncomenda = new Map();
+    hist.forEach(function (h) {
+      if (!pfasPorEncomenda.has(h.encomenda)) pfasPorEncomenda.set(h.encomenda, []);
+      pfasPorEncomenda.get(h.encomenda).push(h.pfa);
+    });
+  } catch (e) {
+    avisar('Aviso: histórico PFA × encomenda indisponível (' + (e && e.message) + ') — cruzamento de ajustes só contra o Pendentes atual.');
+  }
+
   avisar('Cruzando os arquivos…');
   const payload = construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, {
+    pfas_por_encomenda: pfasPorEncomenda,
     arquivo_pendentes: filePendentes ? filePendentes.name : null,
     arquivo_analitico: fileAnalitico ? fileAnalitico.name : null,
     arquivo_embarcadas: nomeEmbarcadas || (ultimoPayload && ultimoPayload.arquivo_embarcadas) || null,
