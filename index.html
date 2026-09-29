@@ -256,6 +256,13 @@ html { overflow-x: hidden; }
   font-size: 14px; font-weight: 700; margin-bottom: 12px;
   padding-bottom: 8px; border-bottom: 1px solid var(--amber);
 }
+.admin-grupo {
+  margin: 36px 0 4px; padding: 8px 12px; font-size: 11px; font-weight: 700; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--amber); background: var(--amber-soft, var(--bg-input));
+  border-left: 3px solid var(--amber); border-radius: 4px;
+}
+.admin-grupo.primeiro { margin-top: 10px; }
+.admin-grupo + .section-title { margin-top: 12px !important; }
 .kicker {
   font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
   color: var(--amber); font-weight: 600; margin-bottom: 3px;
@@ -1224,6 +1231,8 @@ tr.total > th, tr.total > td {
 
     <section class="secao" id="secao-atualizar">
       <div class="kicker">Admin</div>
+      <div class="admin-grupo primeiro">Estoque</div>
+
       <div class="section-title">Atualizar posição de estoque</div>
       <div class="card">
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
@@ -1241,6 +1250,8 @@ tr.total > th, tr.total > td {
         <div class="aviso ok" id="okIngest" style="display:none;margin-top:10px"></div>
         <div class="log" id="logIngest"></div>
       </div>
+
+      <div class="admin-grupo">Ressuprimento</div>
 
       <div class="section-title" style="margin-top:24px">Atualizar Ressuprimento (Picking + Pulmão)</div>
       <div class="card">
@@ -1283,6 +1294,73 @@ tr.total > th, tr.total > td {
         <div class="log" id="logIngestKardex"></div>
       </div>
 
+      <div class="section-title" style="margin-top:24px">Planejamento de Ressuprimento (PFA por turno)</div>
+      <div class="card">
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+          O que a assistente de planejamento está delegando pra operação ressuprir — uma linha por
+          PFA, com a família (pra cruzar por segmento) e o turno/data que deve atender. Cola direto
+          da planilha, separado por tab, ; ou , — em dois formatos, e dá pra misturar os dois no
+          mesmo lote:
+        </p>
+        <ul style="font-size:12px;color:var(--text-muted);margin:-6px 0 14px 18px;padding:0">
+          <li><strong>PFA;FAMÍLIA</strong> — usa o Turno e a Data escolhidos abaixo pra linha inteira.</li>
+          <li><strong>PFA;FAMÍLIA;TURNO;DATA</strong> — cada linha leva seu próprio turno e data,
+            pra colar PFAs de turnos e dias diferentes de uma vez só. Turno aceita T01/T02/T03 (ou
+            1/2/3); Data aceita AAAA-MM-DD ou DD/MM/AAAA.</li>
+        </ul>
+        <textarea id="textoPlanejamentoPfa" rows="6" style="width:100%;font-family:monospace;font-size:12px"
+          placeholder="196830;103&#10;197293;068;T02;03/09/2026&#10;197330;043;T01;2026-09-04"></textarea>
+        <div style="display:flex;gap:12px;align-items:flex-end;margin-top:10px;flex-wrap:wrap">
+          <div>
+            <label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Turno (linhas de 2 campos)</label>
+            <select id="turnoPlanejamentoPfa" style="padding:7px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)">
+              <option value="T01">T01 (05:00–14:48)</option>
+              <option value="T02">T02 (14:48–00:16)</option>
+              <option value="T03">T03 (20:20–04:48)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Data (linhas de 2 campos)</label>
+            <input type="date" id="dataPlanejamentoPfa" style="padding:6px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)">
+          </div>
+          <button class="btn-mini" id="btnSalvarPlanejamentoPfa">Salvar lançamento</button>
+        </div>
+        <div class="log" id="logPlanejamentoPfa"></div>
+      </div>
+
+      <div class="section-title" style="margin-top:24px">Base de Ativos (turno real do colaborador)</div>
+      <div class="card">
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+          Envie o <strong>.xlsx</strong> da base de Ativos (aba "Ativos"), atualizada semanalmente pela gestão.
+          Cruza o <strong>Código</strong> do colaborador com o <strong>Login</strong> que aparece no Kardex
+          (mesmo número, trocando o "15" inicial por "EX") e usa a coluna <strong>Horario</strong> pra saber o
+          turno real (1º/2º/3º Turno). ADM e Cargo de Confiança não têm turno operacional — a movimentação
+          desses logins (e de quem ainda não está nesta base) continua sendo presumida pelo horário do
+          movimento. Reenviar a planilha atualiza quem mudou de turno.
+        </p>
+        <div class="dropzone" id="dropzoneAtivos">
+          <span id="dropzoneAtivosTexto">Clique para selecionar o .xlsx da <strong>base de Ativos</strong></span>
+          <input type="file" id="inputAtivos" accept=".xlsx" style="display:none">
+        </div>
+        <button class="btn-mini" id="btnProcessarAtivos" style="margin-top:12px" disabled>
+          Processar Ativos
+        </button>
+        <button class="btn-mini" id="btnExportarSemTurno" style="margin-top:12px;margin-left:8px"
+          onclick="exportarColaboradoresSemTurno()">
+          ⬇ Exportar quem está sem turno real
+        </button>
+        <p style="font-size:11px;color:var(--text-muted);margin:10px 0 0">
+          A exportação lista quem faz a produtividade cair no <strong>chute por horário</strong>: cadastrado
+          sem turno operacional (ADM/confiança/horário livre) e login que aparece movimentando no Kardex mas
+          não está na base de Ativos. Quem estiver nessa lista tem o turno adivinhado pelo relógio do
+          movimento — é ali que mora o caso do material que fica entre o T02 e o T03.
+        </p>
+        <div class="aviso ok" id="okIngestAtivos" style="display:none;margin-top:10px"></div>
+        <div class="log" id="logIngestAtivos"></div>
+      </div>
+
+      <div class="admin-grupo">Acompanhamento de PFAs</div>
+
       <div class="section-title" style="margin-top:24px">PFAs em tela (Start Inicial)</div>
       <div class="card">
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
@@ -1319,7 +1397,7 @@ tr.total > th, tr.total > td {
         <div class="log" id="logIngestPfas"></div>
       </div>
 
-      <div class="section-title" style="margin-top:24px">Validar e-mails do comercial (.msg)</div>
+      <div class="section-title" style="margin-top:24px">Leitura Automática - Email Comercial</div>
       <div class="card">
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
           Salve do Outlook os e-mails (arrastar para uma pasta gera o .msg) e solte cada um no campo do
@@ -1328,6 +1406,10 @@ tr.total > th, tr.total > td {
           Dá pra usar mais de um campo antes de gravar. O sistema lê a tabela de cada e-mail e confere contra o
           último Pendentes/Analítico: PFA existe, NF bate, linha já lançada antes.
         </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px">
+          <button class="btn-mini" onclick="exportarAjustesEmAberto()"
+            title="PFAs com ajuste aguardando o comercial gerar a PFA nova — lê do último snapshot de PFAs">⬇ Ajustes de PFA em aberto (.xlsx)</button>
+        </div>
         <div class="grid-tipos-email">
           <div class="dropzone dz-email" data-categoria="cancel_ad"><strong>Cancelamento / AD</strong>
             <span class="dz-email-sub">Volta 100% pro estoque. Sem NF = cancelamento · com NF = devolução por AD</span>
@@ -1344,37 +1426,6 @@ tr.total > th, tr.total > td {
         </div>
         <input type="file" id="inputEmailsAjustes" accept=".msg" multiple style="display:none">
         <div id="resultadoEmailsAjustes" style="margin-top:12px"></div>
-      </div>
-
-      <div class="section-title" style="margin-top:24px">Base de Ativos (turno real do colaborador)</div>
-      <div class="card">
-        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
-          Envie o <strong>.xlsx</strong> da base de Ativos (aba "Ativos"), atualizada semanalmente pela gestão.
-          Cruza o <strong>Código</strong> do colaborador com o <strong>Login</strong> que aparece no Kardex
-          (mesmo número, trocando o "15" inicial por "EX") e usa a coluna <strong>Horario</strong> pra saber o
-          turno real (1º/2º/3º Turno). ADM e Cargo de Confiança não têm turno operacional — a movimentação
-          desses logins (e de quem ainda não está nesta base) continua sendo presumida pelo horário do
-          movimento. Reenviar a planilha atualiza quem mudou de turno.
-        </p>
-        <div class="dropzone" id="dropzoneAtivos">
-          <span id="dropzoneAtivosTexto">Clique para selecionar o .xlsx da <strong>base de Ativos</strong></span>
-          <input type="file" id="inputAtivos" accept=".xlsx" style="display:none">
-        </div>
-        <button class="btn-mini" id="btnProcessarAtivos" style="margin-top:12px" disabled>
-          Processar Ativos
-        </button>
-        <button class="btn-mini" id="btnExportarSemTurno" style="margin-top:12px;margin-left:8px"
-          onclick="exportarColaboradoresSemTurno()">
-          ⬇ Exportar quem está sem turno real
-        </button>
-        <p style="font-size:11px;color:var(--text-muted);margin:10px 0 0">
-          A exportação lista quem faz a produtividade cair no <strong>chute por horário</strong>: cadastrado
-          sem turno operacional (ADM/confiança/horário livre) e login que aparece movimentando no Kardex mas
-          não está na base de Ativos. Quem estiver nessa lista tem o turno adivinhado pelo relógio do
-          movimento — é ali que mora o caso do material que fica entre o T02 e o T03.
-        </p>
-        <div class="aviso ok" id="okIngestAtivos" style="display:none;margin-top:10px"></div>
-        <div class="log" id="logIngestAtivos"></div>
       </div>
 
       <div class="section-title" style="margin-top:24px">Clientes que personalizam (etapa 04 - Material em Personalização)</div>
@@ -1398,39 +1449,6 @@ tr.total > th, tr.total > td {
         <div class="log" id="logPersona"></div>
       </div>
 
-      <div class="section-title" style="margin-top:24px">Planejamento de Ressuprimento (PFA por turno)</div>
-      <div class="card">
-        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
-          O que a assistente de planejamento está delegando pra operação ressuprir — uma linha por
-          PFA, com a família (pra cruzar por segmento) e o turno/data que deve atender. Cola direto
-          da planilha, separado por tab, ; ou , — em dois formatos, e dá pra misturar os dois no
-          mesmo lote:
-        </p>
-        <ul style="font-size:12px;color:var(--text-muted);margin:-6px 0 14px 18px;padding:0">
-          <li><strong>PFA;FAMÍLIA</strong> — usa o Turno e a Data escolhidos abaixo pra linha inteira.</li>
-          <li><strong>PFA;FAMÍLIA;TURNO;DATA</strong> — cada linha leva seu próprio turno e data,
-            pra colar PFAs de turnos e dias diferentes de uma vez só. Turno aceita T01/T02/T03 (ou
-            1/2/3); Data aceita AAAA-MM-DD ou DD/MM/AAAA.</li>
-        </ul>
-        <textarea id="textoPlanejamentoPfa" rows="6" style="width:100%;font-family:monospace;font-size:12px"
-          placeholder="196830;103&#10;197293;068;T02;03/09/2026&#10;197330;043;T01;2026-09-04"></textarea>
-        <div style="display:flex;gap:12px;align-items:flex-end;margin-top:10px;flex-wrap:wrap">
-          <div>
-            <label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Turno (linhas de 2 campos)</label>
-            <select id="turnoPlanejamentoPfa" style="padding:7px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)">
-              <option value="T01">T01 (05:00–14:48)</option>
-              <option value="T02">T02 (14:48–00:16)</option>
-              <option value="T03">T03 (20:20–04:48)</option>
-            </select>
-          </div>
-          <div>
-            <label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Data (linhas de 2 campos)</label>
-            <input type="date" id="dataPlanejamentoPfa" style="padding:6px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)">
-          </div>
-          <button class="btn-mini" id="btnSalvarPlanejamentoPfa">Salvar lançamento</button>
-        </div>
-        <div class="log" id="logPlanejamentoPfa"></div>
-      </div>
     </section>
   </main>
 </div>
@@ -3875,9 +3893,7 @@ function renderizarPfas() {
       '<div class="val forte" style="color:var(--accent)">' + fmtInt(ajustesEmAberto) + '</div>' +
       '<div class="sub">' + (ajustesEmAberto
         ? 'Ag. Ação do Time Comercial'
-        : 'Nenhum ajuste travado') +
-      (ajustesEmAberto ? '</div><button class="btn-mini" style="margin-top:8px" onclick="exportarAjustesEmAberto()" ' +
-        'title="Lista de PFAs com ajuste aguardando o comercial gerar a PFA nova">⬇ Exportar lista (.xlsx)</button>' : '</div>') + '</div>' +
+        : 'Nenhum ajuste travado') + '</div></div>' +
   '</div>';
 
   /* ---------- Perdas e ajustes do período (grupo à parte, com o próprio seletor) ----------
@@ -6892,9 +6908,15 @@ async function montarXlsxEmailsAjustes() {
    snapshot de PFAs (não depende de carregar e-mail): ajuste sem PFA nova,
    sem PFA nova por encomenda e cuja PFA original ainda não embarcou. */
 async function exportarAjustesEmAberto() {
-  const abertos = ((dadosPfas && dadosPfas.ajustes) || []).filter(function (a) { return a.em_aberto; });
+  let snap = dadosPfas;
+  if (!snap) {
+    const r = await supabaseClient.from('dashboard_snapshots').select('payload').eq('pagina', 'pfas')
+      .order('gerado_em', { ascending: false }).limit(1);
+    snap = r.data && r.data[0] ? r.data[0].payload : null;
+  }
+  const abertos = ((snap && snap.ajustes) || []).filter(function (a) { return a.em_aberto; });
   if (!abertos.length) { alert('Nenhum ajuste de PFA em aberto no snapshot atual.'); return; }
-  const pend = new Map(((dadosPfas && dadosPfas.pendentes) || []).map(function (r) { return [String(r.pfa), r]; }));
+  const pend = new Map(((snap && snap.pendentes) || []).map(function (r) { return [String(r.pfa), r]; }));
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Ajustes em aberto');
   ws.columns = [
