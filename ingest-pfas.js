@@ -695,7 +695,7 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
       situacao: r.situacao, data_situacao: r.data_situacao, dias_na_etapa: r.dias_na_etapa,
       cliente_codigo: r.cliente_codigo, cliente_nome: r.cliente_nome, familia_codigo: r.familia_codigo,
       transportadora_nome: r.transportadora_nome, cluster: r.cluster, qt_volumes: r.qt_volumes,
-      pares: r.pares, personalizado: r.personalizado,
+      pares: r.pares, personalizado: r.personalizado, encomenda: r.encomenda,
     };
   });
 
@@ -807,6 +807,9 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
       cliente_codigo: r.cliente_codigo,
       cliente_nome: r.cliente_nome,
       familia_codigo: r.familia_codigo,
+      // Guardada pro cruzamento ajuste × PFA nova por encomenda funcionar
+      // também quando o Pendentes não é reenviado (29/09/2026).
+      encomenda: r.encomenda || null,
       marca: e.marca,
       segmento_macro: e.segmento_macro,
       transportadora_nome: r.transportadora_nome,
