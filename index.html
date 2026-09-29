@@ -684,34 +684,6 @@ tr.total > th, tr.total > td {
 }
 .dropzone:hover { border-color: var(--accent); color: var(--text); }
 
-/* Modelo da planilha manual (Admin) — imita a cara do Excel pra assistente
-   reconhecer o formato de bate-pronto, sem depender de imagem anexada que
-   envelhece quando o cabeçalho muda: o modelo é o próprio HTML, sempre em
-   sincronia com o parser e com o botão que baixa o .csv. */
-.modelo-planilha { overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; }
-.modelo-planilha table {
-  border-collapse: collapse; font-size: 11px; white-space: nowrap;
-  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
-}
-.modelo-planilha thead th {
-  background: var(--bg-sidebar); color: #DCE3F5; padding: 6px 9px; text-align: center;
-  font-weight: 700; font-style: italic; border-right: 1px solid rgba(255,255,255,.1); position: sticky; top: 0;
-}
-.modelo-planilha thead th:last-child { border-right: none; }
-.modelo-planilha tbody td {
-  padding: 5px 9px; border-top: 1px solid var(--border); border-right: 1px solid var(--border);
-  color: var(--text); text-align: center;
-}
-.modelo-planilha tbody td:last-child { border-right: none; }
-.modelo-planilha tbody tr:nth-child(even) { background: var(--bg-input); }
-/* Célula que fica VAZIA de propósito no modelo (pfa_nova em cancelamento,
-   B.O. e AD) — hachura em vez de espaço em branco, que passaria por
-   "esqueci de preencher". */
-.modelo-planilha tbody td.vazio {
-  background: repeating-linear-gradient(45deg, transparent, transparent 4px,
-    var(--border) 4px, var(--border) 5px);
-}
-.modelo-planilha tbody tr.destaque td { box-shadow: inset 0 0 0 99px var(--accent-soft); color: var(--text); }
 .log {
   margin-top: 14px; font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 11px; color: var(--text-muted); white-space: pre-wrap;
@@ -1345,94 +1317,6 @@ tr.total > th, tr.total > td {
         </button>
         <div class="aviso ok" id="okIngestPfas" style="display:none;margin-top:10px"></div>
         <div class="log" id="logIngestPfas"></div>
-      </div>
-
-      <div class="section-title" style="margin-top:24px">Ajustes de PFA</div>
-      <div class="card">
-        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
-          Planilha manual — uma linha por ajuste, DE-PARA, cancelamento, envio faltante com NF ou devolução por AD, a partir do
-          e-mail do comercial. <strong>Não recalcula a tela sozinho</strong>: os cards de "Perdas e ajustes do
-          período" e a exclusão de PFA baixada só atualizam no <strong>próximo upload de PFAs</strong> acima
-          (Pendentes/Analítico/Embarcadas) — esta caixa só grava a tabela.
-        </p>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:-4px 0 8px">
-          <span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-label);font-weight:600">
-            Modelo da planilha — preencha exatamente nesta ordem
-          </span>
-          <button class="btn-mini" onclick="baixarModeloAjustesPfa()">⬇ Baixar modelo (.xlsx)</button>
-        </div>
-        <div class="modelo-planilha">
-          <table>
-            <thead>
-              <tr>
-                <th>Tipo</th><th>Encomenda</th><th>Pfa_antiga</th><th>Pfa_nova</th><th>Cliente</th>
-                <th>Familia_codigo</th><th>Artigo</th><th>Cor</th><th>Tam</th>
-                <th>Qtde_total_pedido</th><th>Qtde_faltante</th><th>Motivo</th>
-                <th>Data_solicitacao</th><th>Solicitante</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>AJUSTE</td><td>960841</td><td>242018</td><td>242305</td><td>46212 CHARLESTON WILLIA</td>
-                <td>102</td><td>OIMCR24302</td><td>PT/PRT</td><td>M</td><td>60</td><td>2</td>
-                <td>Ajuste de encomenda</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
-              </tr>
-              <tr>
-                <td>FALTANTE_NF</td><td>959112</td><td>241650</td><td class="vazio"></td><td>46212 CHARLESTON WILLIA</td>
-                <td>102</td><td>OIMCR24302</td><td>PT/PRT</td><td>M</td><td>60</td><td>2</td>
-                <td>Stockout</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
-              </tr>
-              <tr class="destaque">
-                <td>DE_PARA</td><td>961205</td><td>242190</td><td>242311</td><td>62410 GRUPO SPORTSTYLE</td>
-                <td>082</td><td>OIVCR23110</td><td>PT</td><td>M</td><td>30</td><td>30</td>
-                <td>Artigo substituto enviado</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
-              </tr>
-              <tr>
-                <td>CANCELAMENTO</td><td>957004</td><td>241902</td><td class="vazio"></td><td>51330 REDE CALCADOS MG</td>
-                <td>060</td><td>OIACS20044</td><td>PT</td><td>M</td><td>14</td><td>14</td>
-                <td>Financeiro</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
-              </tr>
-              <tr>
-                <td>AD_DEVOLUCAO</td><td>955390</td><td>240711</td><td class="vazio"></td><td>46212 CHARLESTON WILLIA</td>
-                <td>102</td><td>OIMCR24302</td><td>PT/PRT</td><td>M</td><td>120</td><td>120</td>
-                <td>Recusa de envio parcial (AD)</td><td>09/09/2026</td><td>ERIKA DOMINGUES LEME</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <ul style="font-size:12px;color:var(--text-muted);margin:10px 0 14px 18px;padding:0">
-          <li><strong>tipo</strong> só aceita: AJUSTE · DE_PARA · CANCELAMENTO · FALTANTE_NF (envio faltante com NF
-            emitida; o antigo BO_POS_NF continua aceito) · AD_DEVOLUCAO (reconhece por palavra-chave — não precisa ser
-            exatamente esse texto).</li>
-          <li><strong>cliente</strong>, <strong>familia_codigo</strong>, <strong>cor</strong> e <strong>tam</strong>
-            vêm exatamente como o e-mail do comercial e a extração do sistema já trazem — sem juntar código+nome
-            do cliente, sem juntar cor+tam, sem adivinhar família à mão.</li>
-          <li><strong>pfa_nova</strong> fica em branco em cancelamento, envio faltante com NF e AD — nenhum dos três gera PFA
-            nova. Num <strong>AJUSTE</strong>, também pode ficar em branco quando é só uma <strong>falta
-            parcial</strong> (a PFA continua ativa na operação, só com quantidade menor) — nesse caso ela
-            <strong>não some do Pendentes</strong>; só some quando o comercial de fato gerar e informar a PFA nova.</li>
-          <li><strong>qtde_faltante</strong> é a falta pronta por artigo (não um "antes/depois" pra subtrair).
-            <strong>DE_PARA</strong> (linha destacada): artigo substituto enviado no lugar do cortado — use o tipo
-            DE_PARA e preencha <strong>qtde_faltante com a quantidade substituída</strong>. Não conta como perda; vai
-            para o card "DE×PARA" do Start Inicial. (AJUSTE com qtde_faltante 0, a convenção antiga, continua sendo lido
-            como DE-PARA.)</li>
-          <li>Reenviar a planilha nunca duplica: a linha é identificada por encomenda + pfa_antiga + artigo +
-            cor + tam — subir de novo com esse quinteto igual substitui a linha, corrigindo um valor errado.</li>
-          <li><strong>CANCELAMENTO enxuto</strong>: às vezes o comercial pede o cancelamento de uma PFA inteira e só
-            preenche tipo, pfa_antiga, qtde_total_pedido, data_solicitacao e solicitante — sem encomenda, artigo,
-            cor/tam nem motivo. Essa linha <strong>é aceita normalmente</strong> (só CANCELAMENTO dispensa
-            encomenda/artigo); se qtde_faltante ficar em branco, assume-se o próprio qtde_total_pedido, já que a
-            PFA inteira está sendo cancelada.</li>
-        </ul>
-        <div class="dropzone" id="dropzoneAjustesPfa">
-          <span id="dropzoneAjustesPfaTexto">Clique para selecionar o .xlsx (ou .csv/.txt) de <strong>Ajustes de PFA</strong></span>
-          <input type="file" id="inputAjustesPfa" accept=".xlsx,.csv,.txt,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
-        </div>
-        <button class="btn-mini" id="btnProcessarAjustesPfa" style="margin-top:12px" disabled>
-          Processar Ajustes de PFA
-        </button>
-        <div class="aviso ok" id="okIngestAjustesPfa" style="display:none;margin-top:10px"></div>
-        <div class="log" id="logIngestAjustesPfa"></div>
       </div>
 
       <div class="section-title" style="margin-top:24px">Validar e-mails do comercial (.msg)</div>
@@ -6739,59 +6623,9 @@ const CABECALHO_MODELO_AJUSTES_PFA = ['tipo', 'encomenda', 'pfa_antiga', 'pfa_no
   'familia_codigo', 'artigo', 'cor', 'tam', 'qtde_total_pedido', 'qtde_faltante',
   'motivo', 'data_solicitacao', 'solicitante'];
 
-/* Linhas de exemplo já preenchidas vêm juntas de propósito — as MESMAS 5 do
-   quadro visual acima (um exemplo por tipo, mais o caso DE-PARA), pra quem
-   for abastecer ver de cara todo tipo/motivo possível em vez de só um caso
-   isolado. A assistente apaga as linhas e digita as dela por cima.
-   cliente, familia_codigo, cor e tam (10/09/2026): exatamente como o
-   e-mail do comercial e a extração do sistema já trazem essa informação —
-   nada de separar/juntar campo nenhum na mão. qtde_faltante idem: a falta
-   já vem pronta por artigo, sem inventar um "antes/depois" pra subtrair. */
-const EXEMPLOS_MODELO_AJUSTES_PFA = [
-  ['AJUSTE', '960841', '242018', '242305', '46212 CHARLESTON WILLIA',
-    '102', 'OIMCR24302', 'PT/PRT', 'M', '60', '2', 'Ajuste de encomenda', '09/09/2026', 'ERIKA DOMINGUES LEME'],
-  ['FALTANTE_NF', '959112', '241650', '', '46212 CHARLESTON WILLIA',
-    '102', 'OIMCR24302', 'PT/PRT', 'M', '60', '2', 'Stockout', '09/09/2026', 'ERIKA DOMINGUES LEME'],
-  ['DE_PARA', '961205', '242190', '242311', '62410 GRUPO SPORTSTYLE',
-    '082', 'OIVCR23110', 'PT', 'M', '30', '30', 'Artigo substituto enviado', '09/09/2026', 'ERIKA DOMINGUES LEME'],
-  ['CANCELAMENTO', '957004', '241902', '', '51330 REDE CALCADOS MG',
-    '060', 'OIACS20044', 'PT', 'M', '14', '14', 'Financeiro', '09/09/2026', 'ERIKA DOMINGUES LEME'],
-  ['AD_DEVOLUCAO', '955390', '240711', '', '46212 CHARLESTON WILLIA',
-    '102', 'OIMCR24302', 'PT/PRT', 'M', '120', '120', 'Recusa de envio parcial (AD)', '09/09/2026', 'ERIKA DOMINGUES LEME'],
-];
-
 // Só a primeira letra maiúscula — pedido explícito da operação (10/09/2026),
 // não é pra virar "Pfa Antiga" nem nada assim, só capitalizar o que já tem.
 function capitalizarPrimeiraLetra(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
-
-/* Modelo agora é um .xlsx de verdade (10/09/2026, pedido da operação):
-   cabeçalho em negrito+itálico, tudo centralizado — formatação de célula
-   que um texto separado por delimitador (",", ";" ou TAB) não tem como
-   guardar. De quebra, acaba com qualquer confusão de separador de lista
-   do Windows/Excel: não tem delimitador nenhum pra detectar errado. */
-async function baixarModeloAjustesPfa() {
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('Ajustes de PFA');
-  ws.columns = CABECALHO_MODELO_AJUSTES_PFA.map(function (chave) {
-    return {
-      header: capitalizarPrimeiraLetra(chave), key: chave, width: Math.max(chave.length + 2, 13),
-      style: { alignment: { horizontal: 'center', vertical: 'middle' } },
-    };
-  });
-  EXEMPLOS_MODELO_AJUSTES_PFA.forEach(function (linha) { ws.addRow(linha); });
-  ws.getRow(1).eachCell(function (celula) {
-    celula.font = { bold: true, italic: true };
-    celula.alignment = { horizontal: 'center', vertical: 'middle' };
-  });
-
-  const buffer = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'modelo-ajustes-pfa.xlsx';
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
 
 /* ---------- Gap de estoque das perdas de PFA (10/09/2026) ----------
    Pedido do usuário: pra cada AJUSTE/B.O. pós-NF que virou perda (falta de
@@ -7109,49 +6943,6 @@ async function gravarEmailsAjustes() {
     btn.disabled = false;
   }
 }
-
-/* ---------- Ajustes de PFA (.xlsx ou .csv/.txt) — planilha manual, upsert ----------
-   processarAjustesPfa (ingest-pfas.js) já recalcula o snapshot de PFAs
-   sozinho depois de gravar a planilha (14/09/2026) — não precisa mais
-   reenviar Pendentes/Analítico/Embarcadas só pra os cards enxergarem o
-   ajuste. Só falta a tela "Start Inicial" puxar esse snapshot novo se já
-   estiver aberta — por isso o aviso abaixo pede pra reabrir/atualizar ela. */
-let arquivoAjustesPfaSelecionado = null;
-function atualizarEstadoDropzoneAjustesPfa() {
-  document.getElementById('btnProcessarAjustesPfa').disabled = !arquivoAjustesPfaSelecionado;
-  document.getElementById('dropzoneAjustesPfaTexto').textContent = arquivoAjustesPfaSelecionado
-    ? '✓ ' + arquivoAjustesPfaSelecionado.name : 'Clique para selecionar o .xlsx (ou .csv/.txt) de Ajustes de PFA';
-}
-document.getElementById('dropzoneAjustesPfa').addEventListener('click', function () {
-  document.getElementById('inputAjustesPfa').click();
-});
-document.getElementById('inputAjustesPfa').addEventListener('change', function (ev) {
-  arquivoAjustesPfaSelecionado = (ev.target.files && ev.target.files[0]) || null;
-  atualizarEstadoDropzoneAjustesPfa();
-});
-document.getElementById('btnProcessarAjustesPfa').addEventListener('click', async function () {
-  const log = document.getElementById('logIngestAjustesPfa');
-  const ok = document.getElementById('okIngestAjustesPfa');
-  ok.style.display = 'none';
-  log.textContent = '';
-  const escrever = function (msg) { log.textContent += msg + '\n'; log.scrollTop = log.scrollHeight; };
-  const btn = document.getElementById('btnProcessarAjustesPfa');
-  btn.disabled = true;
-  try {
-    await window.processarAjustesPfa(supabaseClient, arquivoAjustesPfaSelecionado, escrever);
-    ok.textContent = '✔ Gravado e recalculado com sucesso — os cards de "PFAs em tela" (Start Inicial) já ' +
-      'refletem esses ajustes. Se a tela já estiver aberta, entre nela de novo (ou troque de aba e volte) ' +
-      'pra puxar o snapshot atualizado.';
-    ok.style.display = '';
-    arquivoAjustesPfaSelecionado = null;
-    document.getElementById('inputAjustesPfa').value = '';
-    atualizarEstadoDropzoneAjustesPfa();
-  } catch (e) {
-    escrever('ERRO: ' + (e && e.message ? e.message : String(e)));
-    console.error(e);
-    btn.disabled = false;
-  }
-});
 
 /* Exporta QUEM está fazendo a produtividade cair no chute por horário.
    Duas populações, cada uma com o seu motivo — juntas numa planilha só
