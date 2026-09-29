@@ -1251,8 +1251,6 @@ tr.total > th, tr.total > td {
         <div class="log" id="logIngest"></div>
       </div>
 
-      <div class="admin-grupo">Ressuprimento</div>
-
       <div class="section-title" style="margin-top:24px">Atualizar Ressuprimento (Picking + Pulmão)</div>
       <div class="card">
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
@@ -1275,6 +1273,8 @@ tr.total > th, tr.total > td {
         <div class="log" id="logIngestRessuprimento"></div>
       </div>
 
+      <div class="admin-grupo">Ressuprimento</div>
+
       <div class="section-title" style="margin-top:24px">Atualizar Ressuprimento por dia (Kardex)</div>
       <div class="card">
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
@@ -1292,71 +1292,6 @@ tr.total > th, tr.total > td {
         </button>
         <div class="aviso ok" id="okIngestKardex" style="display:none;margin-top:10px"></div>
         <div class="log" id="logIngestKardex"></div>
-      </div>
-
-      <div class="section-title" style="margin-top:24px">Planejamento de Ressuprimento (PFA por turno)</div>
-      <div class="card">
-        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
-          O que a assistente de planejamento está delegando pra operação ressuprir — uma linha por
-          PFA, com a família (pra cruzar por segmento) e o turno/data que deve atender. Cola direto
-          da planilha, separado por tab, ; ou , — em dois formatos, e dá pra misturar os dois no
-          mesmo lote:
-        </p>
-        <ul style="font-size:12px;color:var(--text-muted);margin:-6px 0 14px 18px;padding:0">
-          <li><strong>PFA;FAMÍLIA</strong> — usa o Turno e a Data escolhidos abaixo pra linha inteira.</li>
-          <li><strong>PFA;FAMÍLIA;TURNO;DATA</strong> — cada linha leva seu próprio turno e data,
-            pra colar PFAs de turnos e dias diferentes de uma vez só. Turno aceita T01/T02/T03 (ou
-            1/2/3); Data aceita AAAA-MM-DD ou DD/MM/AAAA.</li>
-        </ul>
-        <textarea id="textoPlanejamentoPfa" rows="6" style="width:100%;font-family:monospace;font-size:12px"
-          placeholder="196830;103&#10;197293;068;T02;03/09/2026&#10;197330;043;T01;2026-09-04"></textarea>
-        <div style="display:flex;gap:12px;align-items:flex-end;margin-top:10px;flex-wrap:wrap">
-          <div>
-            <label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Turno (linhas de 2 campos)</label>
-            <select id="turnoPlanejamentoPfa" style="padding:7px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)">
-              <option value="T01">T01 (05:00–14:48)</option>
-              <option value="T02">T02 (14:48–00:16)</option>
-              <option value="T03">T03 (20:20–04:48)</option>
-            </select>
-          </div>
-          <div>
-            <label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Data (linhas de 2 campos)</label>
-            <input type="date" id="dataPlanejamentoPfa" style="padding:6px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)">
-          </div>
-          <button class="btn-mini" id="btnSalvarPlanejamentoPfa">Salvar lançamento</button>
-        </div>
-        <div class="log" id="logPlanejamentoPfa"></div>
-      </div>
-
-      <div class="section-title" style="margin-top:24px">Base de Ativos (turno real do colaborador)</div>
-      <div class="card">
-        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
-          Envie o <strong>.xlsx</strong> da base de Ativos (aba "Ativos"), atualizada semanalmente pela gestão.
-          Cruza o <strong>Código</strong> do colaborador com o <strong>Login</strong> que aparece no Kardex
-          (mesmo número, trocando o "15" inicial por "EX") e usa a coluna <strong>Horario</strong> pra saber o
-          turno real (1º/2º/3º Turno). ADM e Cargo de Confiança não têm turno operacional — a movimentação
-          desses logins (e de quem ainda não está nesta base) continua sendo presumida pelo horário do
-          movimento. Reenviar a planilha atualiza quem mudou de turno.
-        </p>
-        <div class="dropzone" id="dropzoneAtivos">
-          <span id="dropzoneAtivosTexto">Clique para selecionar o .xlsx da <strong>base de Ativos</strong></span>
-          <input type="file" id="inputAtivos" accept=".xlsx" style="display:none">
-        </div>
-        <button class="btn-mini" id="btnProcessarAtivos" style="margin-top:12px" disabled>
-          Processar Ativos
-        </button>
-        <button class="btn-mini" id="btnExportarSemTurno" style="margin-top:12px;margin-left:8px"
-          onclick="exportarColaboradoresSemTurno()">
-          ⬇ Exportar quem está sem turno real
-        </button>
-        <p style="font-size:11px;color:var(--text-muted);margin:10px 0 0">
-          A exportação lista quem faz a produtividade cair no <strong>chute por horário</strong>: cadastrado
-          sem turno operacional (ADM/confiança/horário livre) e login que aparece movimentando no Kardex mas
-          não está na base de Ativos. Quem estiver nessa lista tem o turno adivinhado pelo relógio do
-          movimento — é ali que mora o caso do material que fica entre o T02 e o T03.
-        </p>
-        <div class="aviso ok" id="okIngestAtivos" style="display:none;margin-top:10px"></div>
-        <div class="log" id="logIngestAtivos"></div>
       </div>
 
       <div class="admin-grupo">Acompanhamento de PFAs</div>
@@ -1428,7 +1363,74 @@ tr.total > th, tr.total > td {
         <div id="resultadoEmailsAjustes" style="margin-top:12px"></div>
       </div>
 
-      <div class="section-title" style="margin-top:24px">Clientes que personalizam (etapa 04 - Material em Personalização)</div>
+      <div class="section-title" style="margin-top:24px">Planejamento de Ressuprimento (PFA por turno)</div>
+      <div class="card">
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+          O que a assistente de planejamento está delegando pra operação ressuprir — uma linha por
+          PFA, com a família (pra cruzar por segmento) e o turno/data que deve atender. Cola direto
+          da planilha, separado por tab, ; ou , — em dois formatos, e dá pra misturar os dois no
+          mesmo lote:
+        </p>
+        <ul style="font-size:12px;color:var(--text-muted);margin:-6px 0 14px 18px;padding:0">
+          <li><strong>PFA;FAMÍLIA</strong> — usa o Turno e a Data escolhidos abaixo pra linha inteira.</li>
+          <li><strong>PFA;FAMÍLIA;TURNO;DATA</strong> — cada linha leva seu próprio turno e data,
+            pra colar PFAs de turnos e dias diferentes de uma vez só. Turno aceita T01/T02/T03 (ou
+            1/2/3); Data aceita AAAA-MM-DD ou DD/MM/AAAA.</li>
+        </ul>
+        <textarea id="textoPlanejamentoPfa" rows="6" style="width:100%;font-family:monospace;font-size:12px"
+          placeholder="196830;103&#10;197293;068;T02;03/09/2026&#10;197330;043;T01;2026-09-04"></textarea>
+        <div style="display:flex;gap:12px;align-items:flex-end;margin-top:10px;flex-wrap:wrap">
+          <div>
+            <label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Turno (linhas de 2 campos)</label>
+            <select id="turnoPlanejamentoPfa" style="padding:7px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)">
+              <option value="T01">T01 (05:00–14:48)</option>
+              <option value="T02">T02 (14:48–00:16)</option>
+              <option value="T03">T03 (20:20–04:48)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Data (linhas de 2 campos)</label>
+            <input type="date" id="dataPlanejamentoPfa" style="padding:6px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)">
+          </div>
+          <button class="btn-mini" id="btnSalvarPlanejamentoPfa">Salvar lançamento</button>
+        </div>
+        <div class="log" id="logPlanejamentoPfa"></div>
+      </div>
+
+      <div class="admin-grupo">Bases</div>
+
+      <div class="section-title" style="margin-top:24px">Base de Ativos (turno real do colaborador)</div>
+      <div class="card">
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+          Envie o <strong>.xlsx</strong> da base de Ativos (aba "Ativos"), atualizada semanalmente pela gestão.
+          Cruza o <strong>Código</strong> do colaborador com o <strong>Login</strong> que aparece no Kardex
+          (mesmo número, trocando o "15" inicial por "EX") e usa a coluna <strong>Horario</strong> pra saber o
+          turno real (1º/2º/3º Turno). ADM e Cargo de Confiança não têm turno operacional — a movimentação
+          desses logins (e de quem ainda não está nesta base) continua sendo presumida pelo horário do
+          movimento. Reenviar a planilha atualiza quem mudou de turno.
+        </p>
+        <div class="dropzone" id="dropzoneAtivos">
+          <span id="dropzoneAtivosTexto">Clique para selecionar o .xlsx da <strong>base de Ativos</strong></span>
+          <input type="file" id="inputAtivos" accept=".xlsx" style="display:none">
+        </div>
+        <button class="btn-mini" id="btnProcessarAtivos" style="margin-top:12px" disabled>
+          Processar Ativos
+        </button>
+        <button class="btn-mini" id="btnExportarSemTurno" style="margin-top:12px;margin-left:8px"
+          onclick="exportarColaboradoresSemTurno()">
+          ⬇ Exportar quem está sem turno real
+        </button>
+        <p style="font-size:11px;color:var(--text-muted);margin:10px 0 0">
+          A exportação lista quem faz a produtividade cair no <strong>chute por horário</strong>: cadastrado
+          sem turno operacional (ADM/confiança/horário livre) e login que aparece movimentando no Kardex mas
+          não está na base de Ativos. Quem estiver nessa lista tem o turno adivinhado pelo relógio do
+          movimento — é ali que mora o caso do material que fica entre o T02 e o T03.
+        </p>
+        <div class="aviso ok" id="okIngestAtivos" style="display:none;margin-top:10px"></div>
+        <div class="log" id="logIngestAtivos"></div>
+      </div>
+
+      <div class="section-title" style="margin-top:24px">Base de Clientes Persona (etapa 04 - Material em Personalização)</div>
       <div class="card">
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
           PFA em <strong>Leitura expedição</strong> de cliente desta lista aparece no Start Inicial como
