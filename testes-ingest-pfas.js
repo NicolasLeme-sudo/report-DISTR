@@ -526,6 +526,13 @@ const snapHistEnc = construirSnapshotPfas({ registros: [] }, { registros: [] }, 
 ] }, mapaArtFamTeste);
 eq(snapHistEnc.ajustes[0].pfa_nova_por_encomenda, '249100', 'PFA nova achada no histórico PFA × encomenda (já fora do Pendentes)');
 eq(snapHistEnc.ajustes_em_aberto, 1, 'só a encomenda sem PFA nova no histórico continua em aberto');
+const snapEmbAju = construirSnapshotPfas({ registros: [] }, { registros: [] }, { registros: [{ pfa: '246287', nota: '1', data_nota: '2026-09-28', qtd_total: 57 }] },
+  mapaFamilias, { referencia: HOJE }, { registros: [
+  { tipo: 'AJUSTE', encomenda: '978607', pfa_antiga: '246287', pfa_nova: null, cliente: 'C', artigo: 'B',
+    cor_tam: 'PT M', qtde_total_pedido: 60, qtde_faltante: 3, motivo: 'Ajuste', data_solicitacao: '2026-09-26', solicitante: 'E' },
+] }, mapaArtFamTeste);
+eq(snapEmbAju.ajustes_em_aberto, 0, 'PFA original já embarcada (saiu sem o item): ajuste não fica em aberto');
+ok(snapEmbAju.ajustes[0].fechado_por_embarque, '… e fica marcado como fechado por embarque');
 
 // PFA retrabalhada — dentro do SLA vs atrasada
 const pfaNovaNoPrazo = snapAju.pendentes.find(function (r) { return r.pfa === '242305'; });

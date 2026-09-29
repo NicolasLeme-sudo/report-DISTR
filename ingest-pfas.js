@@ -1078,7 +1078,10 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
       // pelo cruzamento acima — só informativo (não vira pfa_nova de
       // verdade, ninguém confirmou isso formalmente ainda).
       pfa_nova_por_encomenda: pfaNovaPorEncomenda,
-      em_aberto: a.tipo === 'AJUSTE' && !a.pfa_nova && !pfaNovaPorEncomenda,
+      // PFA original já embarcada (NFs Embarcadas acumulado): saiu sem os itens
+      // faltantes, não vai ter PFA nova — ajuste resolvido (29/09/2026).
+      fechado_por_embarque: a.tipo === 'AJUSTE' && !a.pfa_nova && !pfaNovaPorEncomenda && pfasEmbarcadas.has(a.pfa_antiga),
+      em_aberto: a.tipo === 'AJUSTE' && !a.pfa_nova && !pfaNovaPorEncomenda && !pfasEmbarcadas.has(a.pfa_antiga),
     };
   });
   const ajustesAbertos = ajustesPayload.filter(function (a) { return a.em_aberto; });
