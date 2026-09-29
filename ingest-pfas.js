@@ -1028,6 +1028,7 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
     });
   }
 
+  const pfasNoPendentes = new Set(pendentesRegistros.map(function (r) { return String(r.pfa); }));
   const ajustesPayload = ajustesLista.map(function (a) {
     const dePara = ehDePara(a);
     // DE-PARA nunca é perda: chegou um substituto no lugar.
@@ -1081,10 +1082,16 @@ function construirSnapshotPfas(pendentes, analitico, embarcadas, mapaFamilias, m
       // PFA original já embarcada (NFs Embarcadas acumulado): saiu sem os itens
       // faltantes, não vai ter PFA nova — ajuste resolvido (29/09/2026).
       fechado_por_embarque: a.tipo === 'AJUSTE' && !a.pfa_nova && !pfaNovaPorEncomenda && pfasEmbarcadas.has(a.pfa_antiga),
+      // PFA antiga SUMIU do Pendentes e NÃO está em NFs Embarcadas: o comercial a
+      // cancelou/substituiu (gera PFA nova, mesma encomenda) — ajuste executado,
+      // mesmo que a PFA nova já tenha embarcado antes de qualquer histórico e o
+      // cruzamento por encomenda não a encontre (30/09/2026).
+      fechado_por_substituicao: a.tipo === 'AJUSTE' && !a.pfa_nova && !pfaNovaPorEncomenda && !pfasEmbarcadas.has(a.pfa_antiga) && !pfasNoPendentes.has(String(a.pfa_antiga)),
       // Comercial respondeu o e-mail dizendo que a encomenda foi ajustada / PFA gerada
       // (marcado na tela de Leitura Automática) — fecha mesmo sem o nº da PFA nova.
       fechado_por_comercial: !!a.concluido_comercial_em,
-      em_aberto: a.tipo === 'AJUSTE' && !a.pfa_nova && !pfaNovaPorEncomenda && !a.concluido_comercial_em && !pfasEmbarcadas.has(a.pfa_antiga),
+      em_aberto: a.tipo === 'AJUSTE' && !a.pfa_nova && !pfaNovaPorEncomenda && !a.concluido_comercial_em && !pfasEmbarcadas.has(a.pfa_antiga) &&
+        pfasNoPendentes.has(String(a.pfa_antiga)),
     };
   });
   const ajustesAbertos = ajustesPayload.filter(function (a) { return a.em_aberto; });

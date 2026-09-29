@@ -400,6 +400,8 @@ const pendAju = parsearPfasPendentes([CAB_PEND,
   // planilha de ajustes (pfa_nova ficou em branco) — mesma encomenda de um
   // ajuste "em aberto" abaixo, achada só pelo cruzamento por encomenda.
   linhaPend('244777', '10/09', '102', '1', 'Nao disp. picking', '4', '25', '976001'),
+  // PFA antiga de um ajuste "em aberto": segue no Pendentes (comercial ainda não trocou).
+  linhaPend('241500', '05/09', '102', '1', 'Nao disp. picking', '4', '25', '959111'),
 ].join('\n'), HOJE);
 const anaAju = parsearPfasAnalitico([CAB_ANA,
   linhaAna('240711', '548820', '01/09/2026', 'V-AD', '102', 'A9', '120,0'), // AD: some de aguardando_coleta
@@ -517,7 +519,8 @@ const snapEncomendaReal = construirSnapshotPfas(pendComParenteses, { registros: 
 eq(snapEncomendaReal.ajustes[0].pfa_nova_por_encomenda, '245900',
    'encomenda "967708" da planilha bate com "EBM - ... (967708)" de Pendentes — acha a PFA nova real');
 // PFA nova que JÁ SAIU do Pendentes: achada no histórico pfa_encomenda (29/09/2026).
-const snapHistEnc = construirSnapshotPfas({ registros: [] }, { registros: [] }, { registros: [] }, mapaFamilias,
+const pendHistEnc = parsearPfasPendentes([CAB_PEND, linhaPend('246287', '20/09', '102', '1', 'Nao disp. picking', '3', '25', '978607')].join('\n'), HOJE);
+const snapHistEnc = construirSnapshotPfas(pendHistEnc, { registros: [] }, { registros: [] }, mapaFamilias,
   { referencia: HOJE, pfas_por_encomenda: new Map([['971827', ['245586', '249100']]]) }, { registros: [
   { tipo: 'AJUSTE', encomenda: '971827', pfa_antiga: '245586', pfa_nova: null, cliente: 'C', artigo: 'A',
     cor_tam: 'PT M', qtde_total_pedido: 1069, qtde_faltante: 60, motivo: 'Ajuste', data_solicitacao: '2026-09-26', solicitante: 'E' },
@@ -533,6 +536,14 @@ const snapEmbAju = construirSnapshotPfas({ registros: [] }, { registros: [] }, {
 ] }, mapaArtFamTeste);
 eq(snapEmbAju.ajustes_em_aberto, 0, 'PFA original já embarcada (saiu sem o item): ajuste não fica em aberto');
 ok(snapEmbAju.ajustes[0].fechado_por_embarque, '… e fica marcado como fechado por embarque');
+
+// PFA antiga sumiu do Pendentes e não embarcou: comercial substituiu — fecha (30/09/2026).
+const snapSubst = construirSnapshotPfas({ registros: [] }, { registros: [] }, { registros: [] }, mapaFamilias, { referencia: HOJE }, { registros: [
+  { tipo: 'AJUSTE', encomenda: '977576', pfa_antiga: '243452', pfa_nova: null, cliente: 'C', artigo: 'OBWWT23307',
+    cor_tam: 'PRETO M', qtde_total_pedido: 102, qtde_faltante: 2, motivo: 'Ajuste', data_solicitacao: '2026-09-23', solicitante: 'E' },
+] }, mapaArtFamTeste);
+eq(snapSubst.ajustes_em_aberto, 0, 'PFA antiga fora do Pendentes e fora de Embarcadas: ajuste fechado por substituição, sem depender da encomenda');
+ok(snapSubst.ajustes[0].fechado_por_substituicao, '… marcado como fechado por substituição');
 
 // PFA retrabalhada — dentro do SLA vs atrasada
 const pfaNovaNoPrazo = snapAju.pendentes.find(function (r) { return r.pfa === '242305'; });
