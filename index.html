@@ -1439,7 +1439,8 @@ tr.total > th, tr.total > td {
       <div class="card">
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
           Salve do Outlook os e-mails (arrastar para uma pasta gera o .msg) e solte cada um no campo do
-          <strong>tipo de ajuste</strong> — o campo escolhido é que define o tipo de todas as linhas do e-mail.
+          <strong>tipo de ajuste</strong> — o campo define o tipo das linhas do e-mail. Exceção: resposta do comercial
+          com instrução por NF (EMBARCAR / DEVOLVER) vale o que está escrito pra cada NF, mesmo em e-mail misto.
           Dá pra usar mais de um campo antes de gravar. O sistema lê a tabela de cada e-mail e confere contra o
           último Pendentes/Analítico: PFA existe, NF bate, linha já lançada antes.
         </p>
@@ -6929,8 +6930,14 @@ document.getElementById('inputEmailsAjustes').addEventListener('change', async f
       try {
         const msg = window.lerMsg(await arquivos[i].arrayBuffer(), window.XLSX);
         const linhas = window.interpretarEmailAjuste(msg).map(function (l) {
+          // E-mail com NF que traz a instrução POR NF (EMBARCAR/DEVOLVER) vale
+          // a instrução, mesmo em e-mail misto (uma NF embarca, outra volta
+          // pro estoque — 29/09/2026). O campo só define o tipo do que não tem
+          // instrução no próprio e-mail.
+          const temInstrucao = !!(l.nf && l.tipo);
           return Object.assign(l, { _arquivo: arquivos[i].name, _ordem: i, _categoria: categoriaEmailAtual,
-            tipo: cat.tipo(l), status: cat.status(l) });
+            tipo: temInstrucao ? l.tipo : cat.tipo(l),
+            status: temInstrucao ? l.status + ' (instrução no e-mail)' : cat.status(l) });
         });
         if (!linhas.length) falhas.push(arquivos[i].name + ' (nenhuma tabela de divergência reconhecida)');
         listas.push(linhas);
