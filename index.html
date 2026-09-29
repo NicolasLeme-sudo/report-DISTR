@@ -3875,7 +3875,9 @@ function renderizarPfas() {
       '<div class="val forte" style="color:var(--accent)">' + fmtInt(ajustesEmAberto) + '</div>' +
       '<div class="sub">' + (ajustesEmAberto
         ? 'Ag. Ação do Time Comercial'
-        : 'Nenhum ajuste travado') + '</div></div>' +
+        : 'Nenhum ajuste travado') +
+      (ajustesEmAberto ? '</div><button class="btn-mini" style="margin-top:8px" onclick="exportarAjustesEmAberto()" ' +
+        'title="Lista de PFAs com ajuste aguardando o comercial gerar a PFA nova">⬇ Exportar lista (.xlsx)</button>' : '</div>') + '</div>' +
   '</div>';
 
   /* ---------- Perdas e ajustes do período (grupo à parte, com o próprio seletor) ----------
@@ -6885,6 +6887,40 @@ async function montarXlsxEmailsAjustes() {
     .forEach(function (l) { ws.addRow(window.linhaPlanilhaAjuste(l)); });
   ws.getRow(1).font = { bold: true };
   return wb.xlsx.writeBuffer();
+}
+/* Ajustes de PFA em aberto (30/09/2026) — lista pra mandar ao comercial. Sai do
+   snapshot de PFAs (não depende de carregar e-mail): ajuste sem PFA nova,
+   sem PFA nova por encomenda e cuja PFA original ainda não embarcou. */
+async function exportarAjustesEmAberto() {
+  const abertos = ((dadosPfas && dadosPfas.ajustes) || []).filter(function (a) { return a.em_aberto; });
+  if (!abertos.length) { alert('Nenhum ajuste de PFA em aberto no snapshot atual.'); return; }
+  const pend = new Map(((dadosPfas && dadosPfas.pendentes) || []).map(function (r) { return [String(r.pfa), r]; }));
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Ajustes em aberto');
+  ws.columns = [
+    { header: 'PFA antiga', key: 'pfa', width: 11 }, { header: 'Encomenda', key: 'enc', width: 12 },
+    { header: 'NF', key: 'nf', width: 14 }, { header: 'Cliente', key: 'cli', width: 40 },
+    { header: 'Artigo', key: 'art', width: 14 }, { header: 'Cor/Tam', key: 'ct', width: 14 },
+    { header: 'Pedido', key: 'ped', width: 9 }, { header: 'Faltante', key: 'fal', width: 9 },
+    { header: 'Marca', key: 'marca', width: 12 }, { header: 'Segmento', key: 'seg', width: 14 },
+    { header: 'Situação atual da PFA', key: 'sit', width: 22 }, { header: 'Motivo', key: 'mot', width: 26 },
+    { header: 'Data da solicitação', key: 'data', width: 16 }, { header: 'Solicitante', key: 'sol', width: 22 },
+  ];
+  abertos.slice().sort(function (a, b) { return String(a.data_solicitacao || '').localeCompare(String(b.data_solicitacao || '')); })
+    .forEach(function (a) {
+      const r = pend.get(String(a.pfa_antiga)) || {};
+      ws.addRow({ pfa: a.pfa_antiga, enc: a.encomenda || '', nf: r.nota_fiscal || '', cli: a.cliente || r.cliente_nome || '',
+        art: a.artigo || '', ct: a.cor_tam || '', ped: a.qtde_total_pedido, fal: a.qtde_faltante,
+        marca: a.marca || '', seg: a.segmento_macro || '', sit: r.situacao || 'fora do Pendentes', mot: a.motivo || '',
+        data: a.data_solicitacao ? formatarDataSimples(a.data_solicitacao) : '', sol: a.solicitante || '' });
+    });
+  ws.getRow(1).font = { bold: true };
+  const buffer = await wb.xlsx.writeBuffer();
+  const el = document.createElement('a');
+  el.href = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  el.download = 'ajustes-pfa-em-aberto.xlsx';
+  el.click();
+  URL.revokeObjectURL(el.href);
 }
 /* Lista do que ainda está sem resposta do comercial (28/09/2026) — pra
    assistente saber exatamente quais e-mails/NFs cobrar ou reenviar. */
