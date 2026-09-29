@@ -3027,12 +3027,24 @@ const FERIADOS_2026 = new Set([
    do intervalo; "muito abaixo" = menos de 25% da mediana daquele turno. */
 function avaliarDiasRessuprimento(dias) {
   const hoje = hojeISO();
-  const util = function (d) { const w = new Date(d.dia + 'T12:00:00').getDay(); return w >= 1 && w <= 5 && !FERIADOS_2026.has(d.dia); };
+  const utilIso = function (iso) { const w = new Date(iso + 'T12:00:00').getDay(); return w >= 1 && w <= 5 && !FERIADOS_2026.has(iso); };
+  const util = function (d) { return utilIso(d.dia); };
+  /* T03 do 1º dia útil depois de fim de semana/feriado é PARCIAL por
+     construção (29/09/2026, usuário): o turno começa às 20:20 e a parte
+     depois da meia-noite cai no dia de calendário seguinte — a madrugada
+     que completaria a segunda-feira seria a de domingo pra segunda, que não
+     tem turno. Fica fora da mediana e do "muito abaixo do normal". */
+  const t03Parcial = function (d, t) {
+    if (t !== 'T03') return false;
+    const ant = new Date(new Date(d.dia + 'T12:00:00').getTime() - 86400000).toISOString().slice(0, 10);
+    return !utilIso(ant);
+  };
   const uteis = dias.filter(function (d) { return util(d) && d.dia < hoje && pecasDoDia(d) > 0; });
   const esperados = [];
   const medianas = {};
   ORDEM_TURNO.forEach(function (t) {
-    const vals = uteis.map(function (d) { return (d.turnos[t] && d.turnos[t].pecas) || 0; }).filter(function (v) { return v > 0; }).sort(function (a, b) { return a - b; });
+    const vals = uteis.filter(function (d) { return !t03Parcial(d, t); })
+      .map(function (d) { return (d.turnos[t] && d.turnos[t].pecas) || 0; }).filter(function (v) { return v > 0; }).sort(function (a, b) { return a - b; });
     if (uteis.length && vals.length >= uteis.length / 2) {
       esperados.push(t);
       medianas[t] = vals[Math.floor(vals.length / 2)];
@@ -3045,7 +3057,7 @@ function avaliarDiasRessuprimento(dias) {
     esperados.forEach(function (t) {
       const v = (d.turnos[t] && d.turnos[t].pecas) || 0;
       if (!v) problemas.push(ROT_TURNO[t] + ' sem movimento');
-      else if (v < medianas[t] * 0.25) problemas.push(ROT_TURNO[t] + ' com ' + Math.round(v / medianas[t] * 100) + '% do normal');
+      else if (!t03Parcial(d, t) && v < medianas[t] * 0.25) problemas.push(ROT_TURNO[t] + ' com ' + Math.round(v / medianas[t] * 100) + '% do normal');
     });
     if (problemas.length) suspeitos.push({ dia: d.dia, problemas: problemas });
   });
