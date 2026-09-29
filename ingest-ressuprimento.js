@@ -160,6 +160,17 @@ const ENDERECOS_FORA_CAPACIDADE_PULMAO = {
     '7-9-66', '7-9-67', '7-9-68',
     '11-9-1',
   ],
+  /* Limitação FÍSICA do galpão (29/09/2026, usuário — endereço rua.nível.box):
+     13-35 = coluna estrutural branca do galpão, o box 35 inteiro (níveis 8 a 11,
+     a rua 13 não tem nível 12) não existe pra armazenar; 11-66 e 11-68 não
+     têm nível 08, 11 nem 12. Diferente de passagem, estes NÃO estão nos
+     números da planilha de capacidade: descontam dela (ver
+     DESCONTO_CAPACIDADE_PULMAO). */
+  limitacao_fisica: [
+    '13-8-35', '13-9-35', '13-10-35', '13-11-35',
+    '11-8-66', '11-11-66', '11-12-66',
+    '11-8-68', '11-11-68', '11-12-68',
+  ],
 };
 
 const FORA_CAPACIDADE_PULMAO = (function () {
@@ -176,6 +187,17 @@ const FORA_CAPACIDADE_PULMAO = (function () {
 function foraCapacidadePulmao(rua, nivel, box) {
   return FORA_CAPACIDADE_PULMAO[Number(rua) + '-' + Number(nivel) + '-' + Number(box)] || null;
 }
+// Só a limitação física desconta da capacidade (passagem e nível inexistente
+// já estão fora dos números da planilha).
+const DESCONTO_CAPACIDADE_PULMAO = (function () {
+  const d = {};
+  ENDERECOS_FORA_CAPACIDADE_PULMAO.limitacao_fisica.forEach(function (e) {
+    const rua = e.split('-')[0];
+    d[rua] = (d[rua] || 0) + 1;
+  });
+  return d;
+})();
+
 const CAPACIDADE_RUA_PLANILHA = {
   picking: { '1': 2415, '2': 2450, '3': 2450, '4': 2415, '5': 2450, '6': 2450, '7': 1865, '8': 2487,
              // Meia: fisicamente rua 14 tem 2 lados (272) e a 15 um lado só
@@ -186,8 +208,18 @@ const CAPACIDADE_RUA_PLANILHA = {
   pulmao: { '1': 712, '2': 712, '3': 712, '4': 707, '5': 712, '6': 712, '7': 712,
             '11': 136, '12': 272, '13': 272, '14': 272 },
 };
-// Capacidade usada na tela = a da planilha (ela já desconta a passagem).
-const CAPACIDADE_RUA = CAPACIDADE_RUA_PLANILHA;
+// Capacidade usada na tela = a da planilha (ela já desconta a passagem) menos
+// a limitação física validada depois.
+const CAPACIDADE_RUA = {
+  picking: CAPACIDADE_RUA_PLANILHA.picking,
+  pulmao: (function () {
+    const out = {};
+    Object.keys(CAPACIDADE_RUA_PLANILHA.pulmao).forEach(function (r) {
+      out[r] = CAPACIDADE_RUA_PLANILHA.pulmao[r] - (DESCONTO_CAPACIDADE_PULMAO[r] || 0);
+    });
+    return out;
+  })(),
+};
 
 /* Ruas que NÃO são estoque e saem de tudo já na leitura (Picking e Pulmão):
    rua 20 = CROSSDOCKING, operação do recebimento sem estoque físico
@@ -605,7 +637,14 @@ function construirSaldoEnderecos(pickingReal, pulmaoTudo) {
 function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidadesManual, meta, capacidadesItensManual) {
   picking = semRuasDesconsideradas(picking);
   pulmao = semRuasDesconsideradas(pulmao);
-  const cap = Object.assign({}, capacidadesManual || {});
+    const cap = Object.assign({}, capacidadesManual || {});
+  // Zona do Pulmão (dim_capacidade_zonas = planilha) menos a limitação física
+  // validada nas ruas da zona.
+  Object.keys(RUAS_ZONA.pulmao).forEach(function (b) {
+    const z = 'pulmao_' + b;
+    if (!cap[z]) return;
+    cap[z] -= RUAS_ZONA.pulmao[b].reduce(function (t, r) { return t + (DESCONTO_CAPACIDADE_PULMAO[r] || 0); }, 0);
+  });
   const capItens = capacidadesItensManual || {};
   const classif = classificarPickingEPulmao(picking, pulmao, mapaFamilias);
   const pickingReal = classif.pickingReal;

@@ -386,6 +386,10 @@ eq(somaRuas('pulmao', ['1']), 712, 'Pulmão meia só rua 1 = 712 (rua 15 = aloca
 eq(CAPACIDADE_RUA.pulmao['15'], undefined, 'Pulmão rua 15 fora da capacidade');
 // Endereços validados pela operação (28/09/2026): passagem e inexistentes saem da capacidade.
 eq(somaRuasTela('pulmao', ['1']), 712, 'Pulmão rua 1: capacidade da planilha (já desconta a passagem)');
+eq(CAPACIDADE_RUA.pulmao['13'], 272 - 4, 'rua 13: box 35 (coluna do galpão) sai da capacidade — 4 níveis');
+eq(CAPACIDADE_RUA.pulmao['11'], 136 - 6, 'rua 11: boxes 66 e 68 sem nível 08, 11 e 12 — 6 endereços');
+eq(foraCapacidadePulmao(13, 10, 35), 'limitacao_fisica', '13-10-35 fica fora');
+eq(foraCapacidadePulmao(11, 9, 66), null, '11-09-66 continua valendo (nível 9 armazena)');
 eq(somaRuasTela('pulmao', ['2', '6', '7']), 2136, 'Pulmão vestuário: planilha 2.136');
 eq(foraCapacidadePulmao(6, 10, 65), null, 'nível 10 guarda pallet: não é passagem');
 eq(foraCapacidadePulmao(6, 9, 66), 'passagem', 'nível 09 box 066 continua passagem');
