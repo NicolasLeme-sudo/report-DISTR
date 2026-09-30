@@ -395,6 +395,17 @@ eq(foraCapacidadePulmao(6, 10, 65), null, 'nível 10 guarda pallet: não é pass
 eq(foraCapacidadePulmao(6, 9, 66), 'passagem', 'nível 09 box 066 continua passagem');
 eq(somaRuasTela('pulmao', ['3', '4', '5']), 2131, 'Pulmão calçado: planilha 2.131');
 eq(foraCapacidadePulmao('05', '04', '001'), 'nao_existe', '05-04-001 (nível que não existe) fica fora');
+// Regra de passagem (01/10/2026): ruas 2–6, boxes 65–68, níveis 08 e 09; rua 1 só o lado par.
+let passagemRegra = true;
+[2, 3, 4, 5, 6].forEach(function (r) {
+  [8, 9].forEach(function (nv) { [65, 66, 67, 68].forEach(function (b) {
+    if (foraCapacidadePulmao(r, nv, b) !== 'passagem') passagemRegra = false;
+  }); });
+  [10, 11, 12].forEach(function (nv) { if (foraCapacidadePulmao(r, nv, 66)) passagemRegra = false; });
+});
+ok(passagemRegra, 'ruas 2 a 6: boxes 65–68 dos níveis 08 e 09 são passagem (e 10+ não)');
+eq([foraCapacidadePulmao(1, 8, 66), foraCapacidadePulmao(1, 9, 68)], ['passagem', 'passagem'], 'rua 1: lado par (66/68) é passagem');
+eq([foraCapacidadePulmao(1, 8, 65), foraCapacidadePulmao(1, 9, 67)], [null, null], 'rua 1: lado ímpar 65/67 (beira do estoque) NÃO é passagem');
 eq(foraCapacidadePulmao(6, 10, 143), null, 'endereço não marcado continua valendo');
 (function () {
   const fam = { familia_codigo: '101', artigo_codigo: 'X', cor: 'PT', tamanho: '40', qtd: 5, codbar: 'E', dt_cri: new Date('2026-01-01') };
