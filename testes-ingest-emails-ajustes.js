@@ -98,5 +98,15 @@ ok(vr[0].ja_lancado, '… e continua marcado como já lançado');
 const vr2 = E.validarLinhasEmail(E.interpretarEmailAjuste({ assunto: 'PFA COM DIVERGÊNCIA', remetente: 'Erika', data: d, corpo: pedidoSemResposta }), { pendentes: [] });
 ok(vr2[0].alertas.some(function (a) { return /não está no Pendentes/.test(a); }), 'ajuste novo (não lançado) fora do Pendentes continua alertando');
 
+
+console.log('\n=== instrução em TEXTO LIVRE: "Esta nota devolver, 222395. As demais embarcar." (30/09/2026) ===');
+const livre = E.extrairInstrucoes(['Bom dia', 'Esta nota devolver, 222395.  As demais embarcar.', 'De: Erika', 'Assunto: NFs com divergência',
+  'Simoni, posso enviar essas NFs com divergência ?', 'NF', 'PFA']);
+eq(livre.get('222395'), 'DEVOLVER', 'NF citada com "devolver" volta pro estoque');
+eq(livre.get('*'), 'EMBARCAR', '"as demais embarcar" vira a instrução padrão das outras NFs');
+const livre2 = E.extrairInstrucoes(['222395 devolver e 222307 embarcar.', 'De: E']);
+eq([livre2.get('222395'), livre2.get('222307')], ['DEVOLVER', 'EMBARCAR'], 'duas NFs na mesma frase: cada uma com o verbo mais próximo');
+eq(E.extrairInstrucoes(['Simoni, posso enviar a NF 216258 com divergência?', 'De: E']).size, 0, 'pergunta da assistente não é instrução');
+
 console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
 process.exit(falhas === 0 ? 0 : 1);

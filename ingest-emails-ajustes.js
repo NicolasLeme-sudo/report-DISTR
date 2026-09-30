@@ -146,6 +146,32 @@ function extrairInstrucoes(linhas) {
       break;
     }
   }
+  /* TEXTO LIVRE da mensagem mais nova (30/09/2026): "Esta nota devolver, 222395.
+     As demais embarcar." — sem tabela. Só vale o que está ACIMA do primeiro "De:"
+     (ou do 1º cabeçalho de tabela); pergunta ("posso enviar…?") não é instrução.
+     Cada NF citada recebe o verbo mais próximo; "demais/restantes/outras" +
+     verbo vira a instrução padrão das NFs não citadas (chave '*'). */
+  let fimTopo = linhas.findIndex(function (l) { return /^\s*De:\s/i.test(l) || /^\s*NF\s*$/i.test(l); });
+  if (fimTopo === -1) fimTopo = 0; // sem "De:" nem tabela: não arrisca ler texto livre
+  const RE_VERBO = /\b(devolver|devolu[cç][aã]o|devolva|cancelar|cancele|embarcar|embarque|enviar|envie)\b/gi;
+  const normVerbo = function (v) { return /^(devol|cancel)/i.test(v) ? 'DEVOLVER' : 'EMBARCAR'; };
+  linhas.slice(0, fimTopo).join('\n').split(/[.!;\n]+/).forEach(function (frase) {
+    if (frase.indexOf('?') !== -1) return;
+    const verbos = [];
+    let m;
+    RE_VERBO.lastIndex = 0;
+    while ((m = RE_VERBO.exec(frase))) verbos.push({ i: m.index, inst: normVerbo(m[1]), padrao: /(demais|restantes?|outras?|todas?|todos|resto)[^,]{0,15}$/i.test(frase.slice(Math.max(0, m.index - 20), m.index)) });
+    if (!verbos.length) return;
+    verbos.filter(function (v) { return v.padrao; }).forEach(function (v) { if (!out.has('*')) out.set('*', { inst: v.inst, pos: -1 }); });
+    const diretos = verbos.filter(function (v) { return !v.padrao; });
+    if (!diretos.length) return;
+    const reNf = /\b\d{6}\b/g;
+    while ((m = reNf.exec(frase))) {
+      let melhor = diretos[0];
+      diretos.forEach(function (v) { if (Math.abs(v.i - m.index) < Math.abs(melhor.i - m.index)) melhor = v; });
+      out.set(m[0], { inst: melhor.inst, pos: -1 });
+    }
+  });
   const saida = new Map();
   out.forEach(function (v, nf) { saida.set(nf, v.inst); });
   return saida;
@@ -217,7 +243,7 @@ function interpretarEmailAjuste(msg) {
     }
     let tipo, status;
     if (r.nf) {
-      const inst = instrucoes.get(r.nf);
+      const inst = instrucoes.get(r.nf) || instrucoes.get('*');
       if (inst === 'EMBARCAR' || inst === 'ENVIAR') { tipo = 'BO_POS_NF'; status = 'Comercial autorizou embarcar com falta'; }
       else if (inst === 'DEVOLVER' || inst === 'CANCELAR') { tipo = 'AD_DEVOLUCAO'; status = 'Comercial pediu devolução'; }
       else { tipo = null; status = 'Aguardando instrução do comercial'; }
