@@ -112,17 +112,17 @@ const RECLASSIFICA_PICKING_PARA_PULMAO = {
      Picking: vestuário 1–6 (14.630), calçado 7–8 (4.352), acessório 11–13
               (1.598), meia 14–15 (408).
      Pulmão:  meia 1 (712 — a rua 15 do Pulmão é área de alocação da reversa,
-              não pulmão; fora da capacidade, usuário 25/09/2026), vestuário 2 e 6 (1.424; a rua 7 é de insumos, fora — usuário 01/10/2026), calçado 3–5
+              não pulmão; fora da capacidade, usuário 25/09/2026), vestuário 2, 6 e 7 (2.136), calçado 3–5
               (2.131), acessório 11–14 (952). Rua 8 do Pulmão = insumos,
               fora da capacidade (confirmado pelo usuário). */
 const RUAS_ZONA = {
   // 81 e 102 estão desativadas (material no Pulmão) — fora das zonas.
   picking: { vestuario: ['1', '2', '3', '4', '5', '6'], calcado: ['7', '8'], acessorio: ['11', '12', '13'], meia: ['14', '15'] },
-  pulmao: { meia: ['1'], vestuario: ['2', '6'], calcado: ['3', '4', '5'], acessorio: ['11', '12', '13', '14'] },
+  pulmao: { meia: ['1'], vestuario: ['2', '6', '7'], calcado: ['3', '4', '5'], acessorio: ['11', '12', '13', '14'] },
 };
 // Ruas do Pulmão que são INSUMOS (não entram em capacidade, ocupação nem nas listas de
-// endereços vazios/picados): 7 (usuário, 01/10/2026) e 8.
-const RUAS_PULMAO_INSUMOS = ['7', '8'];
+// endereços vazios/picados): só a 8 (a 7 é Pulmão de vestuário — usuário, 01/10/2026).
+const RUAS_PULMAO_INSUMOS = ['8'];
 const BUCKETS_ZONA = ['meia', 'vestuario', 'acessorio', 'calcado'];
 /* Capacidade (endereços) POR RUA — mesma planilha; a soma por zona bate com
    dim_capacidade_zonas. Picking calçado (7+8 = 4.352) vem por longarina na
@@ -145,11 +145,12 @@ const ENDERECOS_FORA_CAPACIDADE_PULMAO = {
     '5-4-1..144',
   ],
   passagem: [
-    // Regra validada no chão (01/10/2026): ruas 2 a 6, boxes 65 a 68, níveis 08 e
+    // Regra validada no chão (01/10/2026): ruas 2 a 7, boxes 65 a 68, níveis 08 e
     // 09 = passagem (8 por rua). Rua 1: mesmo padrão, mas SÓ o lado par (66 e 68)
     // — 65/67 ficam na beira do estoque, sem passagem.
     '1-8-66', '1-8-68', '1-9-66', '1-9-68',
     '2-8-65..68', '2-9-65..68',
+    '7-8-65..68', '7-9-65..68',
     '3-8-65..68', '3-9-65..68',
     '4-8-65..68', '4-9-65..68',
     '5-8-65..68', '5-9-65..68',
@@ -158,7 +159,7 @@ const ENDERECOS_FORA_CAPACIDADE_PULMAO = {
     // (usuário, 01/10/2026). Com os 66/68 são 8 na rua 1, igual às demais.
     '1-8-5', '1-8-7', '1-9-5', '1-9-7',
     // Marcados antes no CSV da operação, fora da regra acima (conferir):
-    // rua 6 fim da rua e 11-9-1 (a rua 7 é insumos: saiu do Pulmão).
+    // rua 6 fim da rua e 11-9-1.
     '6-9-138', '6-9-140', '6-9-142', '6-9-144',
     '11-9-1',
   ],
@@ -216,7 +217,7 @@ const CAPACIDADE_RUA_PLANILHA = {
              // (confirmado pelo usuário, 25/09/2026). Os 408 ficam todos na 15;
              // a 14 do sistema (quase vazia) não tem capacidade própria.
              '11': 1190, '12': 204, '13': 204, '14': 0, '15': 408 },
-  pulmao: { '1': 712, '2': 712, '3': 712, '4': 707, '5': 712, '6': 712, // rua 7 = insumos (fora, 01/10/2026)
+  pulmao: { '1': 712, '2': 712, '3': 712, '4': 707, '5': 712, '6': 712, '7': 712,
             '11': 136, '12': 272, '13': 272, '14': 272 },
 };
 // Capacidade usada na tela = a da planilha (ela já desconta a passagem) menos

@@ -4836,11 +4836,11 @@ function renderizarEstoqueOperacao(p) {
   // Faixa de Picking sem parametrização (ruas 3–6, boxes 1–76): os SEM saldo já saíram da
   // relação/ocupação/capacidade; os COM saldo continuam contando e ficam avisados aqui.
   const semParam = p.picking_sem_parametrizacao;
-  if (semParam && semParam.com_saldo && semParam.com_saldo.enderecos > 0) {
-    avisos += '<div class="aviso" style="border-color:var(--amber);color:var(--text)">' +
-      '<strong>Picking sem parametrização:</strong> ' + fmtInt(semParam.com_saldo.enderecos) + ' endereço(s) das ruas 3 a 6, ' +
-      'boxes 1 a 76, têm saldo (' + fmtInt(semParam.com_saldo.pecas) + ' pç) — continuam contando como ocupados. ' +
-      'Os outros ' + fmtInt(semParam.fora) + ' dessa faixa, sem saldo, ficam fora da relação, da ocupação e da capacidade.</div>';
+  if (semParam && (semParam.fora > 0 || (semParam.com_saldo && semParam.com_saldo.enderecos > 0))) {
+    avisos += '<div class="aviso">' +
+      '<strong>Picking, ruas 3 a 6, boxes 1 a 76:</strong> ' + fmtInt(semParam.fora) + ' endereço(s) sem saldo e sem parametrização ficam fora da relação, ' +
+      'da ocupação e da capacidade; ' + fmtInt((semParam.com_saldo || {}).enderecos || 0) + ' endereço(s) com saldo (' +
+      fmtInt((semParam.com_saldo || {}).pecas || 0) + ' pç) contam normalmente.</div>';
   }
 
   /* ---------- filtro Picking/Pulmão/Todos — "Todos" primeiro e é o padrão

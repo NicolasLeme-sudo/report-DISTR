@@ -390,20 +390,20 @@ eq(CAPACIDADE_RUA.pulmao['13'], 272 - 4, 'rua 13: box 35 (coluna do galpão) sai
 eq(CAPACIDADE_RUA.pulmao['11'], 136 - 6, 'rua 11: boxes 66 e 68 sem nível 08, 11 e 12 — 6 endereços');
 eq(foraCapacidadePulmao(13, 10, 35), 'limitacao_fisica', '13-10-35 fica fora');
 eq(foraCapacidadePulmao(11, 9, 66), null, '11-09-66 continua valendo (nível 9 armazena)');
-eq(somaRuasTela('pulmao', ['2', '6']), 1424, 'Pulmão vestuário: 2 e 6 = 1.424 (rua 7 = insumos)');
+eq(somaRuasTela('pulmao', ['2', '6', '7']), 2136, 'Pulmão vestuário: planilha 2.136');
 eq(foraCapacidadePulmao(6, 10, 65), null, 'nível 10 guarda pallet: não é passagem');
 eq(foraCapacidadePulmao(6, 9, 66), 'passagem', 'nível 09 box 066 continua passagem');
 eq(somaRuasTela('pulmao', ['3', '4', '5']), 2131, 'Pulmão calçado: planilha 2.131');
 eq(foraCapacidadePulmao('05', '04', '001'), 'nao_existe', '05-04-001 (nível que não existe) fica fora');
 // Regra de passagem (01/10/2026): ruas 2–6, boxes 65–68, níveis 08 e 09; rua 1 só o lado par.
 let passagemRegra = true;
-[2, 3, 4, 5, 6].forEach(function (r) {
+[2, 3, 4, 5, 6, 7].forEach(function (r) {
   [8, 9].forEach(function (nv) { [65, 66, 67, 68].forEach(function (b) {
     if (foraCapacidadePulmao(r, nv, b) !== 'passagem') passagemRegra = false;
   }); });
   [10, 11, 12].forEach(function (nv) { if (foraCapacidadePulmao(r, nv, 66)) passagemRegra = false; });
 });
-ok(passagemRegra, 'ruas 2 a 6: boxes 65–68 dos níveis 08 e 09 são passagem (e 10+ não)');
+ok(passagemRegra, 'ruas 2 a 7: boxes 65–68 dos níveis 08 e 09 são passagem (e 10+ não)');
 ok(foraCapacidadePulmao(1, 8, 66) === 'passagem' && foraCapacidadePulmao(1, 9, 68) === 'passagem', 'rua 1: lado par (66/68) é passagem');
 ok([5, 7].every(function (b) { return [8, 9].every(function (nv) { return foraCapacidadePulmao(1, nv, b) === 'passagem'; }); }), 'rua 1: boxes 05 e 07 dos níveis 08/09 são passagem (E-commerce)');
 ok(!foraCapacidadePulmao(1, 10, 5), 'rua 1: nível 10 do box 05 continua armazenando');
@@ -421,7 +421,7 @@ eq(foraCapacidadePulmao(6, 10, 143), null, 'endereço não marcado continua vale
   ok(!pl.enderecos_ociosos.pulmao.vazios.some(function (v) { return foraCapacidadePulmao(v[0], v[1], v[2]); }), 'lista de vazios não traz endereço validado como fora');
 })();
 eq(RUAS_ZONA.pulmao.meia.join(), '1', 'Pulmão meia: zona só com a rua 1');
-eq(somaRuas('pulmao', ['2', '6']), 1424, 'Pulmão vestuário 2 e 6 = 1.424');
+eq(somaRuas('pulmao', ['2', '6', '7']), 2136, 'Pulmão vestuário 2, 6, 7 = 2.136');
 eq(somaRuas('pulmao', ['3', '4', '5']), 2131, 'Pulmão calçado 3–5 = 2.131');
 eq(somaRuas('pulmao', ['11', '12', '13', '14']), 952, 'Pulmão acessório 11–14 = 952');
 eq(payloadSkuZero.ocupacao_por_rua.picking['7'], 2, 'ocupado por rua conta endereço alocado (2 na rua 7)');
@@ -675,7 +675,7 @@ secao('upsertArtigoFamilia — dicionário artigo→família pro Kardex resolver
 })().then(function () {
   
 /* -------------------------------------------------------------------------- */
-secao('Picking sem parametrização (ruas 3–6, boxes 1–76) e Pulmão rua 7 = insumos — 01/10/2026');
+secao('Picking sem parametrização (ruas 3–6, boxes 1–76), passagem e insumos (Pulmão rua 8) — 01/10/2026');
 (function () {
   const mk = function (art, rua, nivel, box, qtd) {
     return { familia_codigo: '101', artigo_codigo: art, cor: 'PT', tamanho: '40', ean: 'E' + art, rua: rua, nivel: nivel, box: box, qtd: qtd, qtd_cativado: 0, qtd_gap_reservado: 0 };
@@ -688,7 +688,7 @@ secao('Picking sem parametrização (ruas 3–6, boxes 1–76) e Pulmão rua 7 =
     mk('S5', '7', '1', '5', 0),     // rua 7 não é da regra
   ], negativas_excluidas: 0, negativas_unidades: 0 };
   const pulm = { registros: [
-    { familia_codigo: '101', artigo_codigo: 'U1', cor: 'PT', tamanho: '40', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '7', nivel: '10', box: '1', dt_cri: null, qtd: 100, codbar: '' },
+    { familia_codigo: '101', artigo_codigo: 'U1', cor: 'PT', tamanho: '40', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '8', nivel: '10', box: '1', dt_cri: null, qtd: 100, codbar: '' },
     { familia_codigo: '101', artigo_codigo: 'U2', cor: 'PT', tamanho: '40', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '6', nivel: '10', box: '1', dt_cri: null, qtd: 100, codbar: '' },
   ], colisoes_volume: 0 };
   const snap = construirSnapshotRessuprimento(pick, pulm, mapaFamilias, { picking_vestuario: 100, pulmao_vestuario: 9999 }, { arquivo_picking: 'a', arquivo_pulmao: 'b' });
@@ -701,9 +701,9 @@ secao('Picking sem parametrização (ruas 3–6, boxes 1–76) e Pulmão rua 7 =
   eq(snap.ocupacao_por_rua.desconto_picking['3'], 1, 'desconto de capacidade da rua 3');
   eq(snap.ocupacao_por_rua.picking['3'], 1, 'rua 3 ocupa só o 3-1-77 (3-1-5 saiu)');
   eq(snap.ocupacao.picking.vestuario.capacidade, 98, 'capacidade da zona cai 2 (endereços excluídos dos dois lados)');
-  eq(snap.ocupacao.pulmao.vestuario.capacidade, 1424, 'Pulmão vestuário = ruas 2 e 6 (rua 7 = insumos saiu)');
-  eq(snap.ocupacao.pulmao.vestuario.ocupado, 1, 'só o endereço da rua 6 ocupa; a rua 7 não conta');
-  eq(txt(snap.enderecos_ociosos.pulmao.picados), '', 'rua 7 do Pulmão não entra nas listas de endereços');
+  eq(snap.ocupacao.pulmao.vestuario.capacidade, 2136, 'Pulmão vestuário = ruas 2, 6 e 7');
+  eq(snap.ocupacao.pulmao.vestuario.ocupado, 1, 'só o endereço da rua 6 ocupa; a rua 8 (insumos) não conta');
+  eq(txt(snap.enderecos_ociosos.pulmao.picados), '', 'rua 8 (insumos) do Pulmão não entra nas listas de endereços');
 })();
 
 console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
