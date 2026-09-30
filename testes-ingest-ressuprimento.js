@@ -197,12 +197,12 @@ eq(a3Rua24.box, '1', 'linha de validação carrega box');
 secao('endereços vazios e picados (< 10 pç) — 23/09/2026');
 (function () {
   const pick = { registros: [
-    { familia_codigo: '101', artigo_codigo: 'P1', cor: 'PT', tamanho: '40', ean: 'E1', rua: '3', nivel: '1', box: '1', qtd: 0, qtd_cativado: 0, qtd_gap_reservado: 0 },
-    { familia_codigo: '101', artigo_codigo: 'P2', cor: 'PT', tamanho: '40', ean: 'E2', rua: '3', nivel: '1', box: '2', qtd: 4, qtd_cativado: 3, qtd_gap_reservado: 0 },
-    { familia_codigo: '101', artigo_codigo: 'P3', cor: 'PT', tamanho: '40', ean: 'E3', rua: '3', nivel: '1', box: '3', qtd: 40, qtd_cativado: 0, qtd_gap_reservado: 0 },
+    { familia_codigo: '101', artigo_codigo: 'P1', cor: 'PT', tamanho: '40', ean: 'E1', rua: '3', nivel: '1', box: '101', qtd: 0, qtd_cativado: 0, qtd_gap_reservado: 0 },
+    { familia_codigo: '101', artigo_codigo: 'P2', cor: 'PT', tamanho: '40', ean: 'E2', rua: '3', nivel: '1', box: '102', qtd: 4, qtd_cativado: 3, qtd_gap_reservado: 0 },
+    { familia_codigo: '101', artigo_codigo: 'P3', cor: 'PT', tamanho: '40', ean: 'E3', rua: '3', nivel: '1', box: '103', qtd: 40, qtd_cativado: 0, qtd_gap_reservado: 0 },
     { familia_codigo: '101', artigo_codigo: 'P4', cor: 'PT', tamanho: '40', ean: 'E4', rua: '70', nivel: '1', box: '9', qtd: 0, qtd_cativado: 0, qtd_gap_reservado: 0 },
     // saldo negativo zerado no parse — tem material comprometido, não é vazio
-    { familia_codigo: '101', artigo_codigo: 'P5', cor: 'PT', tamanho: '40', ean: 'E5', rua: '3', nivel: '1', box: '4', qtd: 0, qtd_cativado: 0, qtd_gap_reservado: 6 },
+    { familia_codigo: '101', artigo_codigo: 'P5', cor: 'PT', tamanho: '40', ean: 'E5', rua: '3', nivel: '1', box: '104', qtd: 0, qtd_cativado: 0, qtd_gap_reservado: 6 },
   ], negativas_excluidas: 1, negativas_unidades: 6 };
   const pulm = { registros: [
     { familia_codigo: '101', artigo_codigo: 'U1', cor: 'PT', tamanho: '40', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '2', nivel: '8', box: '1', dt_cri: null, qtd: 100, codbar: '' },
@@ -212,8 +212,8 @@ secao('endereços vazios e picados (< 10 pç) — 23/09/2026');
   ], colisoes_volume: 0 };
   const oc = construirSnapshotRessuprimento(pick, pulm, mapaFamilias, {}, { arquivo_picking: 'a', arquivo_pulmao: 'b' }).enderecos_ociosos;
   const txt = function (l) { return l.map(function (e) { return e[0] + '-' + e[1] + '-' + e[2]; }).join(','); };
-  eq(txt(oc.picking.vazios), '3-1-1', 'Picking vazio = alocado com saldo zero; rua 70 (acima da rua 15) e 3-1-4 (saldo negativo zerado, material comprometido) ficam fora');
-  eq(txt(oc.picking.picados), '3-1-2', 'Picking picado soma disponível + cativado (4+3=7 < 10)');
+  eq(txt(oc.picking.vazios), '3-1-101', 'Picking vazio = alocado com saldo zero; rua 70 (acima da rua 15) e 3-1-104 (saldo negativo zerado, material comprometido) ficam fora');
+  eq(txt(oc.picking.picados), '3-1-102', 'Picking picado soma disponível + cativado (4+3=7 < 10)');
   eq(txt(oc.pulmao.vazios), '2-9-3', 'Pulmão vazio inferido: box 3 existe na rua 2 (nível 8) mas está sem volume no nível 9');
   eq(txt(oc.pulmao.picados), '2-8-3', 'Pulmão picado: 5 pç; rua 500 (trânsito) fica fora');
   eq(oc.picking.vazios[0][5], 'calcado', 'segmento do endereço vem do bucket da família');
@@ -390,7 +390,7 @@ eq(CAPACIDADE_RUA.pulmao['13'], 272 - 4, 'rua 13: box 35 (coluna do galpão) sai
 eq(CAPACIDADE_RUA.pulmao['11'], 136 - 6, 'rua 11: boxes 66 e 68 sem nível 08, 11 e 12 — 6 endereços');
 eq(foraCapacidadePulmao(13, 10, 35), 'limitacao_fisica', '13-10-35 fica fora');
 eq(foraCapacidadePulmao(11, 9, 66), null, '11-09-66 continua valendo (nível 9 armazena)');
-eq(somaRuasTela('pulmao', ['2', '6', '7']), 2136, 'Pulmão vestuário: planilha 2.136');
+eq(somaRuasTela('pulmao', ['2', '6']), 1424, 'Pulmão vestuário: 2 e 6 = 1.424 (rua 7 = insumos)');
 eq(foraCapacidadePulmao(6, 10, 65), null, 'nível 10 guarda pallet: não é passagem');
 eq(foraCapacidadePulmao(6, 9, 66), 'passagem', 'nível 09 box 066 continua passagem');
 eq(somaRuasTela('pulmao', ['3', '4', '5']), 2131, 'Pulmão calçado: planilha 2.131');
@@ -421,7 +421,7 @@ eq(foraCapacidadePulmao(6, 10, 143), null, 'endereço não marcado continua vale
   ok(!pl.enderecos_ociosos.pulmao.vazios.some(function (v) { return foraCapacidadePulmao(v[0], v[1], v[2]); }), 'lista de vazios não traz endereço validado como fora');
 })();
 eq(RUAS_ZONA.pulmao.meia.join(), '1', 'Pulmão meia: zona só com a rua 1');
-eq(somaRuas('pulmao', ['2', '6', '7']), 2136, 'Pulmão vestuário 2, 6, 7 = 2.136');
+eq(somaRuas('pulmao', ['2', '6']), 1424, 'Pulmão vestuário 2 e 6 = 1.424');
 eq(somaRuas('pulmao', ['3', '4', '5']), 2131, 'Pulmão calçado 3–5 = 2.131');
 eq(somaRuas('pulmao', ['11', '12', '13', '14']), 952, 'Pulmão acessório 11–14 = 952');
 eq(payloadSkuZero.ocupacao_por_rua.picking['7'], 2, 'ocupado por rua conta endereço alocado (2 na rua 7)');
@@ -673,6 +673,39 @@ secao('upsertArtigoFamilia — dicionário artigo→família pro Kardex resolver
   ok(!jogouErro, 'tabela ausente vira aviso, não derruba o upload de Picking/Pulmão');
   ok(avisos2.some(function (a) { return /Aviso/.test(a); }), 'o aviso explica o que não funcionou');
 })().then(function () {
-  console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
+  
+/* -------------------------------------------------------------------------- */
+secao('Picking sem parametrização (ruas 3–6, boxes 1–76) e Pulmão rua 7 = insumos — 01/10/2026');
+(function () {
+  const mk = function (art, rua, nivel, box, qtd) {
+    return { familia_codigo: '101', artigo_codigo: art, cor: 'PT', tamanho: '40', ean: 'E' + art, rua: rua, nivel: nivel, box: box, qtd: qtd, qtd_cativado: 0, qtd_gap_reservado: 0 };
+  };
+  const pick = { registros: [
+    mk('S1', '3', '1', '5', 0),     // faixa, sem saldo → fora
+    mk('S2', '4', '2', '76', 0),    // faixa, sem saldo → fora
+    mk('S3', '5', '1', '10', 12),   // faixa, COM saldo → continua contando + aviso
+    mk('S4', '3', '1', '77', 0),    // box 77: fora da faixa → vazio normal
+    mk('S5', '7', '1', '5', 0),     // rua 7 não é da regra
+  ], negativas_excluidas: 0, negativas_unidades: 0 };
+  const pulm = { registros: [
+    { familia_codigo: '101', artigo_codigo: 'U1', cor: 'PT', tamanho: '40', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '7', nivel: '10', box: '1', dt_cri: null, qtd: 100, codbar: '' },
+    { familia_codigo: '101', artigo_codigo: 'U2', cor: 'PT', tamanho: '40', descricao: 'X', unidade: 'PAR', em_linha: true, rua: '6', nivel: '10', box: '1', dt_cri: null, qtd: 100, codbar: '' },
+  ], colisoes_volume: 0 };
+  const snap = construirSnapshotRessuprimento(pick, pulm, mapaFamilias, { picking_vestuario: 100, pulmao_vestuario: 9999 }, { arquivo_picking: 'a', arquivo_pulmao: 'b' });
+  const txt = function (l) { return l.map(function (e) { return e[0] + '-' + e[1] + '-' + e[2]; }).join(','); };
+  eq(txt(snap.enderecos_ociosos.picking.vazios).indexOf('3-1-5'), -1, '3-1-5 (faixa, sem saldo) fora da relação de vazios');
+  eq(txt(snap.enderecos_ociosos.picking.vazios).indexOf('4-2-76'), -1, '4-2-76 (box 76) fora da relação');
+  ok(txt(snap.enderecos_ociosos.picking.vazios).indexOf('3-1-77') !== -1, '3-1-77 (box 77) continua na relação');
+  eq(snap.picking_sem_parametrizacao.fora, 2, 'dois endereços da faixa sem saldo excluídos');
+  eq(snap.picking_sem_parametrizacao.com_saldo.enderecos, 1, 'endereço da faixa COM saldo não é excluído — vai pro aviso');
+  eq(snap.ocupacao_por_rua.desconto_picking['3'], 1, 'desconto de capacidade da rua 3');
+  eq(snap.ocupacao_por_rua.picking['3'], 1, 'rua 3 ocupa só o 3-1-77 (3-1-5 saiu)');
+  eq(snap.ocupacao.picking.vestuario.capacidade, 98, 'capacidade da zona cai 2 (endereços excluídos dos dois lados)');
+  eq(snap.ocupacao.pulmao.vestuario.capacidade, 1424, 'Pulmão vestuário = ruas 2 e 6 (rua 7 = insumos saiu)');
+  eq(snap.ocupacao.pulmao.vestuario.ocupado, 1, 'só o endereço da rua 6 ocupa; a rua 7 não conta');
+  eq(txt(snap.enderecos_ociosos.pulmao.picados), '', 'rua 7 do Pulmão não entra nas listas de endereços');
+})();
+
+console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
   process.exit(falhas === 0 ? 0 : 1);
 });

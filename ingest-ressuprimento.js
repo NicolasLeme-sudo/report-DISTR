@@ -112,14 +112,17 @@ const RECLASSIFICA_PICKING_PARA_PULMAO = {
      Picking: vestuário 1–6 (14.630), calçado 7–8 (4.352), acessório 11–13
               (1.598), meia 14–15 (408).
      Pulmão:  meia 1 (712 — a rua 15 do Pulmão é área de alocação da reversa,
-              não pulmão; fora da capacidade, usuário 25/09/2026), vestuário 2, 6 e 7 (2.136), calçado 3–5
+              não pulmão; fora da capacidade, usuário 25/09/2026), vestuário 2 e 6 (1.424; a rua 7 é de insumos, fora — usuário 01/10/2026), calçado 3–5
               (2.131), acessório 11–14 (952). Rua 8 do Pulmão = insumos,
               fora da capacidade (confirmado pelo usuário). */
 const RUAS_ZONA = {
   // 81 e 102 estão desativadas (material no Pulmão) — fora das zonas.
   picking: { vestuario: ['1', '2', '3', '4', '5', '6'], calcado: ['7', '8'], acessorio: ['11', '12', '13'], meia: ['14', '15'] },
-  pulmao: { meia: ['1'], vestuario: ['2', '6', '7'], calcado: ['3', '4', '5'], acessorio: ['11', '12', '13', '14'] },
+  pulmao: { meia: ['1'], vestuario: ['2', '6'], calcado: ['3', '4', '5'], acessorio: ['11', '12', '13', '14'] },
 };
+// Ruas do Pulmão que são INSUMOS (não entram em capacidade, ocupação nem nas listas de
+// endereços vazios/picados): 7 (usuário, 01/10/2026) e 8.
+const RUAS_PULMAO_INSUMOS = ['7', '8'];
 const BUCKETS_ZONA = ['meia', 'vestuario', 'acessorio', 'calcado'];
 /* Capacidade (endereços) POR RUA — mesma planilha; a soma por zona bate com
    dim_capacidade_zonas. Picking calçado (7+8 = 4.352) vem por longarina na
@@ -155,10 +158,8 @@ const ENDERECOS_FORA_CAPACIDADE_PULMAO = {
     // (usuário, 01/10/2026). Com os 66/68 são 8 na rua 1, igual às demais.
     '1-8-5', '1-8-7', '1-9-5', '1-9-7',
     // Marcados antes no CSV da operação, fora da regra acima (conferir):
-    // rua 6 fim da rua, rua 7 e 11-9-1.
+    // rua 6 fim da rua e 11-9-1 (a rua 7 é insumos: saiu do Pulmão).
     '6-9-138', '6-9-140', '6-9-142', '6-9-144',
-    '7-8-65', '7-8-67', '7-8-68',
-    '7-9-66', '7-9-67', '7-9-68',
     '11-9-1',
   ],
   /* Limitação FÍSICA do galpão (29/09/2026, usuário — endereço rua.nível.box):
@@ -174,6 +175,15 @@ const ENDERECOS_FORA_CAPACIDADE_PULMAO = {
   ],
 };
 
+/* PICKING — endereços NÃO parametrizados corretamente (usuário, 01/10/2026): boxes 01 a
+   76 das ruas 03 a 06 (todos os níveis). Não são posição de picking de verdade, então
+   ficam fora da relação de "cadastrado sem saldo", da contagem de ocupados e da
+   capacidade — só quando NÃO têm saldo. Endereço dessa faixa COM saldo continua
+   contando (é material real) e vai pro aviso `picking_sem_parametrizacao`. */
+function foraRegraPicking(rua, box) {
+  const r = Number(rua), b = Number(box);
+  return r >= 3 && r <= 6 && b >= 1 && b <= 76;
+}
 const FORA_CAPACIDADE_PULMAO = (function () {
   const m = {};
   Object.keys(ENDERECOS_FORA_CAPACIDADE_PULMAO).forEach(function (motivo) {
@@ -206,7 +216,7 @@ const CAPACIDADE_RUA_PLANILHA = {
              // (confirmado pelo usuário, 25/09/2026). Os 408 ficam todos na 15;
              // a 14 do sistema (quase vazia) não tem capacidade própria.
              '11': 1190, '12': 204, '13': 204, '14': 0, '15': 408 },
-  pulmao: { '1': 712, '2': 712, '3': 712, '4': 707, '5': 712, '6': 712, '7': 712,
+  pulmao: { '1': 712, '2': 712, '3': 712, '4': 707, '5': 712, '6': 712, // rua 7 = insumos (fora, 01/10/2026)
             '11': 136, '12': 272, '13': 272, '14': 272 },
 };
 // Capacidade usada na tela = a da planilha (ela já desconta a passagem) menos
@@ -638,17 +648,50 @@ function construirSaldoEnderecos(pickingReal, pulmaoTudo) {
 function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidadesManual, meta, capacidadesItensManual) {
   picking = semRuasDesconsideradas(picking);
   pulmao = semRuasDesconsideradas(pulmao);
-    const cap = Object.assign({}, capacidadesManual || {});
-  // Zona do Pulmão (dim_capacidade_zonas = planilha) menos a limitação física
-  // validada nas ruas da zona.
+  const cap = Object.assign({}, capacidadesManual || {});
+  // Zona do Pulmão = soma da capacidade POR RUA (planilha − limitação física) das ruas
+  // que a compõem — assim rua fora da zona (7 = insumos) sai sozinha, sem depender
+  // do número gravado em dim_capacidade_zonas.
   Object.keys(RUAS_ZONA.pulmao).forEach(function (b) {
-    const z = 'pulmao_' + b;
-    if (!cap[z]) return;
-    cap[z] -= RUAS_ZONA.pulmao[b].reduce(function (t, r) { return t + (DESCONTO_CAPACIDADE_PULMAO[r] || 0); }, 0);
+    if (!cap['pulmao_' + b]) return;
+    cap['pulmao_' + b] = RUAS_ZONA.pulmao[b].reduce(function (t, r) { return t + (CAPACIDADE_RUA.pulmao[r] || 0); }, 0);
   });
   const capItens = capacidadesItensManual || {};
   const classif = classificarPickingEPulmao(picking, pulmao, mapaFamilias);
   const pickingReal = classif.pickingReal;
+  /* Picking: faixa sem parametrização (ruas 3–6, boxes 1–76). Endereço SEM saldo sai
+     da relação, da ocupação e da capacidade (some dos dois lados, então o "livre" não
+     muda); COM saldo continua contando e é listado no aviso. */
+  const saldoPorEnderecoPicking = new Map();
+  pickingReal.forEach(function (r) {
+    if (!foraRegraPicking(r.rua, r.box)) return;
+    const k = r.rua + '|' + r.nivel + '|' + r.box;
+    const e = saldoPorEnderecoPicking.get(k) || { rua: String(r.rua), nivel: r.nivel, box: r.box, pecas: 0, skus: new Set() };
+    e.pecas += (r.qtd || 0) + (r.qtd_cativado || 0);
+    e.skus.add(r.artigo_codigo + '|' + r.cor + '|' + r.tamanho);
+    saldoPorEnderecoPicking.set(k, e);
+  });
+  const enderecosPickingFora = new Set();
+  const descontoPicking = {};
+  const pickingSemParametrizacao = { regra: 'Picking ruas 3 a 6, boxes 1 a 76 (todos os níveis)', fora: 0, por_rua: {}, com_saldo: { enderecos: 0, pecas: 0, lista: [] } };
+  saldoPorEnderecoPicking.forEach(function (e, k) {
+    if (e.pecas > 0) {
+      pickingSemParametrizacao.com_saldo.enderecos++;
+      pickingSemParametrizacao.com_saldo.pecas += e.pecas;
+      if (pickingSemParametrizacao.com_saldo.lista.length < 100) pickingSemParametrizacao.com_saldo.lista.push([e.rua, e.nivel, e.box, e.pecas, e.skus.size]);
+      return;
+    }
+    enderecosPickingFora.add(k);
+    descontoPicking[e.rua] = (descontoPicking[e.rua] || 0) + 1;
+    pickingSemParametrizacao.fora++;
+    pickingSemParametrizacao.por_rua[e.rua] = (pickingSemParametrizacao.por_rua[e.rua] || 0) + 1;
+  });
+  const pickingCapacidade = pickingReal.filter(function (r) { return !enderecosPickingFora.has(r.rua + '|' + r.nivel + '|' + r.box); });
+  Object.keys(RUAS_ZONA.picking).forEach(function (b) {
+    const z = 'picking_' + b;
+    if (!cap[z]) return;
+    cap[z] -= RUAS_ZONA.picking[b].reduce(function (t, r) { return t + (descontoPicking[r] || 0); }, 0);
+  });
   const pulmaoTudo = classif.pulmaoTudo;
   const familiasNaoMapeadas = classif.familias_nao_mapeadas;
 
@@ -779,12 +822,12 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
   // Monta as 2 linhas (Picking/Pulmão) × 5 zonas (4 buckets + total) pra um
   // critério de medição só — chamada uma vez pra endereço, outra pra peça,
   // sem duplicar a árvore.
-  function montarOcupacao(capMap, medir) {
+  function montarOcupacao(capMap, medir, listaPicking) {
     const pB = {
-      meia: fazZonaRua(capMap, medir, 'picking', 'meia', pickingReal),
-      vestuario: fazZonaRua(capMap, medir, 'picking', 'vestuario', pickingReal),
-      acessorio: fazZonaRua(capMap, medir, 'picking', 'acessorio', pickingReal),
-      calcado: fazZonaRua(capMap, medir, 'picking', 'calcado', pickingReal),
+      meia: fazZonaRua(capMap, medir, 'picking', 'meia', listaPicking),
+      vestuario: fazZonaRua(capMap, medir, 'picking', 'vestuario', listaPicking),
+      acessorio: fazZonaRua(capMap, medir, 'picking', 'acessorio', listaPicking),
+      calcado: fazZonaRua(capMap, medir, 'picking', 'calcado', listaPicking),
     };
     const uB = {
       meia: fazZonaRua(capMap, medir, 'pulmao', 'meia', pulmaoCapacidade),
@@ -797,7 +840,7 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
       pulmao: Object.assign({ total: fazZonaTotal([uB.meia, uB.vestuario, uB.acessorio, uB.calcado]) }, uB),
     };
   }
-  const ocupacao = montarOcupacao(cap, posicoesOcupadas);
+  const ocupacao = montarOcupacao(cap, posicoesOcupadas, pickingCapacidade);
   // Endereços ocupados por rua (qualquer produto) — base do "livre por rua".
   function ocupadosPorRua(lista) {
     const porRua = {};
@@ -810,11 +853,13 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     Object.keys(porRua).forEach(function (rua) { saida[rua] = porRua[rua].size; });
     return saida;
   }
-  const ocupacaoPorRua = { picking: ocupadosPorRua(pickingReal), pulmao: ocupadosPorRua(pulmaoCapacidade), capacidade: CAPACIDADE_RUA };
+  const ocupacaoPorRua = { picking: ocupadosPorRua(pickingCapacidade), pulmao: ocupadosPorRua(pulmaoCapacidade), capacidade: CAPACIDADE_RUA,
+    // endereços de Picking fora da capacidade por rua (faixa sem parametrização, sem saldo)
+    desconto_picking: descontoPicking };
   // Segunda árvore, mesma forma, medida em peças — recalculada do zero (não
   // é o número de endereço convertido) com a capacidade já segregada por
   // item (pedido da operação, 09/09/2026).
-  const ocupacaoItens = montarOcupacao(capItens, pecasOcupadas);
+  const ocupacaoItens = montarOcupacao(capItens, pecasOcupadas, pickingReal);
 
   /* ---------- B.O. em trânsito: saldo parado nas ruas de trânsito/validação
      do Pulmão, por ENDEREÇO — pra gestão enxergar onde o material está
@@ -1056,10 +1101,10 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
      material parado em trânsito). */
   const LIMITE_RUA_FISICA = 15;
   const dentroDaRuaFisica = function (r) { return Number(r.rua) <= LIMITE_RUA_FISICA; };
-  const pickingComApoio = pickingReal
+  const pickingComApoio = pickingCapacidade
     .concat(pulmaoTudo.filter(function (r) { return r.origem !== 'pulmao' && r.apoio_confiavel; }))
     .filter(dentroDaRuaFisica);
-  const pulmaoFisicoAteRua15 = pulmaoFisico.filter(dentroDaRuaFisica);
+  const pulmaoFisicoAteRua15 = pulmaoFisico.filter(dentroDaRuaFisica).filter(function (r) { return RUAS_PULMAO_INSUMOS.indexOf(String(r.rua)) === -1; });
 
   return {
     versao: 1,
@@ -1110,6 +1155,7 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     // (20/70/80/81-02, apoio confiável) — continuam sendo posição de picking.
     // Rua > 15 (físico ou reclassificado) fica de fora — ver dentroDaRuaFisica.
     enderecos_ociosos: mapearEnderecosOciosos(pickingComApoio, pulmaoFisicoAteRua15),
+    picking_sem_parametrizacao: pickingSemParametrizacao,
   };
 }
 
@@ -1418,6 +1464,8 @@ window.RUAS_ZONA = RUAS_ZONA;
 window.CAPACIDADE_RUA = CAPACIDADE_RUA;
 window.CAPACIDADE_RUA_PLANILHA = CAPACIDADE_RUA_PLANILHA;
 window.foraCapacidadePulmao = foraCapacidadePulmao;
+window.foraRegraPicking = foraRegraPicking;
+window.RUAS_PULMAO_INSUMOS = RUAS_PULMAO_INSUMOS;
 window.construirSnapshotRessuprimento = construirSnapshotRessuprimento;
 window.classificarPickingEPulmao = classificarPickingEPulmao;
 window.construirSaldoEnderecos = construirSaldoEnderecos;

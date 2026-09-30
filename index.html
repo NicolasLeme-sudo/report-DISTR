@@ -2867,6 +2867,18 @@ function filaItensVisiveis() {
     return (!filtroHistDe || f.dia >= filtroHistDe) && (!filtroHistAte || f.dia <= filtroHistAte);
   });
 }
+/* Relações de endereços vazios/picados: tira o que foi validado como fora (passagem/inexistente/
+   limitação no Pulmão, insumos 7 e 8, faixa de Picking sem parametrização) — vale também em
+   snapshot antigo, sem reprocessar. */
+function filtrarOciosos(lado, lista) {
+  return (lista || []).filter(function (e) {
+    if (lado === 'pulmao') {
+      if (window.foraCapacidadePulmao && window.foraCapacidadePulmao(e[0], e[1], e[2])) return false;
+      if ((window.RUAS_PULMAO_INSUMOS || []).indexOf(String(e[0])) !== -1) return false;
+    } else if (window.foraRegraPicking && window.foraRegraPicking(e[0], e[2]) && !(e[3] > 0)) return false;
+    return true;
+  });
+}
 function exportarPosicoesOciosas(lado, tipo) {
   const p = window._snapshotRessuprimento;
   const oc = p && p.enderecos_ociosos;
@@ -2877,6 +2889,10 @@ function exportarPosicoesOciosas(lado, tipo) {
     (oc[l][tipo] || []).forEach(function (e) {
       // Endereço validado como passagem/inexistente sai já (sem reprocessar).
       if (l === 'pulmao' && window.foraCapacidadePulmao && window.foraCapacidadePulmao(e[0], e[1], e[2])) return;
+      // Rua de insumos do Pulmão (7 e 8) não entra nas relações.
+      if (l === 'pulmao' && (window.RUAS_PULMAO_INSUMOS || []).indexOf(String(e[0])) !== -1) return;
+      // Faixa do Picking sem parametrização: já saiu no processamento; filtra também snapshot antigo SEM saldo.
+      if (l === 'picking' && window.foraRegraPicking && window.foraRegraPicking(e[0], e[2]) && !(e[3] > 0)) return;
       linhas.push([l === 'picking' ? 'Picking' : 'Pulmao', formatarEndereco(e[0], e[1], e[2]), e[0], e[1], e[2],
         ROT_BUCKET[e[5]] || e[5], e[3], e[4],
         tipo === 'vazios' ? (l === 'pulmao' ? 'Vazio estimado (box sem volume)' : 'Alocado sem saldo') : 'Menos de ' + oc.limite_picado + ' pecas']);
@@ -2989,8 +3005,8 @@ function expandirTudoOciosos() {
   // Mesma chave de zona usada em blocoOciosos: 'OC|R|<rua>|Z|picking' ou
   // '...|Z|pulmao' — vazio/picado ficam no nível 3, sempre sem filhos.
   const listas = [
-    { zona: 'picking', lista: oc.picking.vazios }, { zona: 'picking', lista: oc.picking.picados },
-    { zona: 'pulmao', lista: oc.pulmao.vazios }, { zona: 'pulmao', lista: oc.pulmao.picados },
+    { zona: 'picking', lista: filtrarOciosos('picking', oc.picking.vazios) }, { zona: 'picking', lista: filtrarOciosos('picking', oc.picking.picados) },
+    { zona: 'pulmao', lista: filtrarOciosos('pulmao', oc.pulmao.vazios) }, { zona: 'pulmao', lista: filtrarOciosos('pulmao', oc.pulmao.picados) },
   ];
   listas.forEach(function (c) {
     c.lista.forEach(function (l) {
@@ -4817,6 +4833,16 @@ function renderizarEstoqueOperacao(p) {
       'essas unidades <strong>não entram</strong> em nenhum número desta tela até isso ser resolvido.</div>';
   }
 
+  // Faixa de Picking sem parametrização (ruas 3–6, boxes 1–76): os SEM saldo já saíram da
+  // relação/ocupação/capacidade; os COM saldo continuam contando e ficam avisados aqui.
+  const semParam = p.picking_sem_parametrizacao;
+  if (semParam && semParam.com_saldo && semParam.com_saldo.enderecos > 0) {
+    avisos += '<div class="aviso" style="border-color:var(--amber);color:var(--text)">' +
+      '<strong>Picking sem parametrização:</strong> ' + fmtInt(semParam.com_saldo.enderecos) + ' endereço(s) das ruas 3 a 6, ' +
+      'boxes 1 a 76, têm saldo (' + fmtInt(semParam.com_saldo.pecas) + ' pç) — continuam contando como ocupados. ' +
+      'Os outros ' + fmtInt(semParam.fora) + ' dessa faixa, sem saldo, ficam fora da relação, da ocupação e da capacidade.</div>';
+  }
+
   /* ---------- filtro Picking/Pulmão/Todos — "Todos" primeiro e é o padrão
      (06/09/2026): antes vinha por último e o padrão era "Picking", escondendo
      segmentos que só têm saldo no Pulmão (ex.: Chinelo) até alguém pensar em
@@ -5046,6 +5072,8 @@ function renderizarEstoqueOperacao(p) {
       // gravada no snapshot: correção de planilha entra sem reprocessar.
       const cap = (window.CAPACIDADE_RUA && window.CAPACIDADE_RUA[linha]) || opr.capacidade[linha] || {};
       const occ = opr[linha] || {};
+      // Endereços do Picking fora da capacidade (faixa sem parametrização, sem saldo).
+      const descPick = (linha === 'picking' && opr.desconto_picking) || {};
       // Conta POR SEGMENTO, igual aos cards (capacidade das ruas do segmento −
       // ocupados nelas): rua acima da capacidade (ex.: Picking 15) desconta das
       // outras ruas do mesmo segmento em vez de só zerar — senão o bloco e o
@@ -5054,9 +5082,9 @@ function renderizarEstoqueOperacao(p) {
         ? Object.keys(window.RUAS_ZONA[linha]).map(function (b) { return window.RUAS_ZONA[linha][b]; })
         : Object.keys(cap).map(function (rua) { return [rua]; });
       zonas.forEach(function (ruas) {
-        let livres = Math.max(0, ruas.reduce(function (t, rua) { return t + (cap[rua] || 0) - (occ[rua] || 0); }, 0));
+        let livres = Math.max(0, ruas.reduce(function (t, rua) { return t + (cap[rua] || 0) - (descPick[rua] || 0) - (occ[rua] || 0); }, 0));
         ruas.forEach(function (rua) {
-          const n = Math.min(livres, Math.max(0, (cap[rua] || 0) - (occ[rua] || 0)));
+          const n = Math.min(livres, Math.max(0, (cap[rua] || 0) - (descPick[rua] || 0) - (occ[rua] || 0)));
           for (let i = 0; i < n; i++) saida.push([rua, '', '', 0]);
           livres -= n;
         });
@@ -5066,13 +5094,13 @@ function renderizarEstoqueOperacao(p) {
     const ZONAS_OCIOSOS = [
       { chave: 'picking', rotulo: 'Picking', tipos: [
         { chave: 'livre', rotulo: 'Livre (sem SKU cadastrado)', lista: livresPorRua('picking'), cor: null },
-        { chave: 'vazio', rotulo: 'Cadastrado sem saldo', lista: oc.picking.vazios, cor: null },
-        { chave: 'picado', rotulo: 'Menos de ' + oc.limite_picado + ' pç', lista: oc.picking.picados, cor: '--amber' },
+        { chave: 'vazio', rotulo: 'Cadastrado sem saldo', lista: filtrarOciosos('picking', oc.picking.vazios), cor: null },
+        { chave: 'picado', rotulo: 'Menos de ' + oc.limite_picado + ' pç', lista: filtrarOciosos('picking', oc.picking.picados), cor: '--amber' },
       ] },
       { chave: 'pulmao', rotulo: 'Pulmão', tipos: [
         opr ? { chave: 'livre', rotulo: 'Livre', lista: livresPorRua('pulmao'), cor: null }
-            : { chave: 'vazio', rotulo: 'Vazio (estimado)', lista: oc.pulmao.vazios, cor: null },
-        { chave: 'picado', rotulo: 'Menos de ' + oc.limite_picado + ' pç', lista: oc.pulmao.picados, cor: '--amber' },
+            : { chave: 'vazio', rotulo: 'Vazio (estimado)', lista: filtrarOciosos('pulmao', oc.pulmao.vazios), cor: null },
+        { chave: 'picado', rotulo: 'Menos de ' + oc.limite_picado + ' pç', lista: filtrarOciosos('pulmao', oc.pulmao.picados), cor: '--amber' },
       ] },
     ];
     const ruas = new Map(); // rua -> { zonas: Map(chave -> { rotulo, tipos: Map(chave -> {rotulo, cor, end, pecas}), end, pecas }), end, pecas }
