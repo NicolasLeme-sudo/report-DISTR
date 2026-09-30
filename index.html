@@ -7028,6 +7028,7 @@ async function gravarEmailsAjustes() {
       await window.processarPfas(supabaseClient, null, null, null, escrever, { permitirRecalculoSemArquivo: true });
     }
     escrever('✔ Gravado — o Start Inicial já reflete os ajustes (reabra a aba se estiver aberta).');
+    pfasCarregado = false;   // Start Inicial relê o snapshot novo na próxima vez que abrir
     const corrigidas = prontas.filter(function (l) { return l.corrige_tipo; }).length;
     mensagemGravarEmails = { erro: false, texto: '✔ Gravado e recalculado: ' + fmtInt(prontas.length) + ' linha(s) em Ajustes de PFA' +
       (corrigidas ? ' (' + fmtInt(corrigidas) + ' com o tipo corrigido)' : '') +
