@@ -2619,6 +2619,7 @@ function alternarFiltroSegmentoRessuprimentoDia(seg) {
    classificação de endereço (Sujeira/Perca/Baixar Ressuprimento/...), busca
    livre e limite de linhas carregadas — a tabela em si sempre mostra só
    ~10 linhas por vez e rola por dentro (ver .tabela-rolavel no CSS). */
+let filtroMarcaValidacao = new Set();       // vazio = todas as marcas (B.O. em transitório/validação)
 let filtroClassifValidacao = new Set();    // vazio = Todas | multi-seleção de classif_rotulo
 let filtroTextoValidacao = '';
 // Default virou "Todos" (23/09/2026, achado real): com o corte em 100 e a
@@ -3075,6 +3076,12 @@ function alternarFiltroClassifValidacao(classif) {
   if (classif === null) filtroClassifValidacao.clear();
   else if (filtroClassifValidacao.has(classif)) filtroClassifValidacao.delete(classif);
   else filtroClassifValidacao.add(classif);
+  renderizarEstoqueOperacao();
+}
+function alternarFiltroMarcaValidacao(marca) {
+  if (marca === null) filtroMarcaValidacao.clear();
+  else if (filtroMarcaValidacao.has(marca)) filtroMarcaValidacao.delete(marca);
+  else filtroMarcaValidacao.add(marca);
   renderizarEstoqueOperacao();
 }
 function alterarLimiteValidacao(valor) {
@@ -5218,10 +5225,14 @@ function renderizarEstoqueOperacao(p) {
      por ENDEREÇO + SKU, com filtro de classificação, busca livre, exportação
      e altura fixa (rola por dentro, não estica a página). */
   let blocoBO = '';
-  const validacaoTudo = enriquecerValidacaoComKardex(p.validacao || []);
-  const snapshotSemVolumes = validacaoTudo.length > 0 && validacaoTudo.every(function (v) { return !v.volumes; });
+  const validacaoCompleta = enriquecerValidacaoComKardex(p.validacao || []);
+  // Filtro de marca (01/10/2026): vale pro card inteiro — KPIs, barras por rua, chips e tabela.
+  const validacaoTudo = filtroMarcaValidacao.size
+    ? validacaoCompleta.filter(function (v) { return filtroMarcaValidacao.has(v.marca); })
+    : validacaoCompleta;
+  const snapshotSemVolumes = validacaoCompleta.length > 0 && validacaoCompleta.every(function (v) { return !v.volumes; });
   const semKardexEntradas = !(dadosMovimentacoes && dadosMovimentacoes.entradas_volume);
-  if (filtroRessuprimento !== 'picking' && validacaoTudo.length) {
+  if (filtroRessuprimento !== 'picking' && validacaoCompleta.length) {
     const enderecosDistintos = new Set();
     const porRua = new Map();
     let totalQtd = 0;
@@ -5303,7 +5314,7 @@ function renderizarEstoqueOperacao(p) {
        isso "Sujeira" sozinho não dizia se era a rua 24 ou a 26, e rótulos
        como "Baixar Ressuprimento" não diziam qual rua é (500). */
     const ruasPorClassif = new Map();
-    validacaoTudo.forEach(function (v) {
+    validacaoCompleta.forEach(function (v) {
       if (!ruasPorClassif.has(v.classificacao)) ruasPorClassif.set(v.classificacao, new Set());
       ruasPorClassif.get(v.classificacao).add(v.rua);
     });
@@ -5329,6 +5340,25 @@ function renderizarEstoqueOperacao(p) {
       chipsClassif += '<span class="chip" style="color:var(--red)" onclick="alternarFiltroClassifValidacao(null)">✕ Limpar filtro</span>';
     }
     chipsClassif += '</div>';
+
+    // Chips de MARCA (com as peças de cada uma, já no recorte da classificação escolhida).
+    const pecasPorMarca = new Map();
+    validacaoCompleta.forEach(function (v) {
+      if (filtroClassifValidacao.size && !filtroClassifValidacao.has(v.classificacao)) return;
+      pecasPorMarca.set(v.marca || '—', (pecasPorMarca.get(v.marca || '—') || 0) + (v.qtd || 0));
+    });
+    let chipsMarcaBO = '<div class="filtros" style="margin-top:6px">' +
+      '<span class="rot-filtro">Marca</span>' +
+      '<span class="chip' + (!filtroMarcaValidacao.size ? ' on' : '') + '" onclick="alternarFiltroMarcaValidacao(null)">Todas</span>';
+    Array.from(pecasPorMarca.keys()).sort().forEach(function (mk) {
+      chipsMarcaBO += '<span class="chip' + (filtroMarcaValidacao.has(mk) ? ' on' : '') +
+        '" onclick="alternarFiltroMarcaValidacao(\'' + escaparJs(mk) + '\')" title="' + escapar(fmtInt(pecasPorMarca.get(mk))) + ' peças">' +
+        escapar(mk) + ' <span style="color:var(--text-muted)">' + fmtInt(pecasPorMarca.get(mk)) + '</span></span>';
+    });
+    if (filtroMarcaValidacao.size) {
+      chipsMarcaBO += '<span class="chip" style="color:var(--red)" onclick="alternarFiltroMarcaValidacao(null)">✕ Limpar filtro</span>';
+    }
+    chipsMarcaBO += '</div>';
 
     /* ---------- filtro + busca + ordenação ----------
        UMA LINHA POR VOLUME (pedido do usuário, 23/09/2026): cada volume tem
@@ -5423,7 +5453,7 @@ function renderizarEstoqueOperacao(p) {
         chipsOrdemBarrasBO +
         '<div class="bar-list-rua" style="margin-bottom:14px">' + barrasBO + '</div>' +
         legendaBarrasBO +
-        chipsClassif +
+        chipsClassif + chipsMarcaBO +
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0">' +
           '<input type="text" id="buscaValidacao" placeholder="Buscar (endereço, SKU, nome, volume, login…)" ' +
             'value="' + escapar(filtroTextoValidacao) + '" oninput="filtrarTextoValidacao(this.value)" ' +
@@ -6402,13 +6432,14 @@ function enriquecerValidacaoComKardex(lista) {
    Saldo do endereço+SKU que não tem nº de volume no Pulmão vira uma linha
    "sem nº de volume" com a diferença, pra soma bater com a quantidade real. */
 function linhasVolumeValidacao(enriquecidas) {
-  const itens = filtroClassifValidacao.size
-    ? enriquecidas.filter(function (v) { return filtroClassifValidacao.has(v.classificacao); })
-    : enriquecidas;
+  const itens = enriquecidas.filter(function (v) {
+    return (!filtroClassifValidacao.size || filtroClassifValidacao.has(v.classificacao)) &&
+      (!filtroMarcaValidacao.size || filtroMarcaValidacao.has(v.marca));
+  });
   const hoje = Date.now();
   const linhas = [];
   itens.forEach(function (v) {
-    const base = { rua: v.rua, nivel: v.nivel, box: v.box, classificacao: v.classificacao,
+    const base = { rua: v.rua, nivel: v.nivel, box: v.box, classificacao: v.classificacao, marca: v.marca,
       artigo_codigo: v.artigo_codigo, cor: v.cor, tamanho: v.tamanho, descricao: v.descricao };
     let somaVolumes = 0;
     (v.volumes_det || []).forEach(function (vol) {
@@ -6445,13 +6476,13 @@ function exportarCSVValidacao() {
   const p = window._snapshotRessuprimento;
   if (!p || !(p.validacao || []).length) return;
   const linhasVol = linhasVolumeValidacao(enriquecerValidacaoComKardex(p.validacao));
-  const linhas = [['Endereco', 'Classificacao', 'SKU', 'Nome do produto', 'Volume', 'QTDE do volume',
+  const linhas = [['Endereco', 'Classificacao', 'Marca', 'SKU', 'Nome do produto', 'Volume', 'QTDE do volume',
     'Ultima movimentacao', 'Hora', 'Dias desde a ultima movimentacao', 'Login que movimentou', 'Nome de quem movimentou',
     'Ultimo movimento do volume em OUTRO endereco (Kardex)', 'Data desse movimento', 'Criacao do volume (DT. CRI.)']];
   linhasVol.forEach(function (r) {
     const hora = r.hora != null ? String(Math.floor(r.hora / 60)).padStart(2, '0') + ':' + String(r.hora % 60).padStart(2, '0') : '';
     // ="..." = Excel lê o volume como texto e não vira 1,79E+17.
-    linhas.push([formatarEndereco(r.rua, r.nivel, r.box), r.classificacao,
+    linhas.push([formatarEndereco(r.rua, r.nivel, r.box), r.classificacao, r.marca || '',
       r.artigo_codigo + '/' + r.cor + '/' + r.tamanho, r.descricao,
       r.volume ? '="' + r.volume + '"' : 'sem nº de volume', r.qtd,
       r.data || 'sem registro no Kardex', hora, r.dias != null ? r.dias : '', r.login, r.nome,
