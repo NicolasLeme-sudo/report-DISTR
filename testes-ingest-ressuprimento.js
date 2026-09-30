@@ -404,8 +404,8 @@ let passagemRegra = true;
   [10, 11, 12].forEach(function (nv) { if (foraCapacidadePulmao(r, nv, 66)) passagemRegra = false; });
 });
 ok(passagemRegra, 'ruas 2 a 6: boxes 65–68 dos níveis 08 e 09 são passagem (e 10+ não)');
-eq([foraCapacidadePulmao(1, 8, 66), foraCapacidadePulmao(1, 9, 68)], ['passagem', 'passagem'], 'rua 1: lado par (66/68) é passagem');
-eq([foraCapacidadePulmao(1, 8, 65), foraCapacidadePulmao(1, 9, 67)], [null, null], 'rua 1: lado ímpar 65/67 (beira do estoque) NÃO é passagem');
+ok(foraCapacidadePulmao(1, 8, 66) === 'passagem' && foraCapacidadePulmao(1, 9, 68) === 'passagem', 'rua 1: lado par (66/68) é passagem');
+ok(!foraCapacidadePulmao(1, 8, 65) && !foraCapacidadePulmao(1, 9, 67), 'rua 1: lado ímpar 65/67 (beira do estoque) NÃO é passagem');
 eq(foraCapacidadePulmao(6, 10, 143), null, 'endereço não marcado continua valendo');
 (function () {
   const fam = { familia_codigo: '101', artigo_codigo: 'X', cor: 'PT', tamanho: '40', qtd: 5, codbar: 'E', dt_cri: new Date('2026-01-01') };
