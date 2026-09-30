@@ -108,5 +108,14 @@ const livre2 = E.extrairInstrucoes(['222395 devolver e 222307 embarcar.', 'De: E
 eq([livre2.get('222395'), livre2.get('222307')], ['DEVOLVER', 'EMBARCAR'], 'duas NFs na mesma frase: cada uma com o verbo mais próximo');
 eq(E.extrairInstrucoes(['Simoni, posso enviar a NF 216258 com divergência?', 'De: E']).size, 0, 'pergunta da assistente não é instrução');
 
+
+console.log('\n=== linha já lançada com OUTRO tipo é correção, não duplicada (30/09/2026) ===');
+const linhaCorr = Object.assign({}, l2[0], { tipo: 'BO_POS_NF', pfa: '248160', artigo: 'MNFRA51921', cor: 'CARCPN', tam: '33/38' });
+const vc = E.validarLinhasEmail([linhaCorr], { pendentes: [], ajustes: [{ pfa_antiga: '248160', artigo: 'MNFRA51921', cor_tam: 'CARCPN 33/38', tipo: 'AD_DEVOLUCAO' }] });
+ok(!vc[0].ja_lancado, 'lançada como AD e agora é envio com falta: não é duplicada');
+eq(vc[0].corrige_tipo, 'AD_DEVOLUCAO', '… e informa o tipo gravado antes');
+const vd = E.validarLinhasEmail([linhaCorr], { pendentes: [], ajustes: [{ pfa_antiga: '248160', artigo: 'MNFRA51921', cor_tam: 'CARCPN 33/38', tipo: 'BO_POS_NF' }] });
+ok(vd[0].ja_lancado && !vd[0].corrige_tipo, 'mesmo tipo já gravado continua "já lançado"');
+
 console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
 process.exit(falhas === 0 ? 0 : 1);

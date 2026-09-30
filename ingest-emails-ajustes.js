@@ -328,9 +328,13 @@ function validarLinhasEmail(linhas, snapshotPfas, historicoNf) {
     pfasComNota.set(k, Number(h.pares) || 0);
     notaDoHistorico.add(k);
   });
-  const jaLancados = new Set(((snapshotPfas && snapshotPfas.ajustes) || []).map(function (a) {
-    return [a.pfa_antiga, a.artigo, (a.cor_tam || '').replace(/\s+/g, ' ').trim()].join('|');
-  }));
+  // chave (PFA|artigo|cor+tam) -> tipo já gravado. Linha já lançada com OUTRO tipo
+  // não é "duplicada": é correção (30/09/2026 — NF lançada como AD que devia embarcar).
+  const tipoLancado = new Map();
+  ((snapshotPfas && snapshotPfas.ajustes) || []).forEach(function (a) {
+    tipoLancado.set([a.pfa_antiga, a.artigo, (a.cor_tam || '').replace(/\s+/g, ' ').trim()].join('|'), a.tipo);
+  });
+  const jaLancados = { has: function (k) { return tipoLancado.has(k); } };
   // Soma de falta por PFA (FALTA TOTAL tem que bater com o total da PFA)
   const faltaPorPfa = new Map();
   linhas.forEach(function (l) { faltaPorPfa.set(l.pfa, (faltaPorPfa.get(l.pfa) || 0) + (l.qtde_faltante || 0)); });
@@ -363,8 +367,10 @@ function validarLinhasEmail(linhas, snapshotPfas, historicoNf) {
       }
     }
     const chave = [l.pfa, l.artigo, (l.cor + ' ' + l.tam).trim()].join('|');
-    const duplicado = jaLancados.has(chave);
-    return Object.assign({}, l, { alertas: alertas, ja_lancado: duplicado,
+    const tipoAnterior = tipoLancado.get(chave);
+    const corrigeTipo = tipoAnterior && l.tipo && tipoAnterior !== l.tipo ? tipoAnterior : null;
+    const duplicado = tipoLancado.has(chave) && !corrigeTipo;
+    return Object.assign({}, l, { alertas: alertas, ja_lancado: duplicado, corrige_tipo: corrigeTipo,
       nf_do_historico: notaDoHistorico.has(String(l.pfa)) });
   });
 }

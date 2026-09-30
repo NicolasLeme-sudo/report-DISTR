@@ -6764,6 +6764,7 @@ async function exportarGapEstoqueAjustes() {
    assistente confere a tabela, e grava (mesmo caminho da planilha manual,
    processarAjustesPfa) ou baixa o .xlsx para revisar antes. */
 let linhasEmailsAjustes = [];
+let mensagemGravarEmails = null;   // confirmação visível logo abaixo dos botões
 /* Um campo por tipo de e-mail (29/09/2026, pedido do usuário): o campo onde a
    assistente solta o .msg DEFINE o tipo das linhas — não depende mais de
    adivinhar pela tabela/instrução do e-mail. Cancelamento e AD dividem o
@@ -6809,6 +6810,7 @@ document.getElementById('inputEmailsAjustes').addEventListener('change', async f
         listas.push(linhas);
       } catch (e) { falhas.push(arquivos[i].name + ' (' + (e && e.message) + ')'); }
     }
+    mensagemGravarEmails = null;
     listasEmailPorCategoria[categoriaEmailAtual] = { listas: listas, falhas: falhas, arquivos: arquivos.length };
     const nLinhas = listas.reduce(function (t, l) { return t + l.length; }, 0);
     document.getElementById('dzEmail-' + categoriaEmailAtual).textContent = '✓ ' + arquivos.length + ' e-mail(s) · ' + nLinhas + ' linha(s)';
@@ -6817,13 +6819,13 @@ document.getElementById('inputEmailsAjustes').addEventListener('change', async f
     alvo.innerHTML = '<div class="aviso erro">Erro ao ler os e-mails: ' + escapar(e && e.message ? e.message : String(e)) + '</div>';
   }
 });
-async function revalidarEmailsAjustes() {
+async function revalidarEmailsAjustes(forcarSnapshot) {
   const listas = [], falhas = [];
   Object.keys(listasEmailPorCategoria).forEach(function (c) {
     listasEmailPorCategoria[c].listas.forEach(function (l) { listas.push(l); });
     listasEmailPorCategoria[c].falhas.forEach(function (f) { falhas.push(CATEGORIAS_EMAIL[c].rotulo + ': ' + f); });
   });
-  let snap = dadosPfas;
+  let snap = forcarSnapshot ? null : dadosPfas;
   if (!snap) {
     const r = await supabaseClient.from('dashboard_snapshots').select('payload').eq('pagina', 'pfas')
       .order('gerado_em', { ascending: false }).limit(1);
@@ -6844,6 +6846,7 @@ async function revalidarEmailsAjustes() {
   renderizarEmailsAjustes(falhas, !snap);
 }
 function limparEmailsAjustes() {
+  mensagemGravarEmails = null;
   Object.keys(listasEmailPorCategoria).forEach(function (c) { delete listasEmailPorCategoria[c]; });
   document.querySelectorAll('.dz-email-cont').forEach(function (el) { el.textContent = ''; });
   linhasEmailsAjustes = [];
@@ -6867,7 +6870,8 @@ function renderizarEmailsAjustes(falhas, semSnapshot) {
       '<td class="centro" style="font-size:11px">' + escapar(l.situacao) + '</td>' +
       '<td class="centro" style="font-size:11px">' + escapar(l.status) + '</td>' +
       '<td style="font-size:11px;color:var(--red);text-align:left">' + escapar(l.alertas.join(' · ')) +
-        (l.ja_lancado ? '<span style="color:var(--text-muted)">já lançado antes</span>' : '') + '</td>' +
+        (l.ja_lancado ? '<span style="color:var(--text-muted)">já lançado antes</span>' : '') +
+        (l.corrige_tipo ? '<span style="color:var(--amber)">gravado antes como ' + escapar(ROT_TIPO_AJUSTE[l.corrige_tipo] || l.corrige_tipo) + ' — será corrigido</span>' : '') + '</td>' +
       '<td class="centro" style="font-size:11px">' + (l.data_solicitacao ? formatarDataSimples(l.data_solicitacao) : '—') + '</td>' +
     '</tr>';
   }).join('');
@@ -6890,6 +6894,7 @@ function renderizarEmailsAjustes(falhas, semSnapshot) {
       (aguardando ? '<button class="btn-mini" onclick="baixarPendentesComercial()">⬇ Sem tipo (.xlsx) — ' + fmtInt(aguardando) + ' linha(s)</button>' : '') +
       '<button class="btn-mini" onclick="limparEmailsAjustes()" title="Tira todos os e-mails carregados nos 4 campos">Limpar e-mails</button>' +
     '</div>' +
+    (mensagemGravarEmails ? '<div class="aviso ' + (mensagemGravarEmails.erro ? '' : 'ok') + '" style="margin-bottom:12px' + (mensagemGravarEmails.erro ? ';border-color:var(--red)' : '') + '">' + escapar(mensagemGravarEmails.texto) + '</div>' : '') +
     '<div class="tabela-rolavel"><table class="arvore"><thead><tr>' +
       '<th class="centro">Tipo</th><th class="centro">NF</th><th class="centro">PFA</th><th class="centro">Artigo</th><th class="centro">Cor/Tam</th>' +
       '<th>Pedido</th><th>Faltante</th><th class="centro">Situação</th><th class="centro">Status</th><th>Validação</th><th class="centro">E-mail</th>' +
@@ -7023,8 +7028,16 @@ async function gravarEmailsAjustes() {
       await window.processarPfas(supabaseClient, null, null, null, escrever, { permitirRecalculoSemArquivo: true });
     }
     escrever('✔ Gravado — o Start Inicial já reflete os ajustes (reabra a aba se estiver aberta).');
+    const corrigidas = prontas.filter(function (l) { return l.corrige_tipo; }).length;
+    mensagemGravarEmails = { erro: false, texto: '✔ Gravado e recalculado: ' + fmtInt(prontas.length) + ' linha(s) em Ajustes de PFA' +
+      (corrigidas ? ' (' + fmtInt(corrigidas) + ' com o tipo corrigido)' : '') +
+      (respondidas.length ? ' · ' + fmtInt(respondidas.length) + ' ajuste(s) fechado(s) pela resposta do comercial' : '') +
+      '. Os cards do Start Inicial já refletem — reabra a aba se ela estiver aberta.' };
+    await revalidarEmailsAjustes(true);
   } catch (e) {
     escrever('ERRO: ' + (e && e.message ? e.message : String(e)));
+    mensagemGravarEmails = { erro: true, texto: 'ERRO ao gravar: ' + (e && e.message ? e.message : String(e)) };
+    await revalidarEmailsAjustes(true).catch(function () {});
     btn.disabled = false;
   }
 }
