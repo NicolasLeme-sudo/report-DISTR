@@ -3924,6 +3924,8 @@ function renderizarPfas() {
     const faltanteNf = somaPorTipo('BO_POS_NF');
     const adDevol = somaPorTipo('AD_DEVOLUCAO');
     const cancelamento = somaPorTipo('CANCELAMENTO');
+    // Cancelamento (sem NF) e AD (com NF) voltam 100% pro estoque: um card só.
+    const adCancelPfas = new Set(noPeriodo.filter(function (a) { return (a.tipo === 'AD_DEVOLUCAO' || a.tipo === 'CANCELAMENTO') && !ehDeParaLinha(a); }).map(function (a) { return a.pfa_antiga; })).size;
     const dePara = noPeriodo.filter(ehDeParaLinha);
     const deParaPfas = new Set(dePara.map(function (a) { return a.pfa_antiga; })).size;
     const deParaQtde = dePara.reduce(function (s, a) { return s + (a.qtde_de_para || 0); }, 0);
@@ -4015,8 +4017,9 @@ function renderizarPfas() {
           '<div class="sub">' + fmtInt(faltanteNf.pfas) + ' envio(s) · nota já emitida, sem correção possível</div></div>' +
         '<div class="kpi" style="border-color:var(--amber)">' +
           '<div class="rot" style="color:var(--amber)">Devolução por AD (100%)</div>' +
-          '<div class="val forte" style="color:var(--amber)">' + fmtInt(adDevol.perda) + ' pares</div>' +
-          '<div class="sub">' + fmtInt(adDevol.pfas) + ' cancelamento(s) · comercial recusou envio parcial</div></div>' +
+          '<div class="val forte" style="color:var(--amber)">' + fmtInt(adDevol.perda + cancelamento.perda) + ' pares</div>' +
+          '<div class="sub">' + fmtInt(adCancelPfas) + ' PFA(s) · ' + fmtInt(adDevol.perda) + ' pares em AD (NF emitida) + ' +
+            fmtInt(cancelamento.perda) + ' em cancelamento (sem NF)</div></div>' +
         '<div class="kpi" style="border-width:2px;border-color:var(--amber)">' +
           '<div class="rot" style="color:var(--amber)">Perdas no período</div>' +
           '<div class="val forte" style="color:var(--amber)">' + fmtInt(perdasTotal) + ' pares</div>' +
