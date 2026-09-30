@@ -405,6 +405,8 @@ let passagemRegra = true;
 });
 ok(passagemRegra, 'ruas 2 a 6: boxes 65–68 dos níveis 08 e 09 são passagem (e 10+ não)');
 ok(foraCapacidadePulmao(1, 8, 66) === 'passagem' && foraCapacidadePulmao(1, 9, 68) === 'passagem', 'rua 1: lado par (66/68) é passagem');
+ok([5, 7].every(function (b) { return [8, 9].every(function (nv) { return foraCapacidadePulmao(1, nv, b) === 'passagem'; }); }), 'rua 1: boxes 05 e 07 dos níveis 08/09 são passagem (E-commerce)');
+ok(!foraCapacidadePulmao(1, 10, 5), 'rua 1: nível 10 do box 05 continua armazenando');
 ok(!foraCapacidadePulmao(1, 8, 65) && !foraCapacidadePulmao(1, 9, 67), 'rua 1: lado ímpar 65/67 (beira do estoque) NÃO é passagem');
 eq(foraCapacidadePulmao(6, 10, 143), null, 'endereço não marcado continua valendo');
 (function () {

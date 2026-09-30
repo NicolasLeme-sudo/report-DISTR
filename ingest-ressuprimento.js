@@ -151,9 +151,11 @@ const ENDERECOS_FORA_CAPACIDADE_PULMAO = {
     '4-8-65..68', '4-9-65..68',
     '5-8-65..68', '5-9-65..68',
     '6-8-65..68', '6-9-65..68',
+    // Rua 1, boxes 05 e 07, níveis 08 e 09: passagem pro estoque do E-commerce
+    // (usuário, 01/10/2026). Com os 66/68 são 8 na rua 1, igual às demais.
+    '1-8-5', '1-8-7', '1-9-5', '1-9-7',
     // Marcados antes no CSV da operação, fora da regra acima (conferir):
-    // rua 1 começo do lado ímpar, rua 6 fim da rua, rua 7 e 11-9-1.
-    '1-8-7', '1-9-5', '1-9-7',
+    // rua 6 fim da rua, rua 7 e 11-9-1.
     '6-9-138', '6-9-140', '6-9-142', '6-9-144',
     '7-8-65', '7-8-67', '7-8-68',
     '7-9-66', '7-9-67', '7-9-68',
