@@ -36,7 +36,7 @@ const comNf = ['Olá', 'Ok, seguir com devolução também',
   '214827', '236442', 'CL 92884 JC ABDON', '967708', '1', '1', '102', '102364003', 'WAVE', 'GRALIL', '37', '1', '1', 'FALTA TOTAL', '821',
   '215880', '238369', 'CL-80971 VULCABRAS', '972976', '204', '3', '83', '1384463', 'MALA UA', 'BLBKWT', 'U', '12', '12', 'FALTA TOTAL', '711',
   '215887', '240365', 'CL-58801 PONTOAKAN', '965824', '12', '1', '83', '1383440', 'BONE', 'WHTSTE', 'U', '1', '1', 'FALTA TOTAL', '630'].join('\n');
-const l2 = E.interpretarEmailAjuste({ assunto: 'ENC: NFs COM DIVERGÊNCIA', remetente: 'Erika', data: d, corpo: comNf });
+const l2 = E.interpretarEmailAjuste({ assunto: 'ENC: NFs COM DIVERGÊNCIA', remetente: 'Simoni Maria Feiten', data: d, corpo: comNf });
 eq(l2.map(function (l) { return l.nf; }), ['216258', '214827', '215880', '215887'], 'só os 4 registros de divergência (a tabela de instrução não entra)');
 eq(l2.map(function (l) { return l.tipo; }), ['BO_POS_NF', 'AD_DEVOLUCAO', 'BO_POS_NF', null], 'EMBARCAR → envio faltante c/ NF; DEVOLVER → AD; sem instrução → null');
 ok(/conferir/.test(l2[2].status), '215880 citada em texto DEPOIS da instrução → pede conferência');
@@ -116,6 +116,18 @@ ok(!vc[0].ja_lancado, 'lançada como AD e agora é envio com falta: não é dupl
 eq(vc[0].corrige_tipo, 'AD_DEVOLUCAO', '… e informa o tipo gravado antes');
 const vd = E.validarLinhasEmail([linhaCorr], { pendentes: [], ajustes: [{ pfa_antiga: '248160', artigo: 'MNFRA51921', cor_tam: 'CARCPN 33/38', tipo: 'BO_POS_NF' }] });
 ok(vd[0].ja_lancado && !vd[0].corrige_tipo, 'mesmo tipo já gravado continua "já lançado"');
+
+
+console.log('\n=== só vale a instrução da Simoni (gerente) — 01/10/2026 ===');
+const instrErika = E.interpretarEmailAjuste({ assunto: 'RES: NFs com divergência', remetente: 'Erika Domingues Leme', data: d, corpo: comNf });
+ok(instrErika.every(function (l) { return l.tipo === null; }), 'instrução escrita pela Erika (assistente) não autoriza nada');
+ok(/só vale o retorno da Simoni/.test(instrErika[0].status), '… e o status explica por quê');
+const citada = ['Ok, vou verificar', 'De: Simoni Maria Feiten', 'Enviada em: ontem', 'NF', 'INSTRUÇÃO', '222395', 'DEVOLVER', 'De: Erika', 'NF', 'INSTRUÇÃO', '222400', 'EMBARCAR'].join('\n');
+const ic = E.extrairInstrucoes(citada.split('\n'), 'Erika Domingues Leme');
+eq(ic.get('222395'), 'DEVOLVER', 'resposta da Simoni citada mais abaixo no e-mail continua valendo (autor = "De:" acima da linha)');
+eq(ic.get('222400'), undefined, '… mas a instrução da Erika, no mesmo e-mail, não vale');
+eq(E.extrairInstrucoes(['Esta nota devolver, 222395.', 'De: Simoni'], 'Simoni Maria Feiten').get('222395'), 'DEVOLVER', 'remetente Simoni: texto livre vale');
+eq(E.extrairInstrucoes(['Esta nota devolver, 222395.', 'De: Simoni'], 'Camila Ferreira').get('222395'), undefined, 'remetente Camila: não vale');
 
 console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
 process.exit(falhas === 0 ? 0 : 1);

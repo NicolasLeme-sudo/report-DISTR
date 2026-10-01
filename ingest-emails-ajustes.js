@@ -114,9 +114,29 @@ function extrairRegistrosDivergencia(linhas, comNf) {
 
 /* Tabela de instrução do comercial: NF|PFA|CLIENTE|SITUAÇÃO|COD. REP|INSTRUÇÃO
    (a INSTRUÇÃO pode vir só na 1ª linha de uma NF repetida). */
-function extrairInstrucoes(linhas) {
+/* Quem autoriza envio com falta / devolução é a GERENTE (Simoni, 01/10/2026): só vale
+   instrução EMBARCAR/DEVOLVER escrita por ela. O autor de cada trecho é o remetente do
+   .msg (mensagem mais nova, em cima) ou o "De:" mais próximo acima da linha, nas
+   mensagens citadas. Instrução de outra pessoa (ex.: a própria assistente) é ignorada. */
+const AUTORIZADORES_ENVIO_COM_FALTA = ['simoni'];
+function autorPodeAutorizar(nome) {
+  const n = String(nome || '').toLowerCase();
+  return AUTORIZADORES_ENVIO_COM_FALTA.some(function (a) { return n.indexOf(a) !== -1; });
+}
+function extrairInstrucoes(linhas, remetente) {
   const out = new Map(); // nf -> { inst, pos }
+  const ignoradas = new Map(); // nf -> autor que NÃO pode autorizar
+  const semRemetente = remetente === undefined; // chamada antiga/testes: sem checagem de autor
+  const autorDaLinha = function (pos) {
+    let autor = remetente || '';
+    for (let k = 0; k <= pos && k < linhas.length; k++) {
+      const m = /^\s*De:\s*([^<]+)/i.exec(linhas[k]);
+      if (m) autor = m[1].trim();
+    }
+    return autor;
+  };
   const guardar = function (nf, inst, pos) {
+    if (!semRemetente && !autorPodeAutorizar(autorDaLinha(Math.max(pos, 0)))) { if (!ignoradas.has(nf)) ignoradas.set(nf, autorDaLinha(Math.max(pos, 0))); return; }
     // Em thread a mensagem mais nova vem em cima: vale a 1ª ocorrência.
     if (!out.has(nf) || pos < out.get(nf).pos) out.set(nf, { inst: inst, pos: pos });
   };
@@ -162,18 +182,19 @@ function extrairInstrucoes(linhas) {
     RE_VERBO.lastIndex = 0;
     while ((m = RE_VERBO.exec(frase))) verbos.push({ i: m.index, inst: normVerbo(m[1]), padrao: /(demais|restantes?|outras?|todas?|todos|resto)[^,]{0,15}$/i.test(frase.slice(Math.max(0, m.index - 20), m.index)) });
     if (!verbos.length) return;
-    verbos.filter(function (v) { return v.padrao; }).forEach(function (v) { if (!out.has('*')) out.set('*', { inst: v.inst, pos: -1 }); });
+    verbos.filter(function (v) { return v.padrao; }).forEach(function (v) { guardar('*', v.inst, -1); });
     const diretos = verbos.filter(function (v) { return !v.padrao; });
     if (!diretos.length) return;
     const reNf = /\b\d{6}\b/g;
     while ((m = reNf.exec(frase))) {
       let melhor = diretos[0];
       diretos.forEach(function (v) { if (Math.abs(v.i - m.index) < Math.abs(melhor.i - m.index)) melhor = v; });
-      out.set(m[0], { inst: melhor.inst, pos: -1 });
+      guardar(m[0], melhor.inst, -1);
     }
   });
   const saida = new Map();
   out.forEach(function (v, nf) { saida.set(nf, v.inst); });
+  saida.ignoradas = ignoradas;
   return saida;
 }
 
@@ -203,7 +224,7 @@ function interpretarEmailAjuste(msg) {
   const linhas = msg.corpo.split(/\r?\n/).filter(function (l) { return l.trim() !== ''; });
   const temNf = /\bNFs?\b/i.test(msg.assunto) || linhas.some(function (l) { return l.trim() === 'NF'; });
   const registros = extrairRegistrosDivergencia(linhas, temNf);
-  const instrucoes = temNf ? extrairInstrucoes(linhas) : new Map();
+  const instrucoes = temNf ? extrairInstrucoes(linhas, msg.remetente || '') : new Map();
   const citadas = temNf ? nfsCitadasNoTexto(linhas) : new Set();
   const vistos = new Set();
   const faltaPorPfa = new Map();
@@ -246,7 +267,11 @@ function interpretarEmailAjuste(msg) {
       const inst = instrucoes.get(r.nf) || instrucoes.get('*');
       if (inst === 'EMBARCAR' || inst === 'ENVIAR') { tipo = 'BO_POS_NF'; status = 'Comercial autorizou embarcar com falta'; }
       else if (inst === 'DEVOLVER' || inst === 'CANCELAR') { tipo = 'AD_DEVOLUCAO'; status = 'Comercial pediu devolução'; }
-      else { tipo = null; status = 'Aguardando instrução do comercial'; }
+      else {
+        tipo = null; status = 'Aguardando instrução do comercial';
+        const ign = instrucoes.ignoradas && (instrucoes.ignoradas.get(r.nf) || instrucoes.ignoradas.get('*'));
+        if (ign) status = 'Instrução de ' + ign + ' ignorada — só vale o retorno da Simoni (gerente)';
+      }
       if (citadas.has(r.nf)) status += ' — NF citada de novo na conversa: conferir se a instrução mudou';
     } else {
       const pedidoTodo = r.qtde_total_pedido != null && (faltaPorPfa.get(r.pfa) || 0) >= r.qtde_total_pedido;
@@ -387,6 +412,7 @@ function linhaPlanilhaAjuste(l) {
 }
 
 if (typeof window !== 'undefined') {
+  window.AUTORIZADORES_ENVIO_COM_FALTA = AUTORIZADORES_ENVIO_COM_FALTA;
   window.lerMsg = lerMsg;
   window.interpretarEmailAjuste = interpretarEmailAjuste;
   window.validarLinhasEmail = validarLinhasEmail;

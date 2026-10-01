@@ -6870,7 +6870,7 @@ document.getElementById('inputEmailsAjustes').addEventListener('change', async f
           const aguardandoComercial = categoriaEmailAtual === 'faltante' && l.nf && !l.tipo;
           return Object.assign(l, { _arquivo: arquivos[i].name, _ordem: i, _categoria: categoriaEmailAtual,
             tipo: aguardandoComercial ? null : (temInstrucao ? l.tipo : cat.tipo(l)),
-            status: aguardandoComercial ? 'Aguardando instrução do comercial (e-mail sem EMBARCAR/DEVOLVER)'
+            status: aguardandoComercial ? l.status + ' (e-mail sem EMBARCAR/DEVOLVER da Simoni)'
               : (temInstrucao ? l.status + ' (instrução no e-mail)' : cat.status(l)) });
         });
         if (!linhas.length) falhas.push(arquivos[i].name + ' (nenhuma tabela de divergência reconhecida)');
