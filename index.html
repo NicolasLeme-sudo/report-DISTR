@@ -6864,9 +6864,14 @@ document.getElementById('inputEmailsAjustes').addEventListener('change', async f
           // pro estoque — 29/09/2026). O campo só define o tipo do que não tem
           // instrução no próprio e-mail.
           const temInstrucao = !!(l.nf && l.tipo);
+          // "Envio com falta" exige AUTORIZAÇÃO do comercial: e-mail com NF que ainda não
+          // traz EMBARCAR/DEVOLVER (ex.: a pergunta "posso enviar?" da assistente) fica
+          // aguardando instrução, mesmo solto no campo (01/10/2026).
+          const aguardandoComercial = categoriaEmailAtual === 'faltante' && l.nf && !l.tipo;
           return Object.assign(l, { _arquivo: arquivos[i].name, _ordem: i, _categoria: categoriaEmailAtual,
-            tipo: temInstrucao ? l.tipo : cat.tipo(l),
-            status: temInstrucao ? l.status + ' (instrução no e-mail)' : cat.status(l) });
+            tipo: aguardandoComercial ? null : (temInstrucao ? l.tipo : cat.tipo(l)),
+            status: aguardandoComercial ? 'Aguardando instrução do comercial (e-mail sem EMBARCAR/DEVOLVER)'
+              : (temInstrucao ? l.status + ' (instrução no e-mail)' : cat.status(l)) });
         });
         if (!linhas.length) falhas.push(arquivos[i].name + ' (nenhuma tabela de divergência reconhecida)');
         listas.push(linhas);
