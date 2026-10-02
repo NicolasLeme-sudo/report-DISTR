@@ -166,13 +166,17 @@
   }
   function mesAnterior(mes) { const p = String(mes).split('-').map(Number); return p[1] === 1 ? (p[0] - 1) + '-12' : p[0] + '-' + pad2(p[1] - 1); }
   /* Entrada prevista automática do mês (quando o Embarque não informa): entrada média por dia do último mês fechado
-     × (forecast do mês ÷ expedido daquele mês) — "o diário de entrada + a % que o mês está acima do anterior". */
+     × a % que o forecast POR DIA ÚTIL está acima do expedido por dia daquele mês (comparação por dia: os dias úteis a
+     mais de um mês não entram duas vezes). */
   function entradaAutomatica(diario, f) {
     let m = mesAnterior(f.mes), base = null;
     for (let k = 0; k < 3 && !base; k++) { base = entradaDoMes(diario, m); if (!base) m = mesAnterior(m); }
     if (!base) return null;
-    const fator = (Number(f.pecas_embarque) || 0) / base.expedido;
-    return { base: base, fator: fator, entrada_dia: Math.round(base.entrada_dia * fator) };
+    const uteis = diasUteisDoMes(f.mes, f.dias_folga).length;
+    if (!uteis) return null;
+    const forecastDia = (Number(f.pecas_embarque) || 0) / uteis, expedidoDia = base.expedido / base.dias;
+    const fator = forecastDia / expedidoDia;
+    return { base: base, fator: fator, forecast_dia: forecastDia, expedido_dia: expedidoDia, entrada_dia: Math.round(base.entrada_dia * fator) };
   }
   // forecasts = linhas de embarque_forecast_mensal -> { saida: {dia: peças}, entrada: {dia: peças} }.
   // Dia útil recebe a parte; fim de semana/folga do mês com forecast fica em 0 (a linha desce, como no E-commerce).
@@ -1534,7 +1538,7 @@
           (f.pecas_entrada != null ? ' · entrada ' + fmtN(f.pecas_entrada) : (function () {
             const a = entradaAutomatica(diarioAdm, f);
             return a ? ' · entrada automática ' + fmtN(a.entrada_dia) + '/dia (' + MESES[Number(a.base.mes.slice(5)) - 1].toLowerCase() + ': ' + fmtN(a.base.entrada_dia) +
-              '/dia × ' + fmtPctS((a.fator - 1) * 100) + ', forecast ' + fmtN(f.pecas_embarque) + ' sobre ' + fmtN(a.base.expedido) + ' expedidas)' : ' · entrada = forecast (sem mês anterior fechado na base)';
+              '/dia × ' + fmtPctS((a.fator - 1) * 100) + ': forecast ' + fmtN(a.forecast_dia) + '/dia útil sobre ' + fmtN(a.expedido_dia) + '/dia expedido)' : ' · entrada = forecast (sem mês anterior fechado na base)';
           })()) +
           '</span><button class="btn-mini" data-mes="' + f.mes + '" title="Editar">Editar</button>' +
           '<button class="btn-mini" data-del="' + f.mes + '" title="Remover">×</button></div>' +

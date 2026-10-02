@@ -198,7 +198,7 @@ const hist = [{ dia: '2026-08-31', expedido: 21684, backlog: 115258 }, { dia: '2
 const eMes = E.entradaDoMes(hist, '2026-09');
 eq([eMes.entrada, eMes.expedido, eMes.dias], [103699 - 115258 + 651255, 651255, 2], 'entrada = backlog fim − backlog início + expedido');
 const auto = E.entradaAutomatica(hist, { mes: '2026-10', pecas_embarque: 731000 });
-eq(auto.entrada_dia, Math.round((639696 / 2) * 731000 / 651255), 'entrada/dia × (forecast ÷ expedido do mês anterior)');
+eq(auto.entrada_dia, Math.round((639696 / 2) * (731000 / 22) / (651255 / 2)), 'entrada/dia × (forecast por dia útil ÷ expedido por dia do mês anterior)');
 eq(E.entradaDoMes([{ dia: '2026-08-31', expedido: 1, backlog: 1 }, { dia: '2026-09-15', expedido: 10, backlog: 5 }], '2026-09'), null, 'mês ainda não fechado na base: sem entrada automática');
 const fcA = E.forecastPorDia([{ mes: '2026-10', pecas_embarque: 731000, pecas_entrada: null, dias_folga: [] }], hist);
 eq([fcA.entrada['2026-10-01'], fcA.entrada['2026-10-03']], [auto.entrada_dia, 0], 'entrada automática nos dias úteis, 0 no fim de semana');
