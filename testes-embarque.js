@@ -193,5 +193,17 @@ let erroDup = ''; try { E.validarProporcoes('Segmento', [{ nome: 'Calçado', pct
 ok(/repetido/.test(erroDup), 'Calçado e Calçados juntos = nome repetido');
 eq(E.validarCruzada([{ nome: 'Mizuno', pct: 100, segmentos: [{ nome: 'calcados', pct: 100 }] }]).prop_cruzada[0], { nome: 'MIZUNO', pct: 100, segmentos: [{ nome: 'CALÇADO', pct: 100 }] }, 'cruzada também normaliza marca e segmento');
 
+secao('entrada prevista automática (entrada do mês anterior + % do forecast sobre o expedido dele)');
+const hist = [{ dia: '2026-08-31', expedido: 21684, backlog: 115258 }, { dia: '2026-09-01', expedido: 300000, backlog: 100000 }, { dia: '2026-09-30', expedido: 351255, backlog: 103699 }];
+const eMes = E.entradaDoMes(hist, '2026-09');
+eq([eMes.entrada, eMes.expedido, eMes.dias], [103699 - 115258 + 651255, 651255, 2], 'entrada = backlog fim − backlog início + expedido');
+const auto = E.entradaAutomatica(hist, { mes: '2026-10', pecas_embarque: 731000 });
+eq(auto.entrada_dia, Math.round((639696 / 2) * 731000 / 651255), 'entrada/dia × (forecast ÷ expedido do mês anterior)');
+eq(E.entradaDoMes([{ dia: '2026-08-31', expedido: 1, backlog: 1 }, { dia: '2026-09-15', expedido: 10, backlog: 5 }], '2026-09'), null, 'mês ainda não fechado na base: sem entrada automática');
+const fcA = E.forecastPorDia([{ mes: '2026-10', pecas_embarque: 731000, pecas_entrada: null, dias_folga: [] }], hist);
+eq([fcA.entrada['2026-10-01'], fcA.entrada['2026-10-03']], [auto.entrada_dia, 0], 'entrada automática nos dias úteis, 0 no fim de semana');
+const fcI = E.forecastPorDia([{ mes: '2026-10', pecas_embarque: 731000, pecas_entrada: 660000, dias_folga: [] }], hist);
+eq(fcI.entrada['2026-10-01'], 30000, 'entrada informada no Admin tem prioridade sobre a automática');
+
 console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
 process.exit(falhas === 0 ? 0 : 1);

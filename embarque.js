@@ -146,9 +146,37 @@
     dias.forEach(function (d, i) { out[d] = base + (i < resto ? 1 : 0); });
     return out;
   }
+  /* Entrada real de um mês fechado, pela base do Embarque: entrada = backlog(fim) − backlog(início) + expedido do mês.
+     Devolve a média por dia com expedição e o expedido total (para comparar com o forecast do mês seguinte). */
+  function entradaDoMes(diario, mes) {
+    const rows = (diario || []).filter(function (r) { return r && r.dia; }).slice().sort(function (a, b) { return a.dia < b.dia ? -1 : 1; });
+    const doMes = rows.filter(function (r) { return String(r.dia).slice(0, 7) === mes; });
+    const comBk = function (r) { return r.backlog !== null && r.backlog !== undefined; };
+    const antes = rows.filter(function (r) { return String(r.dia).slice(0, 7) < mes && comBk(r); });
+    const fim = doMes.filter(comBk);
+    const p = String(mes).split('-').map(Number), ultimoDia = new Date(Date.UTC(p[0], p[1], 0)).getUTCDate();
+    if (!antes.length || !fim.length) return null;
+    const bFim = fim[fim.length - 1];
+    if (Number(String(bFim.dia).slice(8, 10)) < ultimoDia - 4) return null;     // mês ainda não fechado na base
+    const expedido = doMes.reduce(function (t, r) { return t + (Number(r.expedido) || 0); }, 0);
+    const dias = doMes.filter(function (r) { return Number(r.expedido) > 0; }).length;
+    if (!expedido || !dias) return null;
+    const entrada = Number(bFim.backlog) - Number(antes[antes.length - 1].backlog) + expedido;
+    return { mes: mes, entrada: entrada, expedido: expedido, dias: dias, entrada_dia: entrada / dias };
+  }
+  function mesAnterior(mes) { const p = String(mes).split('-').map(Number); return p[1] === 1 ? (p[0] - 1) + '-12' : p[0] + '-' + pad2(p[1] - 1); }
+  /* Entrada prevista automática do mês (quando o Embarque não informa): entrada média por dia do último mês fechado
+     × (forecast do mês ÷ expedido daquele mês) — "o diário de entrada + a % que o mês está acima do anterior". */
+  function entradaAutomatica(diario, f) {
+    let m = mesAnterior(f.mes), base = null;
+    for (let k = 0; k < 3 && !base; k++) { base = entradaDoMes(diario, m); if (!base) m = mesAnterior(m); }
+    if (!base) return null;
+    const fator = (Number(f.pecas_embarque) || 0) / base.expedido;
+    return { base: base, fator: fator, entrada_dia: Math.round(base.entrada_dia * fator) };
+  }
   // forecasts = linhas de embarque_forecast_mensal -> { saida: {dia: peças}, entrada: {dia: peças} }.
   // Dia útil recebe a parte; fim de semana/folga do mês com forecast fica em 0 (a linha desce, como no E-commerce).
-  function forecastPorDia(forecasts) {
+  function forecastPorDia(forecasts, diario) {
     const saida = {}, entrada = {};
     (forecasts || []).forEach(function (f) {
       const uteis = diasUteisDoMes(f.mes, f.dias_folga);
@@ -159,8 +187,11 @@
       })();
       const dist = distribuirNosDias(Number(f.pecas_embarque) || 0, uteis);
       todos.forEach(function (d) { saida[d] = dist[d] || 0; });
-      // entrada prevista: a informada no forecast; sem ela, vale o próprio forecast dividido pelos dias úteis
-      const distE = f.pecas_entrada !== null && f.pecas_entrada !== undefined ? distribuirNosDias(Number(f.pecas_entrada) || 0, uteis) : dist;
+      // entrada prevista: a informada no forecast; sem ela, a automática (entrada média do mês anterior × % do forecast sobre
+      // o expedido dele); sem histórico para isso, o próprio forecast dividido pelos dias úteis
+      const auto = f.pecas_entrada !== null && f.pecas_entrada !== undefined ? null : entradaAutomatica(diario, f);
+      const distE = f.pecas_entrada !== null && f.pecas_entrada !== undefined ? distribuirNosDias(Number(f.pecas_entrada) || 0, uteis)
+        : auto ? distribuirNosDias(auto.entrada_dia * uteis.length, uteis) : dist;
       todos.forEach(function (d) { entrada[d] = distE[d] || 0; });
     });
     return { saida: saida, entrada: entrada };
@@ -184,7 +215,7 @@
       if (r.expedido !== null && r.expedido !== undefined && (!ultExp || r.dia > ultExp.dia)) ultExp = { dia: r.dia, valor: r.expedido };
       if (r.backlog !== null && r.backlog !== undefined && (!ultBk || r.dia > ultBk.dia)) ultBk = { dia: r.dia, valor: r.backlog };
     });
-    const fc = forecastPorDia(forecasts);
+    const fc = forecastPorDia(forecasts, diario);
 
     // backlog dos dias seguintes à última posição conhecida: backlog(D+1) = backlog(D) + entrada(D) − saída(D).
     // Projeta enquanto houver entrada E saída prevista (entrada não informada = o próprio forecast do dia).
@@ -1120,7 +1151,7 @@
 
   async function carregarDados(supabaseClient) {
     const hoje = hojeLocalISO();
-    const de = somaDias(hoje, -31), ate = somaDias(hoje, 31);
+    const de = somaDias(hoje.slice(0, 7) + '-01', -75), ate = somaDias(hoje, 31);   // 2 meses fechados para a entrada automática
     const res = await Promise.all([
       supabaseClient.from('embarque_diario').select('dia, expedido, backlog, atualizado_em').gte('dia', de).lte('dia', ate).order('dia'),
       supabaseClient.from('embarque_diario').select('dia, expedido').not('expedido', 'is', null).order('dia', { ascending: false }).limit(1),
@@ -1493,11 +1524,18 @@
     const listar = async function () {
       const { data, error } = await supabaseClient.from('embarque_forecast_mensal').select('*').order('mes', { ascending: false });
       if (error) { $('embForecastLista').textContent = error.message; return; }
+      const hist = await supabaseClient.from('embarque_diario').select('dia, expedido, backlog').order('dia', { ascending: false }).limit(1000);
+      const diarioAdm = hist.error ? [] : (hist.data || []);
+      const fmtPctS = function (v) { return (v >= 0 ? '+' : '') + String(Math.round(v * 10) / 10).replace('.', ',') + '%'; };
       $('embForecastLista').innerHTML = (data || []).length ? data.map(function (f) {
         const n = diasUteisDoMes(f.mes, f.dias_folga).length;
         return '<div class="cap-item" style="margin:8px 0"><div style="display:flex;gap:10px;align-items:center"><span><strong>' + f.mes.slice(5, 7) + '/' + f.mes.slice(0, 4) + '</strong> — ' + fmtN(f.pecas_embarque) +
           ' peças em ' + n + ' dias úteis (' + fmtN(Math.floor(f.pecas_embarque / Math.max(n, 1))) + '/dia)' +
-          (f.pecas_entrada != null ? ' · entrada ' + fmtN(f.pecas_entrada) : '') +
+          (f.pecas_entrada != null ? ' · entrada ' + fmtN(f.pecas_entrada) : (function () {
+            const a = entradaAutomatica(diarioAdm, f);
+            return a ? ' · entrada automática ' + fmtN(a.entrada_dia) + '/dia (' + MESES[Number(a.base.mes.slice(5)) - 1].toLowerCase() + ': ' + fmtN(a.base.entrada_dia) +
+              '/dia × ' + fmtPctS((a.fator - 1) * 100) + ', forecast ' + fmtN(f.pecas_embarque) + ' sobre ' + fmtN(a.base.expedido) + ' expedidas)' : ' · entrada = forecast (sem mês anterior fechado na base)';
+          })()) +
           '</span><button class="btn-mini" data-mes="' + f.mes + '" title="Editar">Editar</button>' +
           '<button class="btn-mini" data-del="' + f.mes + '" title="Remover">×</button></div>' +
           ((f.prop_cruzada || []).length ? f.prop_cruzada.map(function (m) { return '<div style="margin-left:2px">' + m.nome + ' ' + String(m.pct).replace('.', ',') + '%: ' + resumoProp(m.segmentos) + '</div>'; }).join('') :
@@ -1549,7 +1587,7 @@
     aoSairDaTela: aoSairDaTela, aoMostrarTela: aoMostrarTela,
     iniciar: iniciar, ligarAdmin: ligarAdmin, processarBaseEmbarque: processarBaseEmbarque, salvarForecast: salvarForecast,
     parsearBaseEmbarque: parsearBaseEmbarque, diasUteisDoMes: diasUteisDoMes, distribuirNosDias: distribuirNosDias,
-    forecastPorDia: forecastPorDia, validarProporcoes: validarProporcoes, validarCruzada: validarCruzada, matrizPrevista: matrizPrevista, nomeCurtoTransportadora: nomeCurtoTransportadora,
+    forecastPorDia: forecastPorDia, entradaDoMes: entradaDoMes, entradaAutomatica: entradaAutomatica, validarProporcoes: validarProporcoes, validarCruzada: validarCruzada, matrizPrevista: matrizPrevista, nomeCurtoTransportadora: nomeCurtoTransportadora,
     parsearNotasEmbarcadas: parsearNotasEmbarcadas, aplicarFiltrosNaSerie: aplicarFiltrosNaSerie, montarMix: montarMix, processarNotasEmbarcadas: processarNotasEmbarcadas, montarSerieEmbarque: montarSerieEmbarque, lerMilPecas: lerMilPecas, repartir: repartir, dataDeCelula: dataDeCelula,
     dataSnapshot: function () { return dataSnapshot; },
   };
