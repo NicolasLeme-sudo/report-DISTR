@@ -256,6 +256,44 @@ html { overflow-x: hidden; }
   font-size: 14px; font-weight: 700; margin-bottom: 12px;
   padding-bottom: 8px; border-bottom: 1px solid var(--amber);
 }
+/* ── Embarque: gráfico Expedição × Forecast / Análise Prevista de Backlog (mesmo traço do Report E-commerce) ── */
+.week-head  { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 6px; }
+.week-head .section-title { flex: 1 1 auto; }
+.week-ctrl { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+.seg-toggle { display: inline-flex; gap: 6px; }
+.seg-btn {
+  padding: 5px 13px; border-radius: 20px; font-size: 12px; font-weight: 600; font-family: inherit;
+  border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer;
+}
+.seg-btn:hover { color: var(--text); }
+.seg-btn.ativo { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.week-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: 4px; cursor: grab; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.week-scroll:active { cursor: grabbing; }
+.week-scroll svg { display: block; }
+.week-nota { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+.exp-col { fill: transparent; cursor: inherit; }
+.exp-col:hover { fill: rgba(147,165,184,.08); }
+.exp-tip { position: fixed; z-index: 500; display: none; pointer-events: none; min-width: 210px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.5); font-size: 12.5px; color: var(--text); }
+.exp-tip.largo { min-width: 470px; }
+.exp-tip .et-cols { display: flex; }
+.exp-tip .et-c { flex: 1; padding: 0 14px; border-left: 1px solid var(--border); }
+.exp-tip .et-c:first-child { padding-left: 0; border-left: 0; }
+.exp-tip .et-c:last-child { padding-right: 0; }
+.exp-tip .et-t { font-weight: 700; margin-bottom: 4px; }
+.exp-tip .et-k { color: var(--text-muted); font-size: 11.5px; margin-top: 4px; }
+.exp-tip .et-v { font-weight: 700; }
+.exp-tip .et-h { font-weight: 700; margin-bottom: 6px; color: var(--text-label); }
+.exp-tip .et-l { display: flex; justify-content: space-between; gap: 18px; padding: 1.5px 0; }
+.exp-tip .et-l span { color: var(--text-muted); }
+.week-totais { display: flex; gap: 22px; }
+.week-totais .item .lab { font-size: 10px; text-transform: uppercase; letter-spacing: .3px; color: var(--text-muted); }
+.week-totais .item .val { font-size: 16px; font-weight: 700; color: var(--text); }
+.legend-line { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-muted); margin-top: 6px; }
+.legend-line span { display: flex; align-items: center; gap: 6px; }
+.legend-line i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+
 .admin-grupo {
   margin: 36px 0 4px; padding: 8px 12px; font-size: 11px; font-weight: 700; letter-spacing: .14em;
   text-transform: uppercase; color: var(--amber); background: var(--amber-soft, var(--bg-input));
@@ -1176,6 +1214,9 @@ tr.total > th, tr.total > td {
     <div class="menu-item" id="menuEstoqueOp" onclick="mostrarSecao('estoqueop')">
       <span class="icone">🏪</span> Estoque
     </div>
+    <div class="menu-item" id="menuEmbarque" onclick="mostrarSecao('embarque')">
+      <span class="icone">🚚</span> Embarque
+    </div>
 
     <div class="sidebar-section-label">Gestão</div>
     <div class="menu-item ativo" id="menuEstoque" onclick="mostrarSecao('estoque')">
@@ -1219,6 +1260,10 @@ tr.total > th, tr.total > td {
 
     <section class="secao" id="secao-estoqueop">
       <div id="estoqueop-conteudo"><div class="loading-msg">Carregando snapshot…</div></div>
+    </section>
+
+    <section class="secao" id="secao-embarque">
+      <div id="embarque-conteudo"><div class="loading-msg">Carregando…</div></div>
     </section>
 
     <section class="secao ativa" id="secao-estoque">
@@ -1397,6 +1442,49 @@ tr.total > th, tr.total > td {
         <div class="log" id="logPlanejamentoPfa"></div>
       </div>
 
+      <div class="admin-grupo">Embarque</div>
+
+      <div class="section-title" style="margin-top:12px">Base de Embarque (histórico diário)</div>
+      <div class="card">
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+          Envie o <strong>.xlsx</strong> da base do Embarque (a mesma do modelo antigo de backlog, aba "Plan1": uma coluna por dia).
+          O sistema lê <strong>Expedição, Backlog, Separação e Faturamento</strong> (linhas "Peças") e grava um registro por dia.
+          Pode subir a base completa de novo quando quiser: o dia é a chave, então <strong>nada duplica</strong> — o arquivo mais novo
+          atualiza só os dias que ele traz. Alimenta o gráfico da tela <strong>Embarque</strong>.
+        </p>
+        <div class="dropzone" id="dropzoneBaseEmbarque">
+          <span id="dropzoneBaseEmbarqueTexto">Clique para selecionar o .xlsx da base de Embarque</span>
+          <input type="file" id="inputBaseEmbarque" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
+        </div>
+        <button class="btn-mini" id="btnProcessarBaseEmbarque" style="margin-top:12px" disabled>Processar Base de Embarque</button>
+        <div class="aviso ok" id="okBaseEmbarque" style="display:none;margin-top:10px"></div>
+        <div class="log" id="logBaseEmbarque"></div>
+      </div>
+
+      <div class="section-title" style="margin-top:24px">Forecast mensal de Embarque</div>
+      <div class="card">
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+          Peças que devem ser <strong>embarcadas no mês</strong>. O sistema divide por igual entre os <strong>dias úteis (seg–sex)</strong>
+          e aplica no gráfico (ex.: 731.000 peças em 22 dias úteis = 33.227 por dia). Feriado ou dia sem embarque: informe em
+          "Dias sem embarque" que ele sai da divisão. A <strong>entrada prevista</strong> (opcional) é o forecast do que entra no backlog;
+          sem ela o gráfico não projeta o backlog dos dias futuros.
+        </p>
+        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+          <div><label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Mês</label>
+            <input type="month" id="embMes" style="padding:6px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)"></div>
+          <div><label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Peças embarcadas previstas</label>
+            <input type="text" id="embPecas" placeholder="731000" style="padding:6px 10px;width:150px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)"></div>
+          <div><label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Entrada prevista (opcional)</label>
+            <input type="text" id="embEntrada" placeholder="—" style="padding:6px 10px;width:150px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)"></div>
+          <div><label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Dias sem embarque (opcional)</label>
+            <input type="text" id="embFolgas" placeholder="12/10/2026, 02/11/2026" style="padding:6px 10px;width:220px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)"></div>
+          <button class="btn-mini" id="btnSalvarForecastEmbarque">Salvar forecast</button>
+        </div>
+        <div id="embPreview" style="font-size:12px;color:var(--text-muted);margin-top:8px"></div>
+        <div class="log" id="logForecastEmbarque" style="margin-top:8px"></div>
+        <div style="margin-top:12px;font-size:12px;color:var(--text-muted)" id="embForecastLista"></div>
+      </div>
+
       <div class="admin-grupo">Bases</div>
 
       <div class="section-title" style="margin-top:24px">Base de Ativos (turno real do colaborador)</div>
@@ -1460,6 +1548,7 @@ tr.total > th, tr.total > td {
 <script src="ingest-movimentacoes.js"></script>
 <script src="ingest-colaboradores.js"></script>
 <script src="ingest-pfas.js"></script>
+<script src="embarque.js"></script>
 <script src="ingest-emails-ajustes.js"></script>
 <!-- SheetJS — só usado na tela de Admin, pra ler a base de Ativos (.xlsx) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -1619,6 +1708,7 @@ const TITULOS = {
   start: 'Start Inicial',
   ressuprimento: 'Ressuprimento',
   estoqueop: 'Estoque',
+  embarque: 'Embarque',
   estoque: 'Balanço de Estoque',
   distr: 'Fluxo de Processos',
   atualizar: 'Abastecimento',
@@ -1644,6 +1734,7 @@ function atualizarSubtituloSecao(secao) {
   else if (secao === 'estoqueop') iso = dataSnapshotRessuprimento;
   else if (secao === 'ressuprimento') iso = dataSnapshotMovimentacoes;
   else if (secao === 'start') iso = dataSnapshotPfas;
+  else if (secao === 'embarque') iso = dataSnapshotEmbarque;
   el.textContent = iso ? 'Última atualização: ' + formatarDataHora(iso) : '';
 }
 window.atualizarSubtituloSecao = atualizarSubtituloSecao;
@@ -1657,6 +1748,7 @@ let distrFluxoCarregado = false;
 let ressuprimentoCarregado = false;
 let pfasCarregado = false;
 let estoqueCarregado = false;
+let embarqueCarregado = false;
 
 function mostrarSecao(secao) {
   // Trava de rota: esconder o item do menu não basta, porque a navegação
@@ -1671,7 +1763,7 @@ function mostrarSecao(secao) {
   ajustarTabelas5Linhas(document.getElementById('secao-' + secao));
   document.querySelectorAll('.menu-item').forEach(function (i) { i.classList.remove('ativo'); });
   const item = {
-    start: 'menuStart', ressuprimento: 'menuRessuprimento', estoqueop: 'menuEstoqueOp', estoque: 'menuEstoque',
+    start: 'menuStart', ressuprimento: 'menuRessuprimento', estoqueop: 'menuEstoqueOp', embarque: 'menuEmbarque', estoque: 'menuEstoque',
     distr: 'menuDistrFluxo', atualizar: 'menuAtualizar',
   }[secao];
   if (item) document.getElementById(item).classList.add('ativo');
@@ -1698,7 +1790,11 @@ function mostrarSecao(secao) {
     estoqueCarregado = true;
     carregarEstoque();
   }
-  if (secao === 'atualizar') mostrarOrigemPersona();
+  if (secao === 'embarque' && !embarqueCarregado) {
+    embarqueCarregado = true;
+    window.Embarque.iniciar('embarque-conteudo', supabaseClient);
+  }
+  if (secao === 'atualizar') { mostrarOrigemPersona(); window.Embarque.ligarAdmin(supabaseClient); }
 }
 
 function aplicarVisibilidadeMenu() {
@@ -3196,6 +3292,8 @@ async function carregarHistoricoOperadorRessuprimento() {
    ============================================================ */
 let dadosPfas = null;
 let dataSnapshotPfas = null;
+let dataSnapshotEmbarque = null;
+window.dataSnapshotEmbarqueDefinir = function (iso) { dataSnapshotEmbarque = iso; atualizarSubtituloSecao('embarque'); };
 let filtroMarcaPfa = new Set();       // vazio = todas
 let filtroSegmentoPfa = new Set();    // vazio = todos
 let filtroFifoPfa = new Set();        // vazio = todas as faixas

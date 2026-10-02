@@ -53,6 +53,9 @@ que mantém a tela rápida com base grande.
 | `ingest.js` | Parse, agregação e gravação (página Estoque). |
 | `distr-fluxo.js` | Renderizador + editor da página **Fluxo de Processos** (ver seção 10). |
 | `esquema.sql` | Todo o banco: tabelas, gabaritos, RLS. Já aplicado. |
+| `embarque.js` | Setor **Embarque**: leitura da base histórica, forecast mensal ÷ dias úteis e o gráfico Expedição × Forecast / Análise Prevista de Backlog (mesmo traço do Report E-commerce). |
+| `migracao_embarque.sql` | Tabelas `embarque_diario` (histórico diário) e `embarque_forecast_mensal`. Já aplicada. |
+| `testes-embarque.js` | Testes do Embarque (`node testes-embarque.js`). |
 | `seed_distr_fluxo.sql` | Semente da primeira versão do Fluxo de Processos (ver seção 10). |
 | `vercel.json` | Diz ao Vercel que é estático puro, sem build. |
 | `favicon.png` | Ícone da aba e marca no menu. |
