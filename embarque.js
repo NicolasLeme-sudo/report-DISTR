@@ -894,7 +894,7 @@
     const periodoTxt = sel === 'tudo' ? rotuloMes(meses[0]) + ' a ' + rotuloMes(meses[meses.length - 1]) : sel.map(rotuloMes).join(', ');
     let html =
       '<div class="week-head" style="margin-bottom:12px">' +
-        '<div class="section-title" style="margin-bottom:0">Mix do embarque</div>' +
+        '<div class="section-title" style="margin-bottom:0">Embarque - Marca x Segmento - Transportadoras</div>' +
         '<div class="week-totais"><div class="item"><div class="lab">Peças</div><div class="val">' + fmtN(m.total.p) + '</div></div>' +
           '<div class="item"><div class="lab">Volumes</div><div class="val">' + fmtN(m.total.v) + '</div></div>' +
           '<div class="item"><div class="lab">Notas</div><div class="val">' + fmtN(m.total.n) + '</div></div></div>' +
