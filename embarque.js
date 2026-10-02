@@ -959,20 +959,11 @@
         } else if (a) rot(a[0], a[1] - 12, fmtN(a[2]), 'var(--accent)');
         else if (b) rot(b[0], b[1] - 12, fmtN(b[2]), 'var(--olive)');
       }
-      // totais comparam os MESMOS dias: do início da janela até hoje, só onde há expedido E forecast
-      // (o forecast só existe nos meses informados — comparar 17 dias de expedição com 2 de forecast enganaria)
-      const comuns = [];
-      for (let i = 0; i <= hi; i++) if (d.expedido[i] != null && d.forecast[i] != null) comuns.push(i);
-      const soma = function (arr, idx) { return fmtN(idx.reduce(function (s2, i) { return s2 + arr[i]; }, 0)); };
-      if (comuns.length) {
-        const per = d.dias[comuns[0]] + (comuns.length > 1 ? ' a ' + d.dias[comuns[comuns.length - 1]] : '');
-        tot.innerHTML = '<div class="item"><div class="lab">Expedido · ' + per + '</div><div class="val">' + soma(d.expedido, comuns) + '</div></div>' +
-          '<div class="item"><div class="lab">Forecast · ' + per + '</div><div class="val">' + soma(d.forecast, comuns) + '</div></div>';
-      } else {
-        const idxE = []; for (let i = 0; i <= hi; i++) if (d.expedido[i] != null) idxE.push(i);
-        tot.innerHTML = '<div class="item"><div class="lab">Expedido · ' + (idxE.length ? d.dias[idxE[0]] + ' a ' + d.dias[idxE[idxE.length - 1]] : 'sem dado') + '</div><div class="val">' + (idxE.length ? soma(d.expedido, idxE) : '—') + '</div></div>' +
-          '<div class="item"><div class="lab">Forecast · mesmo período</div><div class="val">—</div></div>';
-      }
+      // totais do topo = dia de hoje (expedido de hoje só existe quando a base do Embarque já trouxer o dia)
+      const ultExp = serie.ultimo_dia_expedicao;
+      tot.innerHTML = '<div class="item"><div class="lab">Expedido · hoje</div><div class="val">' + num(d.expedido[hi]) + '</div>' +
+          (d.expedido[hi] == null && ultExp ? '<div style="font-size:10.5px;color:var(--text-muted);font-weight:600">base até ' + rotuloDia(ultExp) + '</div>' : '') + '</div>' +
+        '<div class="item"><div class="lab">Forecast · hoje</div><div class="val">' + num(d.forecast[hi]) + '</div></div>';
       leg.innerHTML = '<span><i style="background:var(--olive)"></i>Expedido (peças)</span><span><i style="background:var(--accent)"></i>Forecast</span>';
       nota.textContent = '';
     } else {
