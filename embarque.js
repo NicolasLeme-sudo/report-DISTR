@@ -252,6 +252,190 @@
     };
   }
 
+
+  /* ============================================================================
+     NOTAS EMBARCADAS (detalhado por marca, segmento e transportadora)
+     ============================================================================ */
+  const SEG_FILTRO = { CHUTEIRA: 'CALÇADO', CHINELO: 'CALÇADO' };   // como no resto do sistema: chuteira/chinelo contam como calçado
+  const semAcento = function (t) { return String(t == null ? '' : t).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim(); };
+
+  // "DISPLAN ENCOMENDAS URGENTES LTDA" -> "DISPLAN"; "TECMAR TRANSPORTES LTDA." -> "TECMAR"; "VITORIA PROVEDORA..." -> "VITÓRIA"
+  const PALAVRAS_GENERICAS = /^(LTDA\.?|S\/A|SA|ME|EPP|EIRELI|TRANSPORTES?|TRANSPORTADORA|TRANSP\.?|ENCOMENDAS?|URGENTES?|EXPRESSA|EXPRESS|LOGISTICA|PROVEDORA|SERVICOS?|CARGAS?|E|DE|DA|DO)$/;
+  const NOMES_COM_ACENTO = { VITORIA: 'VITÓRIA' };
+  function nomeCurtoTransportadora(nome) {
+    const t = semAcento(nome);
+    if (!t) return 'SEM TRANSPORTADORA';
+    if (/^S\/\s*CARRO$/.test(t)) return 'SEM TRANSPORTADORA';
+    const palavras = t.replace(/[.,]/g, ' ').split(/\s+/).filter(function (w) { return w && !PALAVRAS_GENERICAS.test(w); });
+    const curto = palavras[0] || t.split(/\s+/)[0];
+    return NOMES_COM_ACENTO[curto] || curto;
+  }
+  function segmentoMacroLocal(segmento, categoria) {
+    const t = String(String(categoria || '').trim() || String(segmento || '')).toUpperCase();
+    if (/CHUTEIRA/.test(t)) return 'CHUTEIRA';
+    if (/CHINELO|OPANKA/.test(t)) return 'CHINELO';
+    if (/MEIA/.test(t)) return 'MEIA';
+    if (/ACESS/.test(t)) return 'ACESSÓRIO';
+    if (/VESTU|BOTAFOGO|FUTEBOL|CAMISA/.test(t)) return 'VESTUÁRIO';
+    if (/TENIS|TÊNIS|SAPATO|TAMANCO|BOTA|CALCAD|CALÇAD/.test(t)) return 'CALÇADO';
+    return 'OUTROS';
+  }
+  function segmentoParaFiltro(seg) { const x = String(seg || '').toUpperCase(); return SEG_FILTRO[x] || x; }
+  function marcaDoTexto(t) { return /olymp/i.test(t) ? 'OLYMPIKUS' : /mizuno/i.test(t) ? 'MIZUNO' : /under/i.test(t) ? 'UNDER ARMOUR' : null; }
+
+  /* Planilha "Notas Embarcadas" (Embarcador, Destinatário, Nota Fiscal, Emissão, Embarque, Valor NF, Vol., Peças,
+     Família, Marca, Cód.Transp., Transportadora). `familias` = { '068': { marca, categoria, segmento } } de dim_familias.
+     O nome do destinatário NÃO é guardado. */
+  function parsearNotasEmbarcadas(linhas, familias) {
+    familias = familias || {};
+    const avisos = [];
+    let iCab = -1;
+    (linhas || []).forEach(function (l, i) { if (iCab < 0 && (l || []).some(function (c) { return semAcento(c) === 'NOTA FISCAL'; })) iCab = i; });
+    if (iCab < 0) throw new Error('Não achei o cabeçalho da planilha de notas embarcadas (coluna "Nota Fiscal").');
+    const col = {};
+    linhas[iCab].forEach(function (c, j) {
+      const n = semAcento(c);
+      if (n === 'NOTA FISCAL') col.nf = j; else if (n === 'EMISSAO') col.emissao = j; else if (n.indexOf('EMBARQUE') === 0) col.embarque = j;
+      else if (n === 'VALOR NF') col.valor = j; else if (n === 'VOL.' || n === 'VOL') col.vol = j; else if (n === 'PECAS') col.pecas = j;
+      else if (n === 'FAMILIA') col.familia = j; else if (n === 'MARCA') col.marca = j; else if (n === 'TRANSPORTADORA') col.transp = j;
+    });
+    ['nf', 'embarque', 'pecas', 'familia'].forEach(function (k) { if (col[k] === undefined) throw new Error('Coluna obrigatória ausente na planilha: ' + k); });
+    const registros = [], semFamilia = new Set(), vistos = new Set();
+    let duplicadas = 0, semData = 0;
+    for (let i = iCab + 1; i < linhas.length; i++) {
+      const l = linhas[i] || [];
+      const nf = String(l[col.nf] == null ? '' : l[col.nf]).trim();
+      const pecas = numeroDeCelula(l[col.pecas]);
+      if (!nf || pecas === null) continue;
+      const embarque = dataDeCelula(l[col.embarque]);
+      if (!embarque) { semData++; continue; }
+      if (vistos.has(nf)) { duplicadas++; continue; }
+      vistos.add(nf);
+      const cod = String(l[col.familia] == null ? '' : l[col.familia]).trim().padStart(3, '0');
+      const f = familias[cod];
+      const marca = (f && f.marca ? String(f.marca).toUpperCase() : null) || marcaDoTexto(l[col.marca]) || 'OUTRAS';
+      let seg = 'OUTROS';
+      if (f) seg = segmentoParaFiltro(segmentoMacroLocal(f.segmento, f.categoria)); else semFamilia.add(cod);
+      registros.push({
+        nf: nf, embarque: embarque, emissao: col.emissao !== undefined ? dataDeCelula(l[col.emissao]) : null, pecas: pecas,
+        volumes: col.vol !== undefined ? numeroDeCelula(l[col.vol]) : null,
+        valor: col.valor !== undefined && typeof l[col.valor] === 'number' ? Math.round(l[col.valor] * 100) / 100 : null,
+        familia: cod, marca: marca, segmento: seg,
+        transportadora: col.transp !== undefined && l[col.transp] != null ? String(l[col.transp]).trim() : null,
+      });
+    }
+    if (semFamilia.size) avisos.push('Família(s) fora do cadastro (segmento "OUTROS"): ' + Array.from(semFamilia).join(', '));
+    if (duplicadas) avisos.push(duplicadas + ' nota(s) repetida(s) no arquivo — ficou uma só.');
+    if (semData) avisos.push(semData + ' linha(s) sem data de embarque ignorada(s).');
+    registros.sort(function (a, b) { return a.embarque < b.embarque ? -1 : a.embarque > b.embarque ? 1 : 0; });
+    return {
+      registros: registros, avisos: avisos,
+      periodo: registros.length ? { de: registros[0].embarque, ate: registros[registros.length - 1].embarque } : null,
+      total_pecas: registros.reduce(function (t, r) { return t + r.pecas; }, 0),
+    };
+  }
+
+  /* ---------- filtros (Marca / Segmento / Transportadora) ---------- */
+  function filtroAtivo(F) { return !!F && ((F.marca || []).length || (F.seg || []).length || (F.transp || []).length) > 0; }
+  // linha do detalhado: {m, s, t}; opções de ignorar uma dimensão (o ranking de transportadora ignora o próprio filtro)
+  function casaFiltro(m, seg, t, F, ignora) {
+    if (!F) return true;
+    if (ignora !== 'marca' && (F.marca || []).length && F.marca.indexOf(String(m || '').toUpperCase()) === -1) return false;
+    if (ignora !== 'seg' && (F.seg || []).length && F.seg.indexOf(segmentoParaFiltro(seg)) === -1) return false;
+    if (ignora !== 'transp' && (F.transp || []).length && F.transp.indexOf(nomeCurtoTransportadora(t)) === -1) return false;
+    return true;
+  }
+  function shareProps(forecasts, dia, campo, selecionados) {
+    if (!(selecionados || []).length) return 1;
+    const props = propsDoMes(forecasts, dia, campo);
+    if (!props.length) return null;
+    return props.filter(function (x) { return selecionados.indexOf(String(x.nome).toUpperCase()) !== -1; }).reduce(function (t, x) { return t + Number(x.pct); }, 0) / 100;
+  }
+
+  /* Série com os filtros aplicados. Sem filtro devolve a própria série.
+     - realizado (expedido / saída efetiva): do detalhado de notas (só nos dias que ele cobre; fora disso, sem dado);
+     - forecast: previsto do dia × proporção de marca × proporção de segmento (cadastradas) × participação histórica da transportadora;
+     - backlog: só o de hoje (peças em tela), filtrado; o histórico da base antiga não tem marca/segmento/transportadora. */
+  function aplicarFiltrosNaSerie(base, ctx) {
+    const F = ctx && ctx.filtros;
+    if (!filtroAtivo(F)) return base;
+    const agg = ctx.agg || [];
+    const out = Object.assign({}, base);
+    const n = base.dias_iso.length, hi = base.hoje_idx;
+    out.filtro_ativo = true;
+    // realizado
+    let minD = null, maxD = null, totAll = 0, totTransp = 0;
+    const porDia = {};
+    agg.forEach(function (r) {
+      if (!minD || r.d < minD) minD = r.d;
+      if (!maxD || r.d > maxD) maxD = r.d;
+      totAll += r.p;
+      if (!(F.transp || []).length || F.transp.indexOf(nomeCurtoTransportadora(r.t)) !== -1) totTransp += r.p;
+      if (casaFiltro(r.m, r.s, r.t, F)) porDia[r.d] = (porDia[r.d] || 0) + r.p;
+    });
+    out.detalhe = minD ? { de: minD, ate: maxD } : null;
+    const real = base.dias_iso.map(function (d) { return minD && d >= minD && d <= maxD ? (porDia[d] || 0) : null; });
+    out.expedido = real; out.saida_efetiva = real;
+    // forecast e entrada previstos, reduzidos pela proporção
+    const shT = (F.transp || []).length ? (totAll ? totTransp / totAll : null) : 1;
+    const fator = base.dias_iso.map(function (d) {
+      const a = shareProps(ctx.forecasts, d, 'prop_marca', F.marca), b = shareProps(ctx.forecasts, d, 'prop_segmento', F.seg);
+      return a === null || b === null || shT === null ? null : a * b * shT;
+    });
+    const escala = function (arr) { return arr.map(function (v, i) { return v == null || fator[i] === null ? null : Math.round(v * fator[i]); }); };
+    out.forecast = escala(base.forecast); out.saida = escala(base.saida); out.entrada = escala(base.entrada);
+    // backlog de hoje filtrado
+    const eT = ctx.emTela, grupos = eT && Array.isArray(eT.grupos) ? eT.grupos : null;
+    out.backlog_efetivo = base.dias_iso.map(function () { return null; });
+    out.backlog_nao_disp = base.dias_iso.map(function () { return null; });
+    out.backlog = base.dias_iso.map(function () { return null; });
+    out.backlog_previsto = base.dias_iso.map(function () { return null; });
+    out.backlog_hoje = null;
+    if (grupos) {
+      let tot = 0, nd = 0;
+      grupos.forEach(function (g) {
+        if (!casaFiltro(g.m, g.s, g.t, F)) return;
+        tot += Number(g.p) || 0;
+        if (g.sit === 'Nao disp. picking') nd += Number(g.p) || 0;
+      });
+      out.backlog_hoje = { total: tot, nao_disp: nd, gerado_em: eT.gerado_em || null };
+      out.backlog_efetivo[hi] = tot; out.backlog[hi] = tot; out.backlog_nao_disp[hi] = nd;
+      let b = tot;
+      for (let i = hi; i < n - 1; i++) {
+        if (out.entrada[i] == null || out.saida[i] == null) break;
+        b = Math.max(0, b + out.entrada[i] - out.saida[i]);
+        out.backlog_previsto[i + 1] = Math.round(b); out.backlog[i + 1] = Math.round(b);
+      }
+    }
+    out.tem_forecast = out.forecast.some(function (v) { return v != null; });
+    out.tem_entrada_prevista = out.entrada.some(function (v) { return v != null; });
+    out.ultimo_dia_expedicao = maxD;
+    return out;
+  }
+
+  /* ---------- mix do embarque (matriz marca × segmento + ranking de transportadoras) ---------- */
+  function montarMix(agg, F, periodo) {
+    const no = function (r) { return !periodo || periodo === 'tudo' || String(r.d).slice(0, 7) === periodo; };
+    const total = { p: 0, v: 0, n: 0 }, cel = {}, linhaM = {}, colS = {}, transp = {};
+    let totTranspBase = 0;
+    (agg || []).forEach(function (r) {
+      if (!no(r)) return;
+      const seg = segmentoParaFiltro(r.s), t = nomeCurtoTransportadora(r.t);
+      if (casaFiltro(r.m, r.s, r.t, F, 'transp')) {            // ranking: respeita marca e segmento, ignora o próprio filtro
+        const x = transp[t] || (transp[t] = { nome: t, p: 0, v: 0, n: 0 });
+        x.p += r.p; x.v += r.v; x.n += r.n; totTranspBase += r.p;
+      }
+      if (!casaFiltro(r.m, r.s, r.t, F)) return;                // matriz e totais: respeitam os três
+      total.p += r.p; total.v += r.v; total.n += r.n;
+      const k = r.m + '|' + seg;
+      cel[k] = (cel[k] || 0) + r.p; linhaM[r.m] = (linhaM[r.m] || 0) + r.p; colS[seg] = (colS[seg] || 0) + r.p;
+    });
+    const ord = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; }); };
+    const rank = Object.keys(transp).map(function (k) { return transp[k]; }).sort(function (a, b) { return b.p - a.p; })
+      .map(function (x) { return Object.assign(x, { pct: totTranspBase ? x.p / totTranspBase * 100 : 0 }); });
+    return { total: total, marcas: ord(linhaM), segs: ord(colS), cel: cel, linhaM: linhaM, colS: colS, transportadoras: rank };
+  }
+
   /* ============================================================================
      GRÁFICO (adaptado do Report E-commerce — mesmo traço, mesmas cores)
      ============================================================================ */
@@ -314,7 +498,135 @@
     return t;
   }
 
-  let visao = 'forecast', janela = 15, serie = null, bruto = null;
+  let visao = 'forecast', janela = 15, serie = null, bruto = null, serieBase = null;
+  const filtros = { marca: [], seg: [], transp: [] };
+  let periodoMix = 'tudo';
+
+  function injetarCss() {
+    if (document.getElementById('embCss')) return;
+    const st = document.createElement('style'); st.id = 'embCss';
+    st.textContent =
+      '.emb-filtros{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px 16px;margin-bottom:14px}' +
+      '.emb-filtros .filtros{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:5px 0}' +
+      '.emb-filtros .rot-filtro{font-size:11px;color:var(--text-label);text-transform:uppercase;letter-spacing:.06em;width:115px;flex:none}' +
+      '.emb-mix{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:28px;margin-top:6px}' +
+      '@media(max-width:1000px){.emb-mix{grid-template-columns:1fr}}' +
+      '.emb-sub{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-label);font-weight:600;margin-bottom:8px}' +
+      '.emb-matriz{border-collapse:separate;border-spacing:3px;width:100%;font-size:13px}' +
+      '.emb-matriz th{font-size:11px;color:var(--text-label);font-weight:600;padding:4px 6px;text-align:center;text-transform:uppercase;letter-spacing:.04em}' +
+      '.emb-matriz th.l{text-align:left;white-space:nowrap}' +
+      '.emb-matriz td{text-align:center;padding:12px 6px;border-radius:6px;font-weight:600}' +
+      '.emb-matriz td.tot,.emb-matriz th.tot{color:var(--text);background:transparent;font-weight:700}' +
+      '.emb-matriz td.vz{color:var(--text-muted);font-weight:400}' +
+      '.emb-transp{overflow-y:auto;padding-right:8px;scrollbar-width:thin;scrollbar-color:var(--text-muted) transparent}' +
+      '.emb-t-dica{font-size:11px;color:var(--text-muted);margin-top:4px}' +
+      '.emb-t-row{padding:6px 10px 7px;border:1px solid transparent;border-radius:8px;cursor:pointer;margin-bottom:4px}' +
+      '.emb-t-row:hover{background:var(--bg-input)}' +
+      '.emb-t-row.on{border-color:var(--accent);background:var(--accent-soft)}' +
+      '.emb-t-top{display:flex;justify-content:space-between;align-items:baseline;font-weight:700;font-size:13px}' +
+      '.emb-t-top b{font-size:15px}' +
+      '.emb-t-bar{height:16px;border-radius:5px;background:var(--bg-input);margin:4px 0 3px;overflow:hidden}' +
+      '.emb-t-bar i{display:block;height:100%;background:var(--accent);border-radius:5px}' +
+      '.emb-t-meta{font-size:12px;color:var(--text-muted)}';
+    document.head.appendChild(st);
+  }
+
+  const fmtPct1 = function (v) { return (Math.round(v * 10) / 10).toFixed(1).replace('.', ',') + '%'; };
+  function opcoesDoDetalhe(agg) {
+    const m = {}, sg = {}, t = {};
+    (agg || []).forEach(function (r) {
+      m[r.m] = (m[r.m] || 0) + r.p; const g = segmentoParaFiltro(r.s); sg[g] = (sg[g] || 0) + r.p;
+      const k = nomeCurtoTransportadora(r.t); t[k] = (t[k] || 0) + r.p;
+    });
+    const ord = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; }); };
+    return { marca: ord(m), seg: ord(sg), transp: ord(t) };
+  }
+  function desenharFiltros() {
+    const alvo = document.getElementById('embFiltros');
+    if (!alvo) return;
+    const agg = bruto ? bruto.agg : [];
+    if (!agg.length) {
+      alvo.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">Filtros por marca, segmento e transportadora ficam disponíveis depois que o detalhado de notas embarcadas for carregado (Abastecimento › Embarque).</div>';
+      return;
+    }
+    const op = opcoesDoDetalhe(agg);
+    const grupo = function (rot, campo, lista, todas) {
+      return '<div class="filtros"><span class="rot-filtro">' + rot + '</span><span class="chip' + (!filtros[campo].length ? ' on' : '') + '" data-f="' + campo + '" data-v="">' + todas + '</span>' +
+        lista.map(function (v) { return '<span class="chip' + (filtros[campo].indexOf(v) !== -1 ? ' on' : '') + '" data-f="' + campo + '" data-v="' + v + '">' + v + '</span>'; }).join('') + '</div>';
+    };
+    alvo.innerHTML = grupo('Marca', 'marca', op.marca, 'Todas') + grupo('Segmento', 'seg', op.seg, 'Todos') + grupo('Transportadora', 'transp', op.transp, 'Todas') +
+      (filtroAtivo(filtros) ? '<div class="filtros"><span class="chip" style="color:var(--red)" data-limpar="1">✕ Limpar filtros</span></div>' : '');
+    alvo.querySelectorAll('.chip[data-f]').forEach(function (c) { c.addEventListener('click', function () { alternarFiltro(c.dataset.f, c.dataset.v); }); });
+    const lim = alvo.querySelector('[data-limpar]'); if (lim) lim.addEventListener('click', function () { filtros.marca = []; filtros.seg = []; filtros.transp = []; aplicar(); });
+  }
+  function alternarFiltro(campo, valor) {
+    if (!valor) filtros[campo] = [];
+    else { const i = filtros[campo].indexOf(valor); if (i === -1) filtros[campo].push(valor); else filtros[campo].splice(i, 1); }
+    aplicar();
+  }
+  function aplicar() {
+    if (!bruto || !serieBase) return;
+    serie = aplicarFiltrosNaSerie(serieBase, { filtros: filtros, agg: bruto.agg, forecasts: bruto.forecasts, emTela: bruto.emTela });
+    desenharFiltros(); desenhar(); desenharMix();
+  }
+
+  const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  function desenharMix() {
+    const alvo = document.getElementById('embMix');
+    if (!alvo) return;
+    const agg = bruto ? bruto.agg : [];
+    if (!agg.length) { alvo.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px 0">Sem detalhado de notas embarcadas ainda. Suba o arquivo em Abastecimento › Embarque › Notas embarcadas.</div>'; return; }
+    const meses = Array.from(new Set(agg.map(function (r) { return String(r.d).slice(0, 7); }))).sort();
+    if (periodoMix !== 'tudo' && meses.indexOf(periodoMix) === -1) periodoMix = 'tudo';
+    const m = montarMix(agg, filtros, periodoMix);
+    const T = m.total.p || 1;
+    const maxCel = Math.max(1, Math.max.apply(null, Object.keys(m.cel).map(function (k) { return m.cel[k]; })));
+    const periodoTxt = periodoMix === 'tudo' ? rotuloDia(meses[0] + '-01').slice(3) + ' a ' + meses[meses.length - 1].slice(5) : '';
+    let html =
+      '<div class="week-head" style="margin-bottom:12px">' +
+        '<div class="section-title" style="margin-bottom:0">Mix do embarque</div>' +
+        '<div class="seg-toggle" id="embMixPeriodo">' +
+          '<button type="button" class="seg-btn' + (periodoMix === 'tudo' ? ' ativo' : '') + '" data-p="tudo">Todo o período</button>' +
+          meses.map(function (x) { return '<button type="button" class="seg-btn' + (periodoMix === x ? ' ativo' : '') + '" data-p="' + x + '">' + MESES[Number(x.slice(5)) - 1] + '/' + x.slice(2, 4) + '</button>'; }).join('') +
+        '</div>' +
+        '<div class="week-totais"><div class="item"><div class="lab">Peças</div><div class="val">' + fmtN(m.total.p) + '</div></div>' +
+          '<div class="item"><div class="lab">Volumes</div><div class="val">' + fmtN(m.total.v) + '</div></div>' +
+          '<div class="item"><div class="lab">Notas</div><div class="val">' + fmtN(m.total.n) + '</div></div></div>' +
+      '</div><div class="emb-mix">';
+    // --- matriz marca × segmento (% do total)
+    html += '<div><div class="emb-sub">Marca × segmento · % das peças embarcadas</div>';
+    if (!m.marcas.length) html += '<div style="font-size:12px;color:var(--text-muted)">Nenhuma nota nesse recorte.</div>';
+    else {
+      html += '<table class="emb-matriz"><tr><th></th>' + m.segs.map(function (g) { return '<th>' + g + '</th>'; }).join('') + '<th class="tot">Total</th></tr>';
+      m.marcas.forEach(function (mk) {
+        html += '<tr><th class="l">' + mk + '</th>' + m.segs.map(function (g) {
+          const v = m.cel[mk + '|' + g] || 0;
+          if (!v) return '<td class="vz">—</td>';
+          const a = 0.1 + 0.55 * v / maxCel;
+          return '<td style="background:color-mix(in srgb,var(--olive) ' + Math.round(a * 100) + '%,transparent)" title="' + mk + ' · ' + g + ': ' + fmtN(v) + ' peças">' + fmtPct1(v / T * 100) + '</td>';
+        }).join('') + '<td class="tot">' + fmtPct1(m.linhaM[mk] / T * 100) + '</td></tr>';
+      });
+      html += '<tr><th class="l tot">Total</th>' + m.segs.map(function (g) { return '<td class="tot">' + fmtPct1(m.colS[g] / T * 100) + '</td>'; }).join('') + '<td class="tot">100%</td></tr></table>';
+    }
+    html += '</div>';
+    // --- ranking de transportadoras (rolagem; 5 visíveis)
+    html += '<div><div class="emb-sub">Transportadoras · clique para filtrar</div><div class="emb-transp">';
+    const maxP = Math.max(1, m.transportadoras.length ? m.transportadoras[0].p : 1);
+    if (!m.transportadoras.length) html += '<div style="font-size:12px;color:var(--text-muted)">Nenhuma nota nesse recorte.</div>';
+    m.transportadoras.forEach(function (x) {
+      html += '<div class="emb-t-row' + (filtros.transp.indexOf(x.nome) !== -1 ? ' on' : '') + '" data-t="' + x.nome + '">' +
+        '<div class="emb-t-top"><span>' + x.nome + '</span><b>' + fmtPct1(x.pct) + '</b></div>' +
+        '<div class="emb-t-bar"><i style="width:' + Math.max(1.5, x.p / maxP * 100) + '%"></i></div>' +
+        '<div class="emb-t-meta">' + fmtN(x.p) + ' peças · ' + fmtN(x.v) + ' volumes</div></div>';
+    });
+    html += '</div>' + (m.transportadoras.length > 5 ? '<div class="emb-t-dica">▼ Role para ver ' + (m.transportadoras.length - 5 === 1 ? 'a outra transportadora' : 'as outras ' + (m.transportadoras.length - 5) + ' transportadoras') + '</div>' : '') + '</div></div>';
+    alvo.innerHTML = html;
+    // mostra exatamente 5 transportadoras de cara; as demais ficam na rolagem
+    const caixa = alvo.querySelector('.emb-transp'), linhas5 = alvo.querySelectorAll('.emb-t-row');
+    if (caixa && linhas5.length > 5) caixa.style.maxHeight = (5 * (linhas5[0].getBoundingClientRect().height + 4)) + 'px';
+    alvo.querySelectorAll('#embMixPeriodo .seg-btn').forEach(function (b) { b.addEventListener('click', function () { periodoMix = b.dataset.p; desenharMix(); }); });
+    alvo.querySelectorAll('.emb-t-row').forEach(function (r) { r.addEventListener('click', function () { alternarFiltro('transp', r.dataset.t); }); });
+  }
 
   function esconderTip() { const t = document.getElementById('embTip'); if (t) t.style.display = 'none'; }
   function mostrarTip(html, e, largo) {
@@ -433,9 +745,9 @@
         if (mostra(i)) rot(xF(i), yF(v) - 9, fmtN(v), 'var(--amber)');
       });
       linha(d.entrada, 'var(--accent)', '', true);
-      // saída: EFETIVA (sólida) nos dias que já passaram, PREVISTA (tracejada) a partir do primeiro dia sem expedição lançada
-      linha(d.saida.map(function (v, i) { return d.saida_efetiva[i] != null ? null : v; }), 'var(--olive)', '6 4', true);
-      linha(d.saida_efetiva, 'var(--olive)', '', true);
+      // saída: TRACEJADA sempre — nos dias que já passaram é o realizado (expedido); de hoje em diante é o forecast
+      const saidaUnica = d.saida.map(function (v, i) { return d.saida_efetiva[i] != null ? d.saida_efetiva[i] : v; });
+      linha(saidaUnica, 'var(--olive)', '6 4', true);
       const bh = serie.backlog_hoje;
       const dataEmTela = bh && bh.gerado_em ? String(bh.gerado_em).slice(0, 10) : null;
       const rotBk = !bh ? 'sem dado' : (dataEmTela && dataEmTela !== serie.dias_iso[hiAll] ? 'em tela ' + rotuloDia(dataEmTela) : 'hoje');
@@ -445,8 +757,7 @@
       leg.innerHTML = '<span><i style="background:var(--amber)"></i>Backlog (peças em tela)</span>' +
         '<span><i style="background:var(--red)"></i>Não disp. p/ picking</span>' +
         '<span><i style="background:var(--accent)"></i>Entrada prevista</span>' +
-        '<span><i style="background:var(--olive)"></i>Saída efetiva (expedido)</span>' +
-        '<span><i style="background:repeating-linear-gradient(90deg,var(--olive) 0 4px,transparent 4px 7px)"></i>Saída prevista (forecast de embarque)</span>';
+        '<span><i style="background:repeating-linear-gradient(90deg,var(--olive) 0 4px,transparent 4px 7px)"></i>Saída: dia que passou = realizado · de hoje em diante = forecast</span>';
       nota.textContent = 'Passe o mouse sobre um dia para ver previsto × efetivo. Backlog de hoje = peças dos PFAs pendentes em tela (Start Inicial); a parte vermelha é o que está "Não disp. picking". Dias anteriores: backlog da base do Embarque. ' +
         (serie.tem_entrada_prevista
           ? 'Dias futuros: backlog do dia seguinte = backlog + entrada prevista − saída prevista.'
@@ -459,6 +770,11 @@
       el('text', { x: xF(i), y: h - 12, 'text-anchor': 'middle', 'font-size': 11, fill: 'var(--text-muted)', 'font-weight': 400 }, d.dias_semana[i]);
     });
 
+    if (serie.filtro_ativo) {
+      nota.textContent += ' Filtro ativo: o realizado vem do detalhado de notas embarcadas' +
+        (serie.detalhe ? ' (' + rotuloDia(serie.detalhe.de) + ' a ' + rotuloDia(serie.detalhe.ate) + ')' : ' (nenhuma nota carregada)') +
+        ', o forecast é reduzido pela proporção de marca/segmento cadastrada e pela participação histórica da transportadora, e o backlog histórico some (a base antiga não tem esses cortes).';
+    }
     // aviso de base desatualizada (dados do realizado param antes de hoje)
     const hojeIso = serie.dias_iso[hiAll];
     if (serie.ultimo_dia_expedicao && serie.ultimo_dia_expedicao < somaDias(hojeIso, -1)) {
@@ -480,12 +796,6 @@
         const p = pct(d.expedido[i], d.forecast[i]);
         html += lin('Forecast', num(d.forecast[i]), 'var(--accent)') + lin('Expedido', num(d.expedido[i]), 'var(--olive)') +
           (p == null ? '' : lin('Diferença', fmtPct(p) + ' · ' + fmtN(d.expedido[i] - d.forecast[i]), corPct(p)));
-        // forecast do dia aberto pela proporção de marca/segmento do mês (Admin › Embarque)
-        const grupo = function (titulo, itens) {
-          return itens && itens.length ? '<div class="et-h" style="margin-top:8px">' + titulo + '</div>' +
-            itens.map(function (x) { return lin(x.nome + ' · ' + String(x.pct).replace('.', ',') + '%', fmtN(x.valor), 'var(--accent)'); }).join('') : '';
-        };
-        html += grupo('Forecast por marca', d.forecast_marca[i]) + grupo('Forecast por segmento', d.forecast_segmento[i]);
       } else {
         const parcial = i === hi;
         const bloco = function (titulo, cor, pr, ef, ehBacklog) {
@@ -528,6 +838,7 @@
       supabaseClient.from('embarque_diario').select('dia, backlog').not('backlog', 'is', null).order('dia', { ascending: false }).limit(1),
       supabaseClient.from('embarque_forecast_mensal').select('mes, pecas_embarque, pecas_entrada, dias_folga, prop_marca, prop_segmento, atualizado_em'),
       supabaseClient.rpc('embarque_backlog_em_tela'),
+      supabaseClient.rpc('embarque_notas_agregado', { p_de: somaDias(hoje, -400) }),
     ]);
     res.slice(0, 4).forEach(function (r) { if (r.error) throw r.error; });
     if (res[4].error) console.warn('Backlog em tela indisponível (rode migracao_embarque.sql):', res[4].error.message);
@@ -537,7 +848,8 @@
     let maisRecente = '';
     diario.concat(forecasts).forEach(function (r) { if (r.atualizado_em && r.atualizado_em > maisRecente) maisRecente = r.atualizado_em; });
     dataSnapshot = maisRecente || null;
-    return { hoje: hoje, emTela: res[4].error ? null : res[4].data, diario: diario, forecasts: forecasts, ultimos: { expedido: ult(res[1], 'expedido'), backlog: ult(res[2], 'backlog') } };
+    if (res[5].error) console.warn('Detalhado de notas indisponível (rode migracao_embarque.sql):', res[5].error.message);
+    return { hoje: hoje, agg: res[5].error || !Array.isArray(res[5].data) ? [] : res[5].data, emTela: res[4].error ? null : res[4].data, diario: diario, forecasts: forecasts, ultimos: { expedido: ult(res[1], 'expedido'), backlog: ult(res[2], 'backlog') } };
   }
 
   async function iniciar(rootId, supabaseClient) {
@@ -545,6 +857,7 @@
     if (!root) return;
     root.innerHTML =
       '<div class="kicker">Embarque</div>' +
+      '<div class="emb-filtros" id="embFiltros"></div>' +
       '<div class="card">' +
         '<div class="week-head">' +
           '<div class="section-title" style="margin-bottom:0" id="embTitulo">Expedição × Forecast</div>' +
@@ -563,7 +876,9 @@
         '<div class="week-scroll" id="embScroll"><svg id="embSvg"></svg></div>' +
         '<div class="legend-line" id="embLegenda"></div>' +
         '<div class="week-nota" id="embNota">Carregando…</div>' +
-      '</div>';
+      '</div>' +
+      '<div class="card" id="embMix"></div>';
+    injetarCss();
     document.querySelectorAll('#embVisao .seg-btn').forEach(function (b) { b.addEventListener('click', function () { visao = b.dataset.visao; desenhar(); }); });
     document.querySelectorAll('#embJanela .seg-btn').forEach(function (b) { b.addEventListener('click', function () { janela = Number(b.dataset.janela); desenhar(); }); });
     const sc = document.getElementById('embScroll');   // arrastar com o mouse para rolar
@@ -581,8 +896,9 @@
   async function recarregar(supabaseClient) {
     try {
       bruto = await carregarDados(supabaseClient);
-      serie = montarSerieEmbarque(bruto.diario, bruto.forecasts, bruto.hoje, bruto.ultimos, bruto.emTela);
-      desenhar();
+      serieBase = montarSerieEmbarque(bruto.diario, bruto.forecasts, bruto.hoje, bruto.ultimos, bruto.emTela);
+      serie = aplicarFiltrosNaSerie(serieBase, { filtros: filtros, agg: bruto.agg, forecasts: bruto.forecasts, emTela: bruto.emTela });
+      desenharFiltros(); desenhar(); desenharMix();
       if (window.dataSnapshotEmbarqueDefinir) window.dataSnapshotEmbarqueDefinir(dataSnapshot);
     } catch (e) {
       console.error(e);
@@ -611,6 +927,31 @@
       const { error } = await supabaseClient.from('embarque_diario').upsert(lote, { onConflict: 'dia' });
       if (error) throw error;
       avisar('Gravando… ' + fmtN(Math.min(i + 300, parsed.registros.length)) + ' / ' + fmtN(parsed.registros.length));
+    }
+    return parsed;
+  }
+
+  async function processarNotasEmbarcadas(supabaseClient, arquivo, avisar) {
+    avisar = avisar || function () {};
+    if (!window.XLSX) throw new Error('Biblioteca de planilhas (XLSX) não carregou — recarregue a página.');
+    avisar('Lendo a planilha de notas embarcadas…');
+    const wb = window.XLSX.read(await arquivo.arrayBuffer(), { type: 'array' });
+    const linhas = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: null });
+    const fam = await supabaseClient.from('dim_familias').select('codigo, marca, categoria, segmento');
+    if (fam.error) throw fam.error;
+    const familias = {};
+    (fam.data || []).forEach(function (f) { familias[String(f.codigo).padStart(3, '0')] = f; });
+    const parsed = parsearNotasEmbarcadas(linhas, familias);
+    parsed.avisos.forEach(function (a) { avisar('⚠ ' + a); });
+    if (!parsed.registros.length) throw new Error('Nenhuma nota reconhecida na planilha.');
+    avisar(fmtN(parsed.registros.length) + ' nota(s), embarque de ' + rotuloDia(parsed.periodo.de) + '/' + parsed.periodo.de.slice(0, 4) + ' a ' +
+      rotuloDia(parsed.periodo.ate) + '/' + parsed.periodo.ate.slice(0, 4) + ' · ' + fmtN(parsed.total_pecas) + ' peças.');
+    const agora = new Date().toISOString();
+    for (let i = 0; i < parsed.registros.length; i += 500) {
+      const lote = parsed.registros.slice(i, i + 500).map(function (r) { return Object.assign({}, r, { atualizado_em: agora }); });
+      const { error } = await supabaseClient.from('embarque_notas').upsert(lote, { onConflict: 'nf' });
+      if (error) throw error;
+      avisar('Gravando… ' + fmtN(Math.min(i + 500, parsed.registros.length)) + ' / ' + fmtN(parsed.registros.length));
     }
     return parsed;
   }
@@ -683,6 +1024,31 @@
         $('btnProcessarBaseEmbarque').disabled = false;
       }
     });
+    // ---- notas embarcadas (detalhado) ----
+    let arqNotas = null;
+    const estadoNotas = function () {
+      $('btnProcessarNotasEmb').disabled = !arqNotas;
+      $('dropzoneNotasEmbTexto').textContent = arqNotas ? '✓ ' + arqNotas.name : 'Clique para selecionar o .xls/.xlsx de Notas Embarcadas';
+    };
+    $('dropzoneNotasEmb').addEventListener('click', function () { $('inputNotasEmb').click(); });
+    $('inputNotasEmb').addEventListener('change', function (e) { arqNotas = (e.target.files && e.target.files[0]) || null; estadoNotas(); });
+    $('btnProcessarNotasEmb').addEventListener('click', async function () {
+      const log = $('logNotasEmb'), ok = $('okNotasEmb');
+      ok.style.display = 'none'; log.textContent = '';
+      const escrever = function (m) { log.textContent += m + '\n'; log.scrollTop = log.scrollHeight; };
+      $('btnProcessarNotasEmb').disabled = true;
+      try {
+        await processarNotasEmbarcadas(supabaseClient, arqNotas, escrever);
+        ok.textContent = '✔ Notas gravadas — os filtros e o mix do Embarque já usam esses dias (reabra a aba se ela estiver aberta).';
+        ok.style.display = '';
+        arqNotas = null; $('inputNotasEmb').value = ''; estadoNotas();
+        if (bruto) recarregar(supabaseClient);
+      } catch (e) {
+        escrever('ERRO: ' + (e && e.message ? e.message : String(e))); console.error(e);
+        $('btnProcessarNotasEmb').disabled = false;
+      }
+    });
+    estadoNotas();
     // ---- forecast mensal ----
     const linhaProp = function (cont, nome, pct) {
       const div = document.createElement('div');
@@ -781,7 +1147,8 @@
   const api = {
     iniciar: iniciar, ligarAdmin: ligarAdmin, processarBaseEmbarque: processarBaseEmbarque, salvarForecast: salvarForecast,
     parsearBaseEmbarque: parsearBaseEmbarque, diasUteisDoMes: diasUteisDoMes, distribuirNosDias: distribuirNosDias,
-    forecastPorDia: forecastPorDia, validarProporcoes: validarProporcoes, montarSerieEmbarque: montarSerieEmbarque, lerMilPecas: lerMilPecas, repartir: repartir, dataDeCelula: dataDeCelula,
+    forecastPorDia: forecastPorDia, validarProporcoes: validarProporcoes, nomeCurtoTransportadora: nomeCurtoTransportadora,
+    parsearNotasEmbarcadas: parsearNotasEmbarcadas, aplicarFiltrosNaSerie: aplicarFiltrosNaSerie, montarMix: montarMix, processarNotasEmbarcadas: processarNotasEmbarcadas, montarSerieEmbarque: montarSerieEmbarque, lerMilPecas: lerMilPecas, repartir: repartir, dataDeCelula: dataDeCelula,
     dataSnapshot: function () { return dataSnapshot; },
   };
   if (typeof window !== 'undefined') window.Embarque = api;

@@ -112,5 +112,58 @@ eq(ec.backlog_nao_disp[30], 0, 'sem "Nao disp. picking" no snapshot: parte verme
 secao('saída efetiva nos dias que já passaram');
 eq([s.saida_efetiva[28], s.saida_efetiva[29], s.saida_efetiva[30]], [20000, 17166, null], 'efetiva até o último dia da base; hoje sem efetiva (usa a prevista)');
 
+
+secao('transportadora: só o nome curto');
+eq(['DISPLAN ENCOMENDAS URGENTES LTDA', 'TECMAR TRANSPORTES LTDA.', 'PATRUS TRANSPORTES URGENTES LTDA', 'VITORIA PROVEDORA LOGISTICA LTDA', 'VITÓRIA PROVEDORA LOGISTICA LTDA',
+  'CIDEX LOGISTICA LTDA', 'TRANSPORTADORA TRANSPRADO LTDA', 'PRIMMUS LOGÍSTICA EXPRESSA LTDA', 'S/CARRO', ''].map(E.nomeCurtoTransportadora),
+  ['DISPLAN', 'TECMAR', 'PATRUS', 'VITÓRIA', 'VITÓRIA', 'CIDEX', 'TRANSPRADO', 'PRIMMUS', 'SEM TRANSPORTADORA', 'SEM TRANSPORTADORA'], 'nome curto das 7 transportadoras (com ou sem acento, com ponto final)');
+
+secao('notas embarcadas (detalhado)');
+const FAMS = { '068': { marca: 'OLYMPIKUS', categoria: 'MEIAS OLYMPIKUS' }, '103': { marca: 'MIZUNO', categoria: 'VESTUÁRIO MIZUNO' }, '102': { marca: 'MIZUNO', categoria: 'TÊNIS MIZUNO' },
+  '108': { marca: 'MIZUNO', categoria: 'CHUTEIRA MIZUNO' } };
+const notas = E.parsearNotasEmbarcadas([
+  ['Embarcador', 'Destinatário', 'Nota Fiscal', 'Emissão', 'Embarque OT 1P.', 'Valor NF', 'Vol.', 'Peças', 'Família', 'Marca', 'Cód.Transp.', 'Transportadora'],
+  ['DIS', 'CLIENTE A', '000202314', 46198, 46205, 1109.52, 1, 36, '068', 'Confecçao Olympikus', '000585', 'PATRUS TRANSPORTES URGENTES LTDA'],
+  ['DIS', 'CLIENTE B', '000202327', 46198, 46209, 1337.08, 2, 92, '103', 'Confecçao Mizuno', '090834', 'DISPLAN ENCOMENDAS URGENTES LTDA'],
+  ['DIS', 'CLIENTE C', '000202328', 46198, 46209, 10, 1, 10, '108', 'Chuteira Mizuno', '090834', 'DISPLAN ENCOMENDAS URGENTES LTDA'],
+  ['DIS', 'CLIENTE D', '000202327', 46198, 46209, 1337.08, 2, 92, '103', 'Confecçao Mizuno', '090834', 'DISPLAN ENCOMENDAS URGENTES LTDA'],
+  ['DIS', 'CLIENTE E', '000202999', 46198, 46209, 5, 1, 7, '999', 'Confeaçao Under Armour', '090834', 'TECMAR TRANSPORTES LTDA'],
+], FAMS);
+eq(notas.registros.length, 4, 'linha repetida (mesma NF) é descartada');
+eq(notas.registros.map(function (r) { return r.marca + '/' + r.segmento; }), ['OLYMPIKUS/MEIA', 'MIZUNO/VESTUÁRIO', 'MIZUNO/CALÇADO', 'UNDER ARMOUR/OUTROS'], 'marca vem do cadastro, segmento macro da categoria; chuteira conta como calçado');
+eq([notas.registros[0].embarque, notas.registros[0].emissao, notas.registros[0].pecas, notas.registros[0].volumes], ['2026-07-02', '2026-06-25', 36, 1], 'datas do Excel viram ISO; peças e volumes lidos');
+ok(notas.registros.every(function (r) { return !JSON.stringify(r).includes('CLIENTE'); }), 'nome do cliente NÃO é guardado');
+ok(notas.avisos.some(function (a) { return /999/.test(a); }), 'família fora do cadastro gera aviso');
+let e3 = null; try { E.parsearNotasEmbarcadas([['a', 'b']], {}); } catch (e) { e3 = e.message; }
+ok(/Nota Fiscal/.test(e3 || ''), 'planilha sem o cabeçalho esperado dá erro claro');
+
+secao('filtros e mix');
+const agg = [
+  { d: '2026-09-29', m: 'OLYMPIKUS', s: 'MEIA', t: 'DISPLAN ENCOMENDAS URGENTES LTDA', p: 600, v: 30, n: 6 },
+  { d: '2026-09-29', m: 'MIZUNO', s: 'VESTUÁRIO', t: 'PATRUS TRANSPORTES URGENTES LTDA', p: 300, v: 20, n: 3 },
+  { d: '2026-09-30', m: 'MIZUNO', s: 'CHUTEIRA', t: 'DISPLAN ENCOMENDAS URGENTES LTDA', p: 100, v: 5, n: 1 },
+  { d: '2026-08-31', m: 'OLYMPIKUS', s: 'MEIA', t: 'TECMAR TRANSPORTES LTDA.', p: 1000, v: 50, n: 10 },
+];
+const mx = E.montarMix(agg, {}, 'tudo');
+eq([mx.total.p, mx.total.v, mx.total.n], [2000, 105, 20], 'totais de peças, volumes e notas');
+eq(mx.transportadoras.map(function (x) { return x.nome + ':' + x.p + ':' + x.v + ':' + Math.round(x.pct); }), ['TECMAR:1000:50:50', 'DISPLAN:700:35:35', 'PATRUS:300:20:15'], 'ranking de transportadoras: peças, volumes e % do total');
+eq(mx.segs, ['MEIA', 'VESTUÁRIO', 'CALÇADO'], 'chuteira entra em CALÇADO na matriz');
+eq(E.montarMix(agg, {}, '2026-09').total.p, 1000, 'período = um mês (setembro)');
+const mfil = E.montarMix(agg, { marca: ['MIZUNO'], seg: [], transp: ['PATRUS'] }, 'tudo');
+eq(mfil.total.p, 300, 'matriz respeita os 3 filtros');
+eq(mfil.transportadoras.map(function (x) { return x.nome; }), ['PATRUS', 'DISPLAN'], 'ranking respeita marca/segmento mas ignora o próprio filtro de transportadora');
+const fcs = [{ mes: '2026-10', pecas_embarque: 731000, pecas_entrada: null, dias_folga: [], prop_marca: [{ nome: 'MIZUNO', pct: 25 }, { nome: 'OLYMPIKUS', pct: 75 }], prop_segmento: [] }];
+const base = E.montarSerieEmbarque(diario, fcs, '2026-10-02');
+const grupos = [{ m: 'MIZUNO', s: 'VESTUÁRIO', t: 'PATRUS TRANSPORTES URGENTES LTDA', sit: 'Leitura expedicao', p: 700 }, { m: 'MIZUNO', s: 'CALÇADO', t: 'S/CARRO', sit: 'Nao disp. picking', p: 300 }, { m: 'OLYMPIKUS', s: 'MEIA', t: 'TECMAR TRANSPORTES LTDA.', sit: 'Leitura expedicao', p: 5000 }];
+const ctx = { filtros: { marca: ['MIZUNO'], seg: [], transp: [] }, agg: agg, forecasts: fcs, emTela: { total: 6000, gerado_em: '2026-10-02T10:00:00Z', grupos: grupos } };
+const sf = E.aplicarFiltrosNaSerie(base, ctx);
+eq(E.aplicarFiltrosNaSerie(base, { filtros: { marca: [], seg: [], transp: [] } }), base, 'sem filtro: devolve a série original');
+eq(sf.forecast[30], Math.round(33228 * 0.25), 'forecast do dia = forecast × proporção da marca (25%)');
+eq([sf.expedido[27], sf.expedido[28], sf.expedido[29]], [300, 100, null], 'realizado filtrado vem do detalhado (Mizuno: 300 em 29/09, 100 em 30/09; 01/10 já fora do detalhado = sem dado)');
+eq([sf.backlog[30], sf.backlog_nao_disp[30], sf.backlog[29]], [1000, 300, null], 'backlog de hoje filtrado (Mizuno: 1.000, dos quais 300 não disp.); histórico da base antiga some');
+eq(E.aplicarFiltrosNaSerie(base, Object.assign({}, ctx, { filtros: { marca: ['UNDER ARMOUR'], seg: [], transp: [] } })).forecast[30], 0, 'marca fora das proporções cadastradas do mês = 0%');
+const semProp = [{ mes: '2026-10', pecas_embarque: 731000, pecas_entrada: null, dias_folga: [], prop_marca: [], prop_segmento: [] }];
+eq(E.aplicarFiltrosNaSerie(E.montarSerieEmbarque(diario, semProp, '2026-10-02'), Object.assign({}, ctx, { forecasts: semProp })).forecast[30], null, 'mês sem proporção cadastrada: sem forecast filtrado (não inventa)');
+
 console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
 process.exit(falhas === 0 ? 0 : 1);
