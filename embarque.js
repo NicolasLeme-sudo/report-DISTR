@@ -104,6 +104,27 @@
     };
   }
 
+  /* "731" ou "731,5" = milhares de peças (731.000 / 731.500); a partir de 100.000 já é o número de peças. */
+  function lerMilPecas(txt) {
+    const t = String(txt == null ? '' : txt).trim();
+    if (t === '') return null;
+    const n = Number(t.replace(/\s/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
+    if (!isFinite(n) || n < 0) return NaN;
+    return Math.round(n >= 100000 ? n : n * 1000);
+  }
+  /* Reparte `total` (inteiro) pelas proporções [{nome,pct}] com a soma EXATA (maiores restos). */
+  function repartir(total, props) {
+    const lista = (props || []).filter(function (p) { return p && p.nome && Number(p.pct) > 0; });
+    const soma = lista.reduce(function (s2, p) { return s2 + Number(p.pct); }, 0);
+    if (!lista.length || !(total >= 0) || !soma) return [];
+    const bruto = lista.map(function (p) { return total * Number(p.pct) / soma; });
+    const out = bruto.map(Math.floor);
+    let resto = Math.round(total) - out.reduce(function (s2, v) { return s2 + v; }, 0);
+    bruto.map(function (b, i) { return [b - Math.floor(b), i]; }).sort(function (a, b) { return b[0] - a[0] || a[1] - b[1]; })
+      .forEach(function (x) { if (resto > 0) { out[x[1]]++; resto--; } });
+    return lista.map(function (p, i) { return { nome: p.nome, pct: Number(p.pct), valor: out[i] }; });
+  }
+
   /* ============================================================================
      FORECAST — mês dividido pelos dias úteis
      ============================================================================ */
@@ -150,7 +171,11 @@
   /* ============================================================================
      SÉRIE DO GRÁFICO — D-30 a D+30 (61 dias), mesmo formato do E-commerce
      ============================================================================ */
-  function montarSerieEmbarque(diario, forecasts, hojeISO, ultimos) {
+  function propsDoMes(forecasts, dia, campo) {
+    const f = (forecasts || []).filter(function (x) { return x.mes === dia.slice(0, 7); })[0];
+    return f && Array.isArray(f[campo]) ? f[campo] : [];
+  }
+  function montarSerieEmbarque(diario, forecasts, hojeISO, ultimos, emTela) {
     const dias = [];
     for (let i = -30; i <= 30; i++) dias.push(somaDias(hojeISO, i));
     const porDia = {};
@@ -165,9 +190,13 @@
 
     // backlog dos dias seguintes à última posição conhecida: backlog(D+1) = backlog(D) + entrada(D) − saída(D).
     // Só projeta enquanto houver entrada E saída prevista — sem entrada informada não há projeção.
+    // Âncora: HOJE = peças em tela (PFAs pendentes do Start Inicial); sem isso, o último backlog da base.
+    const temEmTela = emTela && Number.isFinite(Number(emTela.total));
+    const ancora = temEmTela ? { dia: hojeISO, valor: Number(emTela.total) } : ultBk;
+    const naoDisp = temEmTela ? Number((emTela.por_situacao || {})['Nao disp. picking'] || 0) : 0;
     const backlogPrev = {};
-    if (ultBk) {
-      let b = ultBk.valor, d = ultBk.dia;
+    if (ancora) {
+      let b = ancora.valor, d = ancora.dia;
       const fim = dias[dias.length - 1];
       while (d < fim) {
         const e = fc.entrada[d], s = fc.saida[d];
@@ -193,11 +222,24 @@
       entrada: dias.map(function (d) { return nv(fc.entrada[d]); }),
       saida: dias.map(function (d) { return nv(fc.saida[d]); }),
       backlog_efetivo: dias.map(function (d) {
+        if (temEmTela && d === hojeISO) return Number(emTela.total);
         const r = porDia[d];
         return r && r.backlog !== null && r.backlog !== undefined ? r.backlog : null;
       }),
+      // parte do backlog de hoje que está "Não disp. picking" (coluna empilhada em vermelho)
+      backlog_nao_disp: dias.map(function (d) { return temEmTela && d === hojeISO ? naoDisp : null; }),
+      backlog_hoje: temEmTela ? { total: Number(emTela.total), nao_disp: naoDisp, gerado_em: emTela.gerado_em || null } : null,
+      // saída efetiva (expedido) enquanto o dia já passou; só depois dela vale a prevista
+      saida_efetiva: dias.map(function (d) {
+        if (!ultExp || d > ultExp.dia) return null;
+        const r = porDia[d];
+        return r && r.expedido !== null && r.expedido !== undefined ? r.expedido : 0;
+      }),
+      forecast_marca: dias.map(function (d) { return repartir(fc.saida[d] || 0, propsDoMes(forecasts, d, 'prop_marca')); }),
+      forecast_segmento: dias.map(function (d) { return repartir(fc.saida[d] || 0, propsDoMes(forecasts, d, 'prop_segmento')); }),
       backlog_previsto: dias.map(function (d) { return nv(backlogPrev[d]); }),
       backlog: dias.map(function (d) {
+        if (temEmTela && d === hojeISO) return Number(emTela.total);
         const r = porDia[d];
         if (r && r.backlog !== null && r.backlog !== undefined) return r.backlog;
         return backlogPrev[d] === undefined ? null : backlogPrev[d];
@@ -319,7 +361,7 @@
     cr.setAttribute('x', 0); cr.setAttribute('y', 0); cr.setAttribute('width', W); cr.setAttribute('height', h - pB + 1.5);
     cp.appendChild(cr); defs.appendChild(cp);
 
-    const series = visao === 'forecast' ? [d.expedido, d.forecast] : [d.entrada, d.saida, d.backlog];
+    const series = visao === 'forecast' ? [d.expedido, d.forecast] : [d.entrada, d.saida, d.saida_efetiva, d.backlog];
     const mx = Math.max(1, ...series.flat().filter(function (v) { return v != null; })) * 1.18;
     const xF = function (i) { return pL + i * step; }, yF = function (v) { return (h - pB) - (v / mx) * (h - pT - pB); };
 
@@ -380,16 +422,32 @@
         if (v == null) return;
         el('rect', { x: xF(i) - bw / 2, y: yF(v), width: bw, height: Math.max(1, (h - pB) - yF(v)), rx: 4,
           fill: 'color-mix(in srgb, var(--amber) 30%, transparent)', stroke: 'var(--amber)', 'stroke-width': 1.2 });
+        // coluna empilhada: a parte "Não disp. picking" do que está em tela fica em vermelho, na base da coluna
+        const nd = d.backlog_nao_disp[i];
+        if (nd > 0) {
+          const hv = Math.max(2, (h - pB) - yF(Math.min(nd, v)));
+          el('rect', { x: xF(i) - bw / 2, y: (h - pB) - hv, width: bw, height: hv, rx: 4,
+            fill: 'color-mix(in srgb, var(--red) 55%, transparent)', stroke: 'var(--red)', 'stroke-width': 1.2 });
+          if (hv >= 18) rot(xF(i), (h - pB) - hv / 2 + 4, fmtN(nd), 'var(--red)');
+        }
         if (mostra(i)) rot(xF(i), yF(v) - 9, fmtN(v), 'var(--amber)');
       });
-      linha(d.entrada, 'var(--accent)', '', true); linha(d.saida, 'var(--olive)', '6 4', true);
-      const bkUlt = serie.ultimo_dia_backlog ? serie.backlog_efetivo[serie.dias_iso.indexOf(serie.ultimo_dia_backlog)] : null;
-      tot.innerHTML = '<div class="item"><div class="lab">Backlog · ' + (serie.ultimo_dia_backlog ? rotuloDia(serie.ultimo_dia_backlog) : 'sem dado') + '</div><div class="val">' + num(bkUlt) + '</div></div>' +
+      linha(d.entrada, 'var(--accent)', '', true);
+      // saída: EFETIVA (sólida) nos dias que já passaram, PREVISTA (tracejada) a partir do primeiro dia sem expedição lançada
+      linha(d.saida.map(function (v, i) { return d.saida_efetiva[i] != null ? null : v; }), 'var(--olive)', '6 4', true);
+      linha(d.saida_efetiva, 'var(--olive)', '', true);
+      const bh = serie.backlog_hoje;
+      const dataEmTela = bh && bh.gerado_em ? String(bh.gerado_em).slice(0, 10) : null;
+      const rotBk = !bh ? 'sem dado' : (dataEmTela && dataEmTela !== serie.dias_iso[hiAll] ? 'em tela ' + rotuloDia(dataEmTela) : 'hoje');
+      tot.innerHTML = '<div class="item"><div class="lab">Backlog · ' + rotBk + '</div><div class="val">' + (bh ? fmtN(bh.total) : '—') + '</div>' +
+          (bh && bh.nao_disp > 0 ? '<div style="font-size:10.5px;color:var(--red);font-weight:600">' + fmtN(bh.nao_disp) + ' não disp. picking</div>' : '') + '</div>' +
         '<div class="item"><div class="lab">Saída prevista · hoje</div><div class="val">' + num(d.saida[hi]) + '</div></div>';
-      leg.innerHTML = '<span><i style="background:var(--amber)"></i>Backlog (amanhecer no dia)</span>' +
+      leg.innerHTML = '<span><i style="background:var(--amber)"></i>Backlog (peças em tela)</span>' +
+        '<span><i style="background:var(--red)"></i>Não disp. p/ picking</span>' +
         '<span><i style="background:var(--accent)"></i>Entrada prevista</span>' +
-        '<span><i style="background:var(--olive)"></i>Saída prevista (forecast de embarque)</span>';
-      nota.textContent = 'Passe o mouse sobre um dia para ver previsto × efetivo. Backlog = peças aguardando embarque (base do Embarque). ' +
+        '<span><i style="background:var(--olive)"></i>Saída efetiva (expedido)</span>' +
+        '<span><i style="background:repeating-linear-gradient(90deg,var(--olive) 0 4px,transparent 4px 7px)"></i>Saída prevista (forecast de embarque)</span>';
+      nota.textContent = 'Passe o mouse sobre um dia para ver previsto × efetivo. Backlog de hoje = peças dos PFAs pendentes em tela (Start Inicial); a parte vermelha é o que está "Não disp. picking". Dias anteriores: backlog da base do Embarque. ' +
         (serie.tem_entrada_prevista
           ? 'Dias futuros: backlog do dia seguinte = backlog + entrada prevista − saída prevista.'
           : 'A entrada prevista ainda não foi informada pelo Embarque: o backlog dos dias futuros não é projetado até lá (Admin › Embarque › Forecast).');
@@ -422,6 +480,12 @@
         const p = pct(d.expedido[i], d.forecast[i]);
         html += lin('Forecast', num(d.forecast[i]), 'var(--accent)') + lin('Expedido', num(d.expedido[i]), 'var(--olive)') +
           (p == null ? '' : lin('Diferença', fmtPct(p) + ' · ' + fmtN(d.expedido[i] - d.forecast[i]), corPct(p)));
+        // forecast do dia aberto pela proporção de marca/segmento do mês (Admin › Embarque)
+        const grupo = function (titulo, itens) {
+          return itens && itens.length ? '<div class="et-h" style="margin-top:8px">' + titulo + '</div>' +
+            itens.map(function (x) { return lin(x.nome + ' · ' + String(x.pct).replace('.', ',') + '%', fmtN(x.valor), 'var(--accent)'); }).join('') : '';
+        };
+        html += grupo('Forecast por marca', d.forecast_marca[i]) + grupo('Forecast por segmento', d.forecast_segmento[i]);
       } else {
         const parcial = i === hi;
         const bloco = function (titulo, cor, pr, ef, ehBacklog) {
@@ -436,6 +500,10 @@
           bloco('Backlog', 'var(--amber)', d.backlog_previsto[i], d.backlog_efetivo[i], true) +
           bloco('Entrada', 'var(--accent)', d.entrada[i], null, false) +
           bloco('Saída', 'var(--olive)', d.saida[i], d.expedido[i], false) + '</div>';
+        if (d.backlog_nao_disp[i] > 0) {
+          html += '<div class="et-l" style="margin-top:8px"><span>Não disp. picking (em tela)</span><b style="color:var(--red)">' + fmtN(d.backlog_nao_disp[i]) +
+            ' · ' + (d.backlog_nao_disp[i] / d.backlog[i] * 100).toFixed(1).replace('.', ',') + '%</b></div>';
+        }
         largo = true;
       }
       const col = el('rect', { x: xF(i) - step / 2, y: 0, width: step, height: h - pB + 4, class: 'exp-col' });
@@ -458,16 +526,18 @@
       supabaseClient.from('embarque_diario').select('dia, expedido, backlog, atualizado_em').gte('dia', de).lte('dia', ate).order('dia'),
       supabaseClient.from('embarque_diario').select('dia, expedido').not('expedido', 'is', null).order('dia', { ascending: false }).limit(1),
       supabaseClient.from('embarque_diario').select('dia, backlog').not('backlog', 'is', null).order('dia', { ascending: false }).limit(1),
-      supabaseClient.from('embarque_forecast_mensal').select('mes, pecas_embarque, pecas_entrada, dias_folga, atualizado_em'),
+      supabaseClient.from('embarque_forecast_mensal').select('mes, pecas_embarque, pecas_entrada, dias_folga, prop_marca, prop_segmento, atualizado_em'),
+      supabaseClient.rpc('embarque_backlog_em_tela'),
     ]);
-    res.forEach(function (r) { if (r.error) throw r.error; });
+    res.slice(0, 4).forEach(function (r) { if (r.error) throw r.error; });
+    if (res[4].error) console.warn('Backlog em tela indisponível (rode migracao_embarque.sql):', res[4].error.message);
     const diario = res[0].data || [];
     const ult = function (r, campo) { return r.data && r.data[0] ? { dia: r.data[0].dia, valor: r.data[0][campo] } : null; };
     const forecasts = res[3].data || [];
     let maisRecente = '';
     diario.concat(forecasts).forEach(function (r) { if (r.atualizado_em && r.atualizado_em > maisRecente) maisRecente = r.atualizado_em; });
     dataSnapshot = maisRecente || null;
-    return { hoje: hoje, diario: diario, forecasts: forecasts, ultimos: { expedido: ult(res[1], 'expedido'), backlog: ult(res[2], 'backlog') } };
+    return { hoje: hoje, emTela: res[4].error ? null : res[4].data, diario: diario, forecasts: forecasts, ultimos: { expedido: ult(res[1], 'expedido'), backlog: ult(res[2], 'backlog') } };
   }
 
   async function iniciar(rootId, supabaseClient) {
@@ -511,7 +581,7 @@
   async function recarregar(supabaseClient) {
     try {
       bruto = await carregarDados(supabaseClient);
-      serie = montarSerieEmbarque(bruto.diario, bruto.forecasts, bruto.hoje, bruto.ultimos);
+      serie = montarSerieEmbarque(bruto.diario, bruto.forecasts, bruto.hoje, bruto.ultimos, bruto.emTela);
       desenhar();
       if (window.dataSnapshotEmbarqueDefinir) window.dataSnapshotEmbarqueDefinir(dataSnapshot);
     } catch (e) {
@@ -555,17 +625,31 @@
     });
     return out;
   }
+  /* Proporções [{nome,pct}]: linhas vazias somem; se houver alguma, precisam somar 100%. */
+  function validarProporcoes(rotulo, linhas) {
+    const lista = (linhas || []).map(function (l) {
+      return { nome: String(l.nome || '').trim().toUpperCase(), pct: Number(String(l.pct).replace(',', '.')) };
+    }).filter(function (l) { return l.nome || (l.pct && l.pct > 0); });
+    if (!lista.length) return [];
+    lista.forEach(function (l) {
+      if (!l.nome) throw new Error(rotulo + ': tem proporção sem nome.');
+      if (!(l.pct > 0)) throw new Error(rotulo + ': "' + l.nome + '" está sem proporção.');
+    });
+    if (new Set(lista.map(function (l) { return l.nome; })).size !== lista.length) throw new Error(rotulo + ': nome repetido.');
+    const soma = lista.reduce(function (t, l) { return t + l.pct; }, 0);
+    if (Math.abs(soma - 100) > 0.05) throw new Error(rotulo + ': as proporções somam ' + String(Math.round(soma * 100) / 100).replace('.', ',') + '%, precisam somar 100%.');
+    return lista;
+  }
   async function salvarForecast(supabaseClient, f) {
-    if (!/^\d{4}-\d{2}$/.test(f.mes || '')) throw new Error('Escolha o mês.');
-    const pecas = Math.round(Number(String(f.pecas).replace(/\./g, '').replace(',', '.')));
-    if (!(pecas >= 0)) throw new Error('Informe as peças embarcadas previstas do mês.');
-    let entrada = null;
-    if (String(f.entrada || '').trim() !== '') {
-      entrada = Math.round(Number(String(f.entrada).replace(/\./g, '').replace(',', '.')));
-      if (!(entrada >= 0)) throw new Error('Entrada prevista inválida.');
-    }
+    if (!/^\d{4}-\d{2}$/.test(f.mes || '')) throw new Error('Escolha o mês e o ano.');
+    const pecas = lerMilPecas(f.pecas);
+    if (pecas === null || isNaN(pecas)) throw new Error('Informe o forecast do mês (em mil peças).');
+    const entrada = lerMilPecas(f.entrada);
+    if (entrada !== null && isNaN(entrada)) throw new Error('Entrada prevista inválida.');
     const { error } = await supabaseClient.from('embarque_forecast_mensal').upsert(
-      { mes: f.mes, pecas_embarque: pecas, pecas_entrada: entrada, dias_folga: lerFolgas(f.folgas), atualizado_em: new Date().toISOString() },
+      { mes: f.mes, pecas_embarque: pecas, pecas_entrada: entrada, dias_folga: lerFolgas(f.folgas),
+        prop_marca: validarProporcoes('Marca', f.marcas), prop_segmento: validarProporcoes('Segmento', f.segmentos),
+        atualizado_em: new Date().toISOString() },
       { onConflict: 'mes' });
     if (error) throw error;
   }
@@ -600,36 +684,77 @@
       }
     });
     // ---- forecast mensal ----
+    const linhaProp = function (cont, nome, pct) {
+      const div = document.createElement('div');
+      div.className = 'emb-prop-linha';
+      div.style.cssText = 'display:flex;gap:8px;align-items:center;margin:4px 0';
+      div.innerHTML = '<input type="text" class="emb-prop-nome" list="' + (cont.id === 'embPropMarca' ? 'dlEmbMarcas' : 'dlEmbSegmentos') + '" placeholder="' +
+          (cont.id === 'embPropMarca' ? 'Marca' : 'Segmento') + '" style="padding:6px 10px;width:170px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)">' +
+        '<input type="text" class="emb-prop-pct" placeholder="%" style="padding:6px 10px;width:70px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)">' +
+        '<button type="button" class="btn-mini" title="Remover">×</button>';
+      div.querySelector('.emb-prop-nome').value = nome || '';
+      div.querySelector('.emb-prop-pct').value = pct == null ? '' : String(pct).replace('.', ',');
+      div.querySelector('button').addEventListener('click', function () { div.remove(); prever(); });
+      div.querySelectorAll('input').forEach(function (i) { i.addEventListener('input', prever); });
+      cont.appendChild(div);
+    };
+    const lerLinhas = function (cont) {
+      return Array.from(cont.querySelectorAll('.emb-prop-linha')).map(function (l) {
+        return { nome: l.querySelector('.emb-prop-nome').value, pct: l.querySelector('.emb-prop-pct').value };
+      });
+    };
+    const somaTxt = function (cont, el) {
+      const t = lerLinhas(cont).reduce(function (a2, l) { const v = Number(String(l.pct).replace(',', '.')); return a2 + (v > 0 ? v : 0); }, 0);
+      el.textContent = t > 0 ? 'Soma: ' + String(Math.round(t * 100) / 100).replace('.', ',') + '%' : '';
+      el.style.color = Math.abs(t - 100) <= 0.05 ? 'var(--olive)' : 'var(--amber)';
+    };
     const prever = function () {
-      const mes = $('embMes').value, pecas = Math.round(Number(String($('embPecas').value).replace(/\./g, '').replace(',', '.')));
+      const mes = $('embMes').value, pecas = lerMilPecas($('embPecas').value);
       let txt = '';
       try {
         if (/^\d{4}-\d{2}$/.test(mes)) {
           const dias = diasUteisDoMes(mes, lerFolgas($('embFolgas').value));
           txt = fmtN(dias.length) + ' dia(s) útil(eis) (seg–sex)';
-          if (pecas > 0 && dias.length) txt += ' · ' + fmtN(Math.floor(pecas / dias.length)) + ' peças por dia';
+          if (pecas && !isNaN(pecas) && dias.length) txt = '= ' + fmtN(pecas) + ' peças · ' + txt + ' · ' + fmtN(Math.floor(pecas / dias.length)) + ' peças por dia';
         }
       } catch (e) { txt = e.message; }
       $('embPreview').textContent = txt;
+      somaTxt($('embPropMarca'), $('embSomaMarca')); somaTxt($('embPropSeg'), $('embSomaSeg'));
     };
-    ['embMes', 'embPecas', 'embFolgas'].forEach(function (id) { $(id).addEventListener('input', prever); });
+    ['embMes', 'embPecas', 'embEntrada', 'embFolgas'].forEach(function (id) { $(id).addEventListener('input', prever); });
+    $('btnAddMarca').addEventListener('click', function () { linhaProp($('embPropMarca')); });
+    $('btnAddSeg').addEventListener('click', function () { linhaProp($('embPropSeg')); });
+    const limparForm = function () {
+      $('embPropMarca').innerHTML = ''; $('embPropSeg').innerHTML = '';
+      linhaProp($('embPropMarca')); linhaProp($('embPropSeg'));
+    };
+    limparForm();
+    const resumoProp = function (arr) { return (arr || []).map(function (x) { return x.nome + ' ' + String(x.pct).replace('.', ',') + '%'; }).join(' · '); };
     const listar = async function () {
       const { data, error } = await supabaseClient.from('embarque_forecast_mensal').select('*').order('mes', { ascending: false });
       if (error) { $('embForecastLista').textContent = error.message; return; }
       $('embForecastLista').innerHTML = (data || []).length ? data.map(function (f) {
         const n = diasUteisDoMes(f.mes, f.dias_folga).length;
-        return '<div class="cap-item" style="display:flex;gap:10px;align-items:center;margin:4px 0"><span>' + f.mes.slice(5, 7) + '/' + f.mes.slice(0, 4) + ' — ' + fmtN(f.pecas_embarque) +
+        return '<div class="cap-item" style="margin:8px 0"><div style="display:flex;gap:10px;align-items:center"><span><strong>' + f.mes.slice(5, 7) + '/' + f.mes.slice(0, 4) + '</strong> — ' + fmtN(f.pecas_embarque) +
           ' peças em ' + n + ' dias úteis (' + fmtN(Math.floor(f.pecas_embarque / Math.max(n, 1))) + '/dia)' +
           (f.pecas_entrada != null ? ' · entrada ' + fmtN(f.pecas_entrada) : '') +
           '</span><button class="btn-mini" data-mes="' + f.mes + '" title="Editar">Editar</button>' +
-          '<button class="btn-mini" data-del="' + f.mes + '" title="Remover">×</button></div>';
+          '<button class="btn-mini" data-del="' + f.mes + '" title="Remover">×</button></div>' +
+          ((f.prop_marca || []).length ? '<div style="margin-left:2px">Marca: ' + resumoProp(f.prop_marca) + '</div>' : '') +
+          ((f.prop_segmento || []).length ? '<div style="margin-left:2px">Segmento: ' + resumoProp(f.prop_segmento) + '</div>' : '') + '</div>';
       }).join('') : 'Nenhum forecast informado.';
       $('embForecastLista').querySelectorAll('button[data-mes]').forEach(function (b) {
         b.addEventListener('click', function () {
           const f = data.find(function (x) { return x.mes === b.dataset.mes; });
-          $('embMes').value = f.mes; $('embPecas').value = f.pecas_embarque;
-          $('embEntrada').value = f.pecas_entrada == null ? '' : f.pecas_entrada;
-          $('embFolgas').value = (f.dias_folga || []).join(', '); prever();
+          $('embMes').value = f.mes; $('embPecas').value = f.pecas_embarque / 1000;
+          $('embEntrada').value = f.pecas_entrada == null ? '' : f.pecas_entrada / 1000;
+          $('embFolgas').value = (f.dias_folga || []).join(', ');
+          $('embPropMarca').innerHTML = ''; $('embPropSeg').innerHTML = '';
+          (f.prop_marca || []).forEach(function (x) { linhaProp($('embPropMarca'), x.nome, x.pct); });
+          (f.prop_segmento || []).forEach(function (x) { linhaProp($('embPropSeg'), x.nome, x.pct); });
+          if (!(f.prop_marca || []).length) linhaProp($('embPropMarca'));
+          if (!(f.prop_segmento || []).length) linhaProp($('embPropSeg'));
+          prever();
         });
       });
       $('embForecastLista').querySelectorAll('button[data-del]').forEach(function (b) {
@@ -644,18 +769,19 @@
     $('btnSalvarForecastEmbarque').addEventListener('click', async function () {
       const log = $('logForecastEmbarque'); log.textContent = '';
       try {
-        await salvarForecast(supabaseClient, { mes: $('embMes').value, pecas: $('embPecas').value, entrada: $('embEntrada').value, folgas: $('embFolgas').value });
+        await salvarForecast(supabaseClient, { mes: $('embMes').value, pecas: $('embPecas').value, entrada: $('embEntrada').value, folgas: $('embFolgas').value,
+          marcas: lerLinhas($('embPropMarca')), segmentos: lerLinhas($('embPropSeg')) });
         log.textContent = '✔ Forecast salvo.';
         listar(); if (bruto) recarregar(supabaseClient);
       } catch (e) { log.textContent = 'ERRO: ' + (e && e.message ? e.message : String(e)); }
     });
-    estado(); listar();
+    estado(); listar(); prever();
   }
 
   const api = {
     iniciar: iniciar, ligarAdmin: ligarAdmin, processarBaseEmbarque: processarBaseEmbarque, salvarForecast: salvarForecast,
     parsearBaseEmbarque: parsearBaseEmbarque, diasUteisDoMes: diasUteisDoMes, distribuirNosDias: distribuirNosDias,
-    forecastPorDia: forecastPorDia, montarSerieEmbarque: montarSerieEmbarque, dataDeCelula: dataDeCelula,
+    forecastPorDia: forecastPorDia, validarProporcoes: validarProporcoes, montarSerieEmbarque: montarSerieEmbarque, lerMilPecas: lerMilPecas, repartir: repartir, dataDeCelula: dataDeCelula,
     dataSnapshot: function () { return dataSnapshot; },
   };
   if (typeof window !== 'undefined') window.Embarque = api;

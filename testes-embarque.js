@@ -77,5 +77,40 @@ eq(s2.backlog[30], 83515 + 750000 / 22 - 731000 / 22 > 0 ? Math.round(83515 + 34
 const s3 = E.montarSerieEmbarque([], [], '2026-10-02');
 ok(s3.expedido.every(function (v) { return v === null; }) && !s3.tem_forecast, 'sem dado nenhum: série vazia, sem erro');
 
+
+secao('forecast em mil peças e proporção por marca/segmento');
+eq([E.lerMilPecas('731'), E.lerMilPecas('731,5'), E.lerMilPecas('731000'), E.lerMilPecas('731.000'), E.lerMilPecas('')], [731000, 731500, 731000, 731000, null], '"731" = 731 mil; valor grande já é peças; vazio = nulo');
+ok(isNaN(E.lerMilPecas('abc')), 'texto inválido dá erro');
+const rm = E.repartir(33228, [{ nome: 'OLYMPIKUS', pct: 50 }, { nome: 'MIZUNO', pct: 30 }, { nome: 'UNDER ARMOUR', pct: 20 }]);
+eq(rm.map(function (x) { return x.valor; }), [16614, 9968, 6646], 'repartição 50/30/20 do dia (33.228)');
+eq(rm.reduce(function (s, x) { return s + x.valor; }, 0), 33228, 'a soma das partes fecha EXATO no total do dia');
+const rs = E.repartir(33227, [{ nome: 'CALÇADO', pct: 60 }, { nome: 'VESTUÁRIO', pct: 40 }]);
+eq(rs.reduce(function (s, x) { return s + x.valor; }, 0), 33227, 'segmento 60/40 também fecha exato (total ímpar)');
+eq(E.repartir(100, []), [], 'sem proporção informada: nada a repartir');
+eq(E.validarProporcoes('Marca', [{ nome: 'mizuno', pct: '60' }, { nome: 'Olympikus', pct: '40' }]).map(function (x) { return x.nome; }), ['MIZUNO', 'OLYMPIKUS'], 'proporção válida (60+40), nome em caixa alta');
+let e2 = null; try { E.validarProporcoes('Marca', [{ nome: 'MIZUNO', pct: '60' }, { nome: 'OLYMPIKUS', pct: '30' }]); } catch (e) { e2 = e.message; }
+ok(/somam 90%/.test(e2 || ''), 'soma diferente de 100% é recusada com a soma no texto');
+eq(E.validarProporcoes('Marca', [{ nome: '', pct: '' }]), [], 'linha em branco é ignorada (campo opcional)');
+const sp = E.montarSerieEmbarque(diario, [{ mes: '2026-10', pecas_embarque: 731000, pecas_entrada: null, dias_dolga: [], dias_folga: [],
+  prop_marca: [{ nome: 'MIZUNO', pct: 60 }, { nome: 'OLYMPIKUS', pct: 40 }], prop_segmento: [] }], '2026-10-02');
+eq(sp.forecast_marca[30].map(function (x) { return x.valor; }), [19937, 13291], 'tooltip: forecast do dia aberto por marca (60/40 de 33.228)');
+eq(sp.forecast_segmento[30], [], 'sem proporção de segmento: lista vazia');
+eq(sp.forecast_marca[28], [], 'dia de mês sem forecast: sem abertura');
+
+secao('backlog de hoje = peças em tela, com a parte "Não disp. picking"');
+const et = E.montarSerieEmbarque(diario, [{ mes: '2026-10', pecas_embarque: 731000, pecas_entrada: null, dias_folga: [] }], '2026-10-02',
+  undefined, { total: 83554, por_situacao: { 'Leitura expedicao': 80000, 'Nao disp. picking': 3554 }, gerado_em: '2026-10-02T11:51:25Z' });
+eq([et.backlog[30], et.backlog_efetivo[30]], [83554, 83554], 'hoje: backlog = total em tela');
+eq([et.backlog_nao_disp[30], et.backlog_nao_disp[29]], [3554, null], 'parte vermelha só no dia de hoje');
+eq(et.backlog_hoje.nao_disp, 3554, 'resumo de hoje para o canto do gráfico');
+eq(et.backlog[29], 83515, 'dias anteriores: backlog da base');
+const ec = E.montarSerieEmbarque(diario, [{ mes: '2026-10', pecas_embarque: 731000, pecas_entrada: 750000, dias_folga: [] }], '2026-10-02',
+  undefined, { total: 83554, por_situacao: {}, gerado_em: '2026-10-02T11:51:25Z' });
+eq(ec.backlog[31], 83554 + 34091 - 33228, 'projeção parte do backlog em tela de hoje (83.554)');
+eq(ec.backlog_nao_disp[30], 0, 'sem "Nao disp. picking" no snapshot: parte vermelha zero');
+
+secao('saída efetiva nos dias que já passaram');
+eq([s.saida_efetiva[28], s.saida_efetiva[29], s.saida_efetiva[30]], [20000, 17166, null], 'efetiva até o último dia da base; hoje sem efetiva (usa a prevista)');
+
 console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
 process.exit(falhas === 0 ? 0 : 1);

@@ -1464,23 +1464,38 @@ tr.total > th, tr.total > td {
       <div class="section-title" style="margin-top:24px">Forecast mensal de Embarque</div>
       <div class="card">
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
-          Peças que devem ser <strong>embarcadas no mês</strong>. O sistema divide por igual entre os <strong>dias úteis (seg–sex)</strong>
-          e aplica no gráfico (ex.: 731.000 peças em 22 dias úteis = 33.227 por dia). Feriado ou dia sem embarque: informe em
-          "Dias sem embarque" que ele sai da divisão. A <strong>entrada prevista</strong> (opcional) é o forecast do que entra no backlog;
-          sem ela o gráfico não projeta o backlog dos dias futuros.
+          Escolha o <strong>mês e o ano</strong> e informe quantos <strong>mil peças</strong> devem ser embarcadas (ex.: <strong>731</strong> = 731.000).
+          O sistema divide por igual entre os <strong>dias úteis (seg–sex)</strong> e aplica no gráfico. Abaixo, informe a
+          <strong>proporção esperada por marca e por segmento</strong> (cada grupo precisa somar 100%): o forecast de cada dia aparece aberto por
+          marca e segmento ao passar o mouse no gráfico. Os campos de proporção são opcionais, e dá para reabastecer o mês quando chegar o dado real.
+          Feriado ou dia sem embarque: informe em "Dias sem embarque". A <strong>entrada prevista</strong> (opcional) permite projetar o backlog dos dias futuros.
         </p>
         <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
-          <div><label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Mês</label>
+          <div><label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Mês / ano</label>
             <input type="month" id="embMes" style="padding:6px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)"></div>
-          <div><label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Peças embarcadas previstas</label>
-            <input type="text" id="embPecas" placeholder="731000" style="padding:6px 10px;width:150px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)"></div>
-          <div><label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Entrada prevista (opcional)</label>
-            <input type="text" id="embEntrada" placeholder="—" style="padding:6px 10px;width:150px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)"></div>
+          <div><label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Forecast do mês (mil peças)</label>
+            <input type="text" id="embPecas" placeholder="731" style="padding:6px 10px;width:150px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)"></div>
+          <div><label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Entrada prevista (mil peças, opcional)</label>
+            <input type="text" id="embEntrada" placeholder="—" style="padding:6px 10px;width:190px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)"></div>
           <div><label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Dias sem embarque (opcional)</label>
             <input type="text" id="embFolgas" placeholder="12/10/2026, 02/11/2026" style="padding:6px 10px;width:220px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)"></div>
-          <button class="btn-mini" id="btnSalvarForecastEmbarque">Salvar forecast</button>
         </div>
         <div id="embPreview" style="font-size:12px;color:var(--text-muted);margin-top:8px"></div>
+        <div style="display:flex;gap:40px;flex-wrap:wrap;margin-top:14px">
+          <div>
+            <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-label);font-weight:600;margin-bottom:4px">Proporção por marca (%)</div>
+            <div id="embPropMarca"></div>
+            <div style="display:flex;gap:12px;align-items:center;margin-top:4px"><button type="button" class="btn-mini" id="btnAddMarca">+ marca</button><span id="embSomaMarca" style="font-size:12px;font-weight:600"></span></div>
+          </div>
+          <div>
+            <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-label);font-weight:600;margin-bottom:4px">Proporção por segmento (%)</div>
+            <div id="embPropSeg"></div>
+            <div style="display:flex;gap:12px;align-items:center;margin-top:4px"><button type="button" class="btn-mini" id="btnAddSeg">+ segmento</button><span id="embSomaSeg" style="font-size:12px;font-weight:600"></span></div>
+          </div>
+        </div>
+        <datalist id="dlEmbMarcas"><option value="OLYMPIKUS"><option value="MIZUNO"><option value="UNDER ARMOUR"></datalist>
+        <datalist id="dlEmbSegmentos"><option value="CALÇADO"><option value="VESTUÁRIO"><option value="ACESSÓRIO"><option value="MEIA"></datalist>
+        <button class="btn-mini" id="btnSalvarForecastEmbarque" style="margin-top:14px">Salvar forecast</button>
         <div class="log" id="logForecastEmbarque" style="margin-top:8px"></div>
         <div style="margin-top:12px;font-size:12px;color:var(--text-muted)" id="embForecastLista"></div>
       </div>
