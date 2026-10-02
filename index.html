@@ -7011,10 +7011,12 @@ document.getElementById('inputEmailsAjustes').addEventListener('change', async f
           // "Envio com falta" exige AUTORIZAÇÃO do comercial: e-mail com NF que ainda não
           // traz EMBARCAR/DEVOLVER (ex.: a pergunta "posso enviar?" da assistente) fica
           // aguardando instrução, mesmo solto no campo (01/10/2026).
-          const aguardandoComercial = categoriaEmailAtual === 'faltante' && l.nf && !l.tipo;
+          // E-mail com NF que traz EMBARCAR/DEVOLVER escrito, mas sem instrução reconhecida para ESTA NF:
+          // nunca aplica o tipo do campo (foi o que fez tudo virar AD em 02/10) — fica para conferir.
+          const aguardandoComercial = !!(l.nf && !l.tipo && (categoriaEmailAtual === 'faltante' || l.email_tem_instrucao));
           return Object.assign(l, { _arquivo: arquivos[i].name, _ordem: i, _categoria: categoriaEmailAtual,
             tipo: aguardandoComercial ? null : (temInstrucao ? l.tipo : cat.tipo(l)),
-            status: aguardandoComercial ? l.status + ' (e-mail sem EMBARCAR/DEVOLVER da Simoni)'
+            status: aguardandoComercial ? l.status + (l.email_tem_instrucao ? ' (o e-mail tem EMBARCAR/DEVOLVER, mas não para esta NF — conferir)' : ' (e-mail sem EMBARCAR/DEVOLVER da Simoni)')
               : (temInstrucao ? l.status + ' (instrução no e-mail)' : cat.status(l)) });
         });
         if (!linhas.length) falhas.push(arquivos[i].name + ' (nenhuma tabela de divergência reconhecida)');

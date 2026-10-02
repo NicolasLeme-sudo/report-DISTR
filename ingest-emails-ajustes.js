@@ -152,6 +152,19 @@ function extrairInstrucoes(linhas, remetente) {
     const talvez = (linhas[i + 5] || '').trim();
     if (RE_INSTRUCAO.test(talvez)) guardar(nf, normalizar(talvez), i);
   }
+  /* TABELA COMPLETA com a coluna de instrução (02/10/2026): a gerente devolve o
+     quadro inteiro de divergência com EMBARCAR/DEVOLVER depois do COD. REP, só na
+     1ª linha de cada NF (célula mesclada) — as outras linhas da mesma NF herdam.
+     Padrão: ... SITUAÇÃO | COD. REP | INSTRUÇÃO, com a NF no início do registro. */
+  for (let i = 0; i + 2 < linhas.length; i++) {
+    if (!RE_SITUACAO.test(linhas[i]) || !/^\s*\d{1,5}\s*$/.test(linhas[i + 1]) || !RE_INSTRUCAO.test(linhas[i + 2])) continue;
+    for (let j = i - 1; j >= Math.max(0, i - 20); j--) {
+      if (RE_6DIG.test(linhas[j].trim()) && RE_6DIG.test((linhas[j + 1] || '').trim()) && /^CL[\s-]/i.test((linhas[j + 2] || '').trim())) {
+        guardar(linhas[j].trim(), normalizar(linhas[i + 2].trim()), j);
+        break;
+      }
+    }
+  }
   /* Tabela CURTA (28/09/2026): a gerente responde só NF | INSTRUÇÃO, com a NF
      repetida em linhas sem instrução quando ela tem mais de um item (a
      instrução vale pra NF inteira). Termina na 1ª linha que não é NF nem
@@ -238,6 +251,9 @@ function interpretarEmailAjuste(msg) {
     faltaPorPfa.set(r.pfa, (faltaPorPfa.get(r.pfa) || 0) + (r.qtde_faltante || 0));
   });
   const liberadaCancelamento = /liberada para cancelamento/i.test(msg.corpo);
+  // o e-mail traz EMBARCAR/DEVOLVER escrito em algum lugar: linha com NF sem instrução reconhecida NÃO pode
+  // receber o tipo "padrão" do campo onde o e-mail foi solto — fica para conferir (02/10/2026)
+  const emailTemInstrucao = temNf && linhas.some(function (l) { return /^\s*(EMBARCAR|DEVOLVER)\s*$/i.test(l); });
   /* Resposta do comercial ("Encomenda ajustada", "Segue PFA gerada"): só vale o
      texto da mensagem MAIS NOVA (acima do primeiro "De:" citado). Quando ela
      traz um nº de PFA diferente das do quadro, é a PFA nova. */
@@ -283,7 +299,7 @@ function interpretarEmailAjuste(msg) {
     const respondido = ajustadoPeloComercial && tipo === 'AJUSTE';
     if (respondido) status = 'Comercial informou: encomenda ajustada / PFA gerada' + (pfaNovaEmail ? ' (' + pfaNovaEmail + ')' : '');
     const linha = Object.assign({}, r, {
-      ajustado_pelo_comercial: respondido, pfa_nova_email: respondido ? pfaNovaEmail : null,
+      ajustado_pelo_comercial: respondido, pfa_nova_email: respondido ? pfaNovaEmail : null, email_tem_instrucao: emailTemInstrucao,
       tipo: tipo, status: status, data_solicitacao: data,
       data_hora_email: msg.data ? msg.data.toISOString() : '',
       assunto: msg.assunto, solicitante: msg.remetente,

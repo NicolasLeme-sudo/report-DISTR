@@ -129,5 +129,23 @@ eq(ic.get('222400'), undefined, '… mas a instrução da Erika, no mesmo e-mail
 eq(E.extrairInstrucoes(['Esta nota devolver, 222395.', 'De: Simoni'], 'Simoni Maria Feiten').get('222395'), 'DEVOLVER', 'remetente Simoni: texto livre vale');
 eq(E.extrairInstrucoes(['Esta nota devolver, 222395.', 'De: Simoni'], 'Camila Ferreira').get('222395'), undefined, 'remetente Camila: não vale');
 
+
+console.log('\n=== 02/10/2026: tabela COMPLETA com a coluna de instrução depois do COD. REP (só na 1ª linha de cada NF) ===');
+const cab = ['NF', 'PFA', 'CLIENTE', 'ENC', 'QUANT. PARES ', 'VOL', 'FAM', 'ART', 'DES', 'COR', 'TAM', 'TOTAL DE FALTAS', 'TOTAL DE FALTAS', 'SITUAÇÃO', 'COD. REP', 'COD. REP'];
+const reg = function (nf, pfa, art, tam, falta, total, inst) {
+  return [nf, pfa, 'CL 72104 72143   BIG TECIDOS', '981665', '104', '3', '68', art, 'MEIA INV S/F', 'BRANCO', tam, String(falta), total, 'FALTA PARCIAL', '187'].concat(inst ? [inst] : []);
+};
+const completa = ['Boa tarde', 'Segue instrução'].concat(cab,
+  reg('221508', '247451', 'OIWSA26196', '33/38', 3, '5', 'EMBARCAR'), reg('221508', '247451', 'OBMW251931', '39/44', 2, '.', null),
+  reg('222390', '246266', '1361673', '2GG', 16, '34', 'DEVOLVER'), reg('222390', '246266', '1361673', 'GG', 18, '.', null),
+  ['De: Erika Domingues Leme', 'Simoni, posso enviar essas NFs com divergência ?'], cab.slice(0, 15),
+  reg('221508', '247451', 'OIWSA26196', '33/38', 3, '5', null), reg('222390', '246266', '1361673', '2GG', 16, '34', null)).join('\n');
+const lc = E.interpretarEmailAjuste({ assunto: 'RES: Nfs com divergência ', remetente: 'Simoni Maria Feiten', data: d, corpo: completa });
+eq(lc.map(function (l) { return l.nf + ':' + l.tipo; }), ['221508:BO_POS_NF', '221508:BO_POS_NF', '222390:AD_DEVOLUCAO', '222390:AD_DEVOLUCAO'],
+  'EMBARCAR/DEVOLVER na coluna depois do COD. REP valem pra NF inteira (2ª linha da NF herda)');
+ok(lc.every(function (l) { return l.email_tem_instrucao; }), 'linha marca que o e-mail traz instrução escrita (não aplica o tipo padrão do campo)');
+const lcErika = E.interpretarEmailAjuste({ assunto: 'RES: Nfs com divergência ', remetente: 'Erika Domingues Leme', data: d, corpo: completa });
+ok(lcErika.every(function (l) { return l.tipo === null; }), 'a mesma tabela respondida por outra pessoa não autoriza nada');
+
 console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
 process.exit(falhas === 0 ? 0 : 1);
