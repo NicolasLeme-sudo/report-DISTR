@@ -413,6 +413,22 @@
   }
 
   /* ---------- mix do embarque (matriz marca × segmento + ranking de transportadoras) ---------- */
+  // ordem fixa das linhas/colunas (não muda conforme os valores); nomes fora da lista vão no fim, em ordem alfabética
+  const ORDEM_MARCAS = ['OLYMPIKUS', 'MIZUNO', 'UNDER ARMOUR'];
+  const ORDEM_SEGS = ['MEIA', 'VESTUÁRIO', 'CALÇADO', 'ACESSÓRIO'];
+  function ordemFixa(nomes, ordem, comTodos) {
+    const set = new Set(nomes);
+    if (comTodos) ordem.forEach(function (n) { set.add(n); });
+    return Array.from(set).sort(function (a, b) {
+      const ia = ordem.indexOf(a), ib = ordem.indexOf(b);
+      if (ia !== -1 || ib !== -1) return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+      return a.localeCompare(b);
+    });
+  }
+  function itensFixos(itens, ordem) {   // [{nome, valor}] na ordem fixa, com as marcas/segmentos padrão sempre presentes
+    const por = {}; (itens || []).forEach(function (x) { por[x.nome] = x; });
+    return ordemFixa(Object.keys(por), ordem, true).map(function (n) { return por[n] || { nome: n, valor: 0 }; });
+  }
   function montarMix(agg, F, periodo) {
     const no = function (r) { return !periodo || periodo === 'tudo' || (Array.isArray(periodo) ? periodo.indexOf(String(r.d).slice(0, 7)) !== -1 : String(r.d).slice(0, 7) === periodo); };
     const total = { p: 0, v: 0, n: 0 }, cel = {}, linhaM = {}, colS = {}, transp = {};
@@ -432,7 +448,7 @@
     const ord = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; }); };
     const rank = Object.keys(transp).map(function (k) { return transp[k]; }).sort(function (a, b) { return b.p - a.p; })
       .map(function (x) { return Object.assign(x, { pct: totTranspBase ? x.p / totTranspBase * 100 : 0 }); });
-    return { total: total, marcas: ord(linhaM), segs: ord(colS), cel: cel, linhaM: linhaM, colS: colS, transportadoras: rank };
+    return { total: total, marcas: ordemFixa(Object.keys(linhaM), ORDEM_MARCAS, !(F && F.marca && F.marca.length)), segs: ordemFixa(Object.keys(colS), ORDEM_SEGS, !(F && F.seg && F.seg.length)), cel: cel, linhaM: linhaM, colS: colS, transportadoras: rank };
   }
 
   /* ============================================================================
@@ -652,7 +668,21 @@
       pm.forEach(function (a) { let t = 0; ps.forEach(function (g) { t += x[a.nome + '|' + g.nome]; }); if (t) ps.forEach(function (g) { x[a.nome + '|' + g.nome] *= a.valor / t; }); });
       ps.forEach(function (g) { let t = 0; pm.forEach(function (a) { t += x[a.nome + '|' + g.nome]; }); if (t) pm.forEach(function (a) { x[a.nome + '|' + g.nome] *= g.valor / t; }); });
     }
-    return { marcas: pm.slice().sort(function (a, b) { return b.valor - a.valor; }), segs: ps.slice().sort(function (a, b) { return b.valor - a.valor; }), cel: x, total: fc.pecas_embarque };
+    return { marcas: itensFixos(pm, ORDEM_MARCAS), segs: itensFixos(ps, ORDEM_SEGS), cel: x, total: fc.pecas_embarque };
+  }
+  function somarMatrizes(lista) {
+    if (!lista.length) return null;
+    if (lista.length === 1) return lista[0];
+    const cel = {}, lm = {}, cs = {};
+    let total = 0;
+    lista.forEach(function (mx) {
+      Object.keys(mx.cel).forEach(function (k) { cel[k] = (cel[k] || 0) + mx.cel[k]; });
+      mx.marcas.forEach(function (a) { lm[a.nome] = (lm[a.nome] || 0) + a.valor; });
+      mx.segs.forEach(function (g) { cs[g.nome] = (cs[g.nome] || 0) + g.valor; });
+      total += mx.total;
+    });
+    const it = function (o) { return Object.keys(o).map(function (k) { return { nome: k, valor: o[k] }; }); };
+    return { marcas: itensFixos(it(lm), ORDEM_MARCAS), segs: itensFixos(it(cs), ORDEM_SEGS), cel: cel, total: total };
   }
   const COR_AZ = function (a) { return 'color-mix(in srgb,#2f6fd0 ' + a + '%,transparent)'; };
   const COR_VD = function (a) { return 'color-mix(in srgb,var(--olive) ' + a + '%,transparent)'; };
@@ -678,13 +708,13 @@
     let total = 0;
     (agg || []).forEach(function (r) {
       if (dia && String(r.d).slice(0, 10) !== dia) return;
-      if (!dia && sel && sel !== 'tudo' && sel.indexOf(String(r.d).slice(0, 7)) === -1) return;
+      if (!dia && Array.isArray(sel) && sel.indexOf(String(r.d).slice(0, 7)) === -1) return;
       const sg = segmentoParaFiltro(r.s);
       cel[r.m + '|' + sg] = (cel[r.m + '|' + sg] || 0) + r.p; lm[r.m] = (lm[r.m] || 0) + r.p; cs[sg] = (cs[sg] || 0) + r.p; total += r.p;
     });
     if (!total) return null;
     const lista = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; }).map(function (k) { return { nome: k, valor: o[k] }; }); };
-    return { marcas: lista(lm), segs: lista(cs), cel: cel, total: total };
+    return { marcas: itensFixos(lista(lm), ORDEM_MARCAS), segs: itensFixos(lista(cs), ORDEM_SEGS), cel: cel, total: total };
   }
   let modalDia = null, modalModo = 'fc';
   function rotuloDiaCompleto(iso) {
@@ -713,36 +743,46 @@
       return '<div class="emb-sub">Quantidade de peças</div>' + tabelaPrevista(mx, 'pecas', cor) +
         '<div class="emb-sub" style="margin-top:22px">% das peças</div>' + tabelaPrevista(mx, 'pct', cor);
     };
-    const mes = modalDia ? modalDia.slice(0, 7) : mesAtual;
-    const fc = (bruto.forecasts || []).filter(function (f) { return f.mes === mes; })[0];
-    const rotMes = MESES_LONGOS[Number(mes.slice(5)) - 1] + '/' + mes.slice(2, 4);
+    // período da janela: o dia clicado; senão os meses escolhidos no filtro Período; senão o mês atual (o mesmo do forecast)
+    const perJ = periodoAtual();
+    const mesesJ = modalDia ? [modalDia.slice(0, 7)] : (perJ.sel === 'tudo' ? [mesAtual] : perJ.sel);
+    const rotPer = mesesJ.length === 1 ? MESES_LONGOS[Number(mesesJ[0].slice(5)) - 1] + '/' + mesesJ[0].slice(2, 4) : textoMeses(mesesJ);
+    const fcs = mesesJ.map(function (x) { return (bruto.forecasts || []).filter(function (f) { return f.mes === x; })[0]; }).filter(Boolean);
     if (modalModo === 'fc') {
       titulo = 'Forecast · marca × segmento';
-      let totalDia = fc ? fc.pecas_embarque : null;
       if (modalDia) {
+        const fc = fcs[0];
         const i = serieBase ? serieBase.dias_iso.indexOf(modalDia) : -1;
-        totalDia = i >= 0 ? serieBase.forecast[i] : null;
+        const totalDia = i >= 0 ? serieBase.forecast[i] : null;
         sub = rotuloDiaCompleto(modalDia) + (totalDia ? ' · ' + fmtN(totalDia) + ' peças previstas no dia' : '');
-      } else sub = rotMes + (fc ? ' · ' + fmtN(fc.pecas_embarque) + ' peças no mês' : '');
-      if (!fc) corpo = msg('Sem forecast informado para ' + rotMes + ' (Abastecimento › Embarque).');
-      else if (modalDia && !totalDia) corpo = msg('Sem forecast neste dia (fim de semana ou folga).');
-      else {
-        const mx = matrizPrevista(Object.assign({}, fc, { pecas_embarque: totalDia }), bruto.agg);
-        corpo = mx ? blocos(mx, COR_AZ): msg('Informe as proporções de marca e segmento do forecast (Abastecimento › Embarque).');
+        if (!fc) corpo = msg('Sem forecast informado para ' + rotPer + ' (Abastecimento › Embarque).');
+        else if (!totalDia) corpo = msg('Sem forecast neste dia (fim de semana ou folga).');
+        else {
+          const mx = matrizPrevista(Object.assign({}, fc, { pecas_embarque: totalDia }), bruto.agg);
+          corpo = mx ? blocos(mx, COR_AZ) : msg('Informe as proporções de marca e segmento do forecast (Abastecimento › Embarque).');
+        }
+      } else {
+        const mxs = fcs.map(function (f) { return matrizPrevista(f, bruto.agg); }).filter(Boolean);
+        const mx = somarMatrizes(mxs);
+        sub = rotPer + (fcs.length ? ' · ' + fmtN(fcs.reduce(function (t, f) { return t + (Number(f.pecas_embarque) || 0); }, 0)) + ' peças' : '');
+        corpo = !fcs.length ? msg('Sem forecast informado para ' + rotPer + ' (Abastecimento › Embarque).')
+          : mx ? blocos(mx, COR_AZ) + (fcs.length < mesesJ.length ? msg('Só ' + fcs.map(function (f) { return rotuloMes(f.mes); }).join(', ') + ' tem forecast informado.') : '')
+          : msg('Informe as proporções de marca e segmento do forecast (Abastecimento › Embarque).');
       }
     } else {
       titulo = 'Realizado · marca × segmento';
-      const perJ = periodoAtual();
-      const mx = matrizRealizada(bruto.agg, modalDia, perJ.sel);
       const dias = Array.from(new Set((bruto.agg || []).map(function (r) { return String(r.d).slice(0, 10); }))).sort();
-      if (modalDia) {
-        const iD = serieBase ? serieBase.dias_iso.indexOf(modalDia) : -1, expBase = iD >= 0 ? serieBase.expedido[iD] : null;
-        sub = rotuloDiaCompleto(modalDia) + (mx ? ' · ' + fmtN(mx.total) + ' peças embarcadas' : expBase ? ' · ' + fmtN(expBase) + ' peças expedidas (base do Embarque)' : '');
-        corpo = mx ? blocos(mx, COR_VD) : expBase ? msg('Sem detalhe de marca × segmento para este dia: o detalhado de notas cobre ' + (dias.length ? rotuloDia(dias[0]) + ' a ' + rotuloDia(dias[dias.length - 1]) : 'nenhum dia') + '.') : msg(dias.length ? 'Sem notas embarcadas neste dia no detalhado (as notas cobrem ' + rotuloDia(dias[0]) + ' a ' + rotuloDia(dias[dias.length - 1]) + ').' : 'Sem detalhado de notas embarcadas.');
-      } else {
-        sub = (perJ.sel === 'tudo' ? (dias.length ? 'Todo o período · ' + rotuloDia(dias[0]) + ' a ' + rotuloDia(dias[dias.length - 1]) : '') : 'Período selecionado: ' + textoMeses(perJ.sel)) + (mx ? ' · ' + fmtN(mx.total) + ' peças' : '');
-        corpo = mx ? blocos(mx, COR_VD) : msg('Sem detalhado de notas embarcadas.');
-      }
+      const cobre = dias.length ? 'o detalhado de notas cobre ' + rotuloDia(dias[0]) + ' a ' + rotuloDia(dias[dias.length - 1]) : 'ainda não há detalhado de notas';
+      const mx = matrizRealizada(bruto.agg, modalDia, modalDia ? null : mesesJ);
+      // total expedido pela base do Embarque (sem marca × segmento) para quando o detalhado não cobre o período
+      const expBase = (bruto.diario || []).reduce(function (t, r) {
+        const ok = modalDia ? r.dia === modalDia : mesesJ.indexOf(String(r.dia).slice(0, 7)) !== -1;
+        return t + (ok && r.expedido != null ? Number(r.expedido) || 0 : 0);
+      }, 0);
+      const rotJ = modalDia ? rotuloDiaCompleto(modalDia) : rotPer;
+      sub = rotJ + (mx ? ' · ' + fmtN(mx.total) + ' peças embarcadas' : expBase ? ' · ' + fmtN(expBase) + ' peças expedidas (base do Embarque)' : '');
+      corpo = mx ? blocos(mx, COR_VD)
+        : msg((expBase ? 'Sem detalhe de marca × segmento para ' + (modalDia ? 'este dia' : 'este período') + ': ' : 'Sem expedição neste período: ') + cobre + '. Para ver o realizado por marca × segmento, suba as notas embarcadas em Admin › Embarque.');
     }
     m.querySelector('.emb-modal-barra').innerHTML = '<div class="section-title" style="margin-bottom:4px;border-bottom-width:2px;border-bottom-color:' + (modalModo === 'real' ? 'var(--olive)' : '#2f6fd0') + '">' + titulo + '</div><div class="emb-t-dica" style="margin:0">' + sub + '</div>';
     m.querySelector('.emb-modal-ctl').innerHTML =
@@ -851,9 +891,9 @@
           if (!v) return '<td class="vz">—</td>';
           const a = 0.1 + 0.55 * v / maxCel;
           return '<td style="background:color-mix(in srgb,var(--olive) ' + Math.round(a * 100) + '%,transparent)" title="' + mk + ' · ' + g + ': ' + fmtN(v) + ' peças">' + fmtPct1(v / T * 100) + '</td>';
-        }).join('') + '<td class="tot sepcol">' + fmtPct1(m.linhaM[mk] / T * 100) + '</td></tr>';
+        }).join('') + '<td class="tot sepcol">' + fmtPct1((m.linhaM[mk] || 0) / T * 100) + '</td></tr>';
       });
-      html += '<tr class="seplin"><th class="l tot">Total</th>' + m.segs.map(function (g) { return '<td class="tot">' + fmtPct1(m.colS[g] / T * 100) + '</td>'; }).join('') + '<td class="tot sepcol">100%</td></tr></table>';
+      html += '<tr class="seplin"><th class="l tot">Total</th>' + m.segs.map(function (g) { return '<td class="tot">' + fmtPct1((m.colS[g] || 0) / T * 100) + '</td>'; }).join('') + '<td class="tot sepcol">100%</td></tr></table>';
     }
     html += '</div></div>';
     // --- ranking de transportadoras (rolagem; 4 visíveis)

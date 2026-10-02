@@ -147,7 +147,7 @@ const agg = [
 const mx = E.montarMix(agg, {}, 'tudo');
 eq([mx.total.p, mx.total.v, mx.total.n], [2000, 105, 20], 'totais de peças, volumes e notas');
 eq(mx.transportadoras.map(function (x) { return x.nome + ':' + x.p + ':' + x.v + ':' + Math.round(x.pct); }), ['TECMAR:1000:50:50', 'DISPLAN:700:35:35', 'PATRUS:300:20:15'], 'ranking de transportadoras: peças, volumes e % do total');
-eq(mx.segs, ['MEIA', 'VESTUÁRIO', 'CALÇADO'], 'chuteira entra em CALÇADO na matriz');
+eq(mx.segs, ['MEIA', 'VESTUÁRIO', 'CALÇADO', 'ACESSÓRIO'], 'chuteira entra em CALÇADO na matriz; colunas em ordem fixa (todas sempre presentes)');
 eq(E.montarMix(agg, {}, '2026-09').total.p, 1000, 'período = um mês (setembro)');
 const mfil = E.montarMix(agg, { marca: ['MIZUNO'], seg: [], transp: ['PATRUS'] }, 'tudo');
 eq(mfil.total.p, 300, 'matriz respeita os 3 filtros');
