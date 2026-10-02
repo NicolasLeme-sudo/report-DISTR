@@ -118,3 +118,17 @@ create or replace function public.embarque_backlog_em_tela() returns jsonb langu
     'por_situacao', coalesce((select jsonb_object_agg(sit, p) from (select sit, sum(pares) p from g group by sit) x), '{}'::jsonb),
     'grupos', coalesce(jsonb_agg(jsonb_build_object('m', m, 's', seg, 't', t, 'sit', sit, 'p', pares)), '[]'::jsonb)) from g;
 $$;
+
+-- backlog em tela com a data de importação: o que foi importado no mês é agenda do mês (forecast);
+-- o importado antes é o backlog que virou do mês anterior
+create or replace function public.embarque_backlog_em_tela() returns jsonb language sql stable security invoker set search_path = public as $$
+  with s as (select payload, gerado_em from dashboard_snapshots where pagina = 'pfas' order by gerado_em desc limit 1),
+  r as (select s.gerado_em, x->>'situacao' as sit, x->>'marca' as m, x->>'segmento_macro' as seg, x->>'transportadora_nome' as t,
+               nullif(x->>'data_importacao', '') as di, (x->>'pares')::int as pares
+        from s, jsonb_array_elements(s.payload->'pendentes') x),
+  g as (select gerado_em, sit, m, seg, t, left(di, 7) as mi, sum(pares) as pares from r group by 1, 2, 3, 4, 5, 6)
+  select jsonb_build_object('gerado_em', max(gerado_em), 'total', coalesce(sum(pares), 0),
+    'por_situacao', coalesce((select jsonb_object_agg(sit, p) from (select sit, sum(pares) p from g group by sit) x), '{}'::jsonb),
+    'por_importacao', coalesce((select jsonb_object_agg(di, p) from (select coalesce(di, 'sem data') di, sum(pares) p from r group by 1) y), '{}'::jsonb),
+    'grupos', coalesce(jsonb_agg(jsonb_build_object('m', m, 's', seg, 't', t, 'sit', sit, 'mi', mi, 'p', pares)), '[]'::jsonb)) from g;
+$$;

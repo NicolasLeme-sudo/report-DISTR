@@ -205,5 +205,13 @@ eq([fcA.entrada['2026-10-01'], fcA.entrada['2026-10-03']], [auto.entrada_dia, 0]
 const fcI = E.forecastPorDia([{ mes: '2026-10', pecas_embarque: 731000, pecas_entrada: 660000, dias_folga: [] }], hist);
 eq(fcI.entrada['2026-10-01'], 30000, 'entrada informada no Admin tem prioridade sobre a automática');
 
+secao('agenda do mês: PFA importada no mês = parte do forecast; importada antes = backlog do mês anterior');
+const fAg = [{ mes: '2026-10', pecas_embarque: 731000, pecas_entrada: null, dias_folga: [] }];
+const sAg = E.montarSerieEmbarque(diario, fAg, '2026-10-02', null, { total: 210983, por_situacao: {}, por_importacao: { '2026-09-25': 78933, '2026-10-02': 132050 } });
+eq([sAg.agenda.anterior, sAg.agenda.importado_mes, sAg.agenda.restante, sAg.agenda.dias_restantes], [78933, 132050, 598950, 20], 'separa backlog do mês anterior e agenda já importada; falta 731.000 − 132.050 em 20 dias úteis');
+eq([sAg.entrada[30], sAg.entrada[33], sAg.entrada[31]], [132050, Math.floor(598950 / 20) + 1, 0], 'entrada: hoje = importado hoje; dias úteis seguintes = o que falta ÷ dias; fim de semana 0');
+eq([sAg.backlog[30], sAg.backlog[31]], [210983, 210983 - 33228], 'amanhã = hoje − saída de hoje (a entrada de hoje já está em tela)');
+ok(sAg.backlog[40] < sAg.backlog[33], 'backlog flui: cai quando a entrada que falta por dia é menor que a saída prevista');
+
 console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
 process.exit(falhas === 0 ? 0 : 1);

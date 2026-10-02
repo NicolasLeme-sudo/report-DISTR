@@ -227,12 +227,37 @@
     const temEmTela = emTela && Number.isFinite(Number(emTela.total));
     const ancora = temEmTela ? { dia: hojeISO, valor: Number(emTela.total) } : ultBk;
     const naoDisp = temEmTela ? Number((emTela.por_situacao || {})['Nao disp. picking'] || 0) : 0;
+
+    // Agenda do mês: PFA em tela importada NESTE mês já é parte do forecast do mês (ex.: 731 mil de out/26); a importada
+    // antes é o backlog que virou do mês anterior. Entrada que ainda falta = forecast (ou entrada informada) − já importado,
+    // dividida pelos dias úteis que faltam no mês. Hoje a entrada já está em tela (não soma de novo na projeção).
+    const mesHoje = hojeISO.slice(0, 7);
+    const imp = temEmTela && emTela.por_importacao ? emTela.por_importacao : null;
+    let agenda = null;
+    if (imp) {
+      let importadoMes = 0;
+      Object.keys(imp).forEach(function (k) { if (k.slice(0, 7) === mesHoje && k <= hojeISO) importadoMes += Number(imp[k]) || 0; });
+      const total = Number(emTela.total);
+      agenda = { anterior: Math.max(0, total - importadoMes), importado_mes: importadoMes, importado_hoje: Number(imp[hojeISO]) || 0 };
+      const fM = (forecasts || []).filter(function (x) { return x.mes === mesHoje; })[0];
+      if (fM) {
+        const alvo = fM.pecas_entrada !== null && fM.pecas_entrada !== undefined ? Number(fM.pecas_entrada) || 0 : Number(fM.pecas_embarque) || 0;
+        const restam = diasUteisDoMes(mesHoje, fM.dias_folga).filter(function (d) { return d > hojeISO; });
+        const restante = Math.max(0, alvo - importadoMes);
+        const dist = distribuirNosDias(restante, restam);
+        Object.keys(fc.entrada).forEach(function (d) {
+          if (d.slice(0, 7) !== mesHoje) return;
+          fc.entrada[d] = d > hojeISO ? (dist[d] || 0) : d === hojeISO ? agenda.importado_hoje : undefined;
+        });
+        Object.assign(agenda, { alvo: alvo, restante: restante, dias_restantes: restam.length, entrada_dia: restam.length ? Math.round(restante / restam.length) : 0 });
+      }
+    }
     const backlogPrev = {};
     if (ancora) {
       let b = ancora.valor, d = ancora.dia;
       const fim = dias[dias.length - 1];
       while (d < fim) {
-        const e = fc.entrada[d], s = fc.saida[d];
+        const e = agenda && agenda.alvo !== undefined && d === hojeISO ? 0 : fc.entrada[d], s = fc.saida[d];   // hoje: entrada já em tela
         if (e === undefined || s === undefined) break;
         b = Math.max(0, b + e - s);
         d = somaDias(d, 1);
@@ -262,6 +287,7 @@
       // parte do backlog de hoje que está "Não disp. picking" (coluna empilhada em vermelho)
       backlog_nao_disp: dias.map(function (d) { return temEmTela && d === hojeISO ? naoDisp : null; }),
       backlog_hoje: temEmTela ? { total: Number(emTela.total), nao_disp: naoDisp, gerado_em: emTela.gerado_em || null } : null,
+      agenda: agenda,
       // saída efetiva (expedido) enquanto o dia já passou; só depois dela vale a prevista
       saida_efetiva: dias.map(function (d) {
         if (!ultExp || d > ultExp.dia) return null;
@@ -439,12 +465,15 @@
         tot += Number(g.p) || 0;
         if (g.sit === 'Nao disp. picking') nd += Number(g.p) || 0;
       });
-      out.backlog_hoje = { total: tot, nao_disp: nd, gerado_em: eT.gerado_em || null };
+      const mesH = base.dias_iso[hi].slice(0, 7);
+      const ant = grupos.reduce(function (t, g) { return casaFiltro(g.m, g.s, g.t, F) && g.mi && g.mi < mesH ? t + (Number(g.p) || 0) : t; }, 0);
+      out.backlog_hoje = { total: tot, nao_disp: nd, gerado_em: eT.gerado_em || null, anterior: base.agenda ? ant : undefined };
       out.backlog_efetivo[hi] = tot; out.backlog[hi] = tot; out.backlog_nao_disp[hi] = nd;
       let b = tot;
+      const agendaHoje = !!(base.agenda && base.agenda.alvo !== undefined);
       for (let i = hi; i < n - 1; i++) {
         if (out.entrada[i] == null || out.saida[i] == null) break;
-        b = Math.max(0, b + out.entrada[i] - out.saida[i]);
+        b = Math.max(0, b + (agendaHoje && i === hi ? 0 : out.entrada[i]) - out.saida[i]);   // hoje: entrada já está em tela
         out.backlog_previsto[i + 1] = Math.round(b); out.backlog[i + 1] = Math.round(b);
       }
     }
@@ -1083,9 +1112,11 @@
       linha(saidaUnica, 'var(--olive)', '6 4', true);
       const bh = serie.backlog_hoje;
       const dataEmTela = bh && bh.gerado_em ? String(bh.gerado_em).slice(0, 10) : null;
+      const antHoje = bh && bh.anterior !== undefined ? bh.anterior : (!serie.filtro_ativo && serie.agenda ? serie.agenda.anterior : null);
       const rotBk = !bh ? 'sem dado' : (dataEmTela && dataEmTela !== serie.dias_iso[hiAll] ? 'em tela ' + rotuloDia(dataEmTela) : 'hoje');
       tot.innerHTML = '<div class="item"><div class="lab">Backlog · ' + rotBk + '</div><div class="val">' + (bh ? fmtN(bh.total) : '—') + '</div>' +
-          (bh && bh.nao_disp > 0 ? '<div style="font-size:10.5px;color:var(--red);font-weight:600">' + fmtN(bh.nao_disp) + ' não disp. picking</div>' : '') + '</div>' +
+          (bh && bh.nao_disp > 0 ? '<div style="font-size:10.5px;color:var(--red);font-weight:600">' + fmtN(bh.nao_disp) + ' não disp. picking</div>' : '') +
+          (antHoje != null ? '<div style="font-size:10.5px;color:var(--text-muted);font-weight:600">' + fmtN(antHoje) + ' do mês anterior</div>' : '') + '</div>' +
         '<div class="item"><div class="lab">Saída prevista · hoje</div><div class="val">' + num(d.saida[hi]) + '</div></div>';
       leg.innerHTML = '<span><i style="background:var(--amber)"></i>Backlog (peças em tela)</span>' +
         '<span><i style="background:var(--red)"></i>Não disp. p/ picking</span>' +
@@ -1132,6 +1163,12 @@
           bloco('Backlog', 'var(--amber)', d.backlog_previsto[i], d.backlog_efetivo[i], true) +
           bloco('Entrada', 'var(--accent)', d.entrada[i], null, false) +
           bloco('Saída', 'var(--olive)', d.saida[i], d.expedido[i], false) + '</div>';
+        if (i === hi && serie.agenda && !serie.filtro_ativo) {
+          const ag = serie.agenda;
+          html += '<div class="et-l" style="margin-top:8px"><span>Backlog do mês anterior (importado antes de ' + rotuloDia(d.dias_iso[i].slice(0, 8) + '01') + ')</span><b>' + fmtN(ag.anterior) + '</b></div>' +
+            '<div class="et-l"><span>Agenda do mês já importada</span><b>' + fmtN(ag.importado_mes) + '</b></div>' +
+            (ag.alvo !== undefined ? '<div class="et-l"><span>Falta entrar no mês (' + fmtN(ag.alvo) + ' − importado)</span><b>' + fmtN(ag.restante) + ' · ' + fmtN(ag.entrada_dia) + '/dia útil</b></div>' : '');
+        }
         if (d.backlog_nao_disp[i] > 0) {
           html += '<div class="et-l" style="margin-top:8px"><span>Não disp. picking (em tela)</span><b style="color:var(--red)">' + fmtN(d.backlog_nao_disp[i]) +
             ' · ' + (d.backlog_nao_disp[i] / d.backlog[i] * 100).toFixed(1).replace('.', ',') + '%</b></div>';
