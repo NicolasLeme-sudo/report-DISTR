@@ -213,5 +213,20 @@ eq([sAg.entrada[30], sAg.entrada[33], sAg.entrada[31]], [132050, Math.floor(5989
 eq([sAg.backlog[30], sAg.backlog[31]], [210983, 210983 - 33228], 'amanhã = hoje − saída de hoje (a entrada de hoje já está em tela)');
 ok(sAg.backlog[40] < sAg.backlog[33], 'backlog flui: cai quando a entrada que falta por dia é menor que a saída prevista');
 
+secao('perfil operacional por dia da semana');
+const histP = [];
+for (let k = 0; k < 70; k++) {
+  const d = E.forecastPorDia ? new Date(Date.UTC(2026, 6, 1) + k * 86400000).toISOString().slice(0, 10) : null;
+  const w = new Date(d + 'T12:00:00Z').getUTCDay();
+  if (w === 0 || w === 6) continue;
+  histP.push({ dia: d, expedido: w === 2 ? 40000 : 20000, backlog: 100000 });
+}
+const pf = E.perfilSemana(histP, '2026-10-02');
+ok(pf && pf.saida[2] > 1.5 && pf.saida[1] < 1, 'terça (dia mais forte no histórico) pesa mais na saída');
+const dP = E.distribuirPorPeso(731000, E.diasUteisDoMes('2026-10', []), pf.saida);
+eq(Object.keys(dP).reduce(function (t, k) { return t + dP[k]; }, 0), 731000, 'distribuição por peso fecha EXATO no total do mês');
+ok(dP['2026-10-06'] > dP['2026-10-05'], 'terça recebe mais forecast que segunda');
+eq(E.perfilSemana([{ dia: '2026-09-30', expedido: 1, backlog: 1 }], '2026-10-02'), null, 'sem histórico suficiente: sem perfil (divide por igual)');
+
 console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
 process.exit(falhas === 0 ? 0 : 1);

@@ -146,6 +146,54 @@
     dias.forEach(function (d, i) { out[d] = base + (i < resto ? 1 : 0); });
     return out;
   }
+  /* Perfil operacional por dia da semana (seg–sex), das últimas ~12 semanas da base do Embarque: peso de cada dia
+     na saída (expedido) e na entrada (backlog − backlog anterior + expedido). Média aparada (tira o maior e o menor
+     de cada dia) e normalizada (média dos 5 dias = 1). Sem histórico suficiente: null (divide por igual). */
+  function perfilSemana(diario, ate) {
+    const rows = (diario || []).filter(function (r) { return r && r.dia && (!ate || r.dia < ate); }).slice()
+      .sort(function (a, b) { return a.dia < b.dia ? -1 : 1; });
+    const ini = rows.length ? somaDias(rows[rows.length - 1].dia, -84) : null;
+    const sai = {}, ent = {};
+    let prev = null;
+    rows.forEach(function (r) {
+      const w = diaDaSemana(r.dia), noPeriodo = r.dia > ini;
+      const temB = r.backlog !== null && r.backlog !== undefined;
+      if (noPeriodo && w >= 1 && w <= 5) {
+        if (Number(r.expedido) > 0) (sai[w] = sai[w] || []).push(Number(r.expedido));
+        if (temB && prev) (ent[w] = ent[w] || []).push(Math.max(0, Number(r.backlog) - Number(prev.backlog) + (Number(r.expedido) || 0)));
+      }
+      if (temB) prev = r;
+    });
+    const media = function (a) {
+      if (!a || a.length < 4) return null;
+      const o = a.slice().sort(function (x, y) { return x - y; }).slice(1, -1);
+      return o.reduce(function (t, v) { return t + v; }, 0) / o.length;
+    };
+    const pesos = function (m) {
+      const v = [1, 2, 3, 4, 5].map(function (w) { return media(m[w]); });
+      if (v.some(function (x) { return !(x > 0); })) return null;
+      const mm = v.reduce(function (t, x) { return t + x; }, 0) / 5, out = {};
+      v.forEach(function (x, i) { out[i + 1] = x / mm; });
+      return out;
+    };
+    const ps = pesos(sai), pe = pesos(ent);
+    return ps || pe ? { saida: ps, entrada: pe } : null;
+  }
+  // Reparte `total` (inteiro) entre os dias pelo peso do dia da semana, fechando EXATO no total (maiores restos).
+  function distribuirPorPeso(total, dias, pesos) {
+    if (!pesos) return distribuirNosDias(total, dias);
+    const out = {};
+    if (!dias.length) return out;
+    const w = dias.map(function (d) { return pesos[diaDaSemana(d)] || 1; });
+    const sw = w.reduce(function (t, x) { return t + x; }, 0);
+    const bruto = w.map(function (x) { return total * x / sw; });
+    const base = bruto.map(Math.floor);
+    let resto = Math.round(total) - base.reduce(function (t, x) { return t + x; }, 0);
+    bruto.map(function (b, i) { return [b - Math.floor(b), i]; }).sort(function (a, b) { return b[0] - a[0] || a[1] - b[1]; })
+      .forEach(function (x) { if (resto > 0) { base[x[1]]++; resto--; } });
+    dias.forEach(function (d, i) { out[d] = base[i]; });
+    return out;
+  }
   /* Entrada real de um mês fechado, pela base do Embarque: entrada = backlog(fim) − backlog(início) + expedido do mês.
      Devolve a média por dia com expedição e o expedido total (para comparar com o forecast do mês seguinte). */
   function entradaDoMes(diario, mes) {
@@ -180,8 +228,9 @@
   }
   // forecasts = linhas de embarque_forecast_mensal -> { saida: {dia: peças}, entrada: {dia: peças} }.
   // Dia útil recebe a parte; fim de semana/folga do mês com forecast fica em 0 (a linha desce, como no E-commerce).
-  function forecastPorDia(forecasts, diario) {
+  function forecastPorDia(forecasts, diario, perfil) {
     const saida = {}, entrada = {};
+    perfil = perfil || null;
     (forecasts || []).forEach(function (f) {
       const uteis = diasUteisDoMes(f.mes, f.dias_folga);
       const todos = (function () {
@@ -189,13 +238,14 @@
         for (let d = 1; d <= n; d++) l.push(p[0] + '-' + pad2(p[1]) + '-' + pad2(d));
         return l;
       })();
-      const dist = distribuirNosDias(Number(f.pecas_embarque) || 0, uteis);
+      const dist = distribuirPorPeso(Number(f.pecas_embarque) || 0, uteis, perfil && perfil.saida);
       todos.forEach(function (d) { saida[d] = dist[d] || 0; });
       // entrada prevista: a informada no forecast; sem ela, a automática (entrada média do mês anterior × % do forecast sobre
       // o expedido dele); sem histórico para isso, o próprio forecast dividido pelos dias úteis
       const auto = f.pecas_entrada !== null && f.pecas_entrada !== undefined ? null : entradaAutomatica(diario, f);
-      const distE = f.pecas_entrada !== null && f.pecas_entrada !== undefined ? distribuirNosDias(Number(f.pecas_entrada) || 0, uteis)
-        : auto ? distribuirNosDias(auto.entrada_dia * uteis.length, uteis) : dist;
+      const pE = perfil && perfil.entrada;
+      const distE = f.pecas_entrada !== null && f.pecas_entrada !== undefined ? distribuirPorPeso(Number(f.pecas_entrada) || 0, uteis, pE)
+        : auto ? distribuirPorPeso(auto.entrada_dia * uteis.length, uteis, pE) : distribuirPorPeso(Number(f.pecas_embarque) || 0, uteis, pE);
       todos.forEach(function (d) { entrada[d] = distE[d] || 0; });
     });
     return { saida: saida, entrada: entrada };
@@ -219,7 +269,8 @@
       if (r.expedido !== null && r.expedido !== undefined && (!ultExp || r.dia > ultExp.dia)) ultExp = { dia: r.dia, valor: r.expedido };
       if (r.backlog !== null && r.backlog !== undefined && (!ultBk || r.dia > ultBk.dia)) ultBk = { dia: r.dia, valor: r.backlog };
     });
-    const fc = forecastPorDia(forecasts, diario);
+    const perfil = perfilSemana(diario, hojeISO);
+    const fc = forecastPorDia(forecasts, diario, perfil);
 
     // backlog dos dias seguintes à última posição conhecida: backlog(D+1) = backlog(D) + entrada(D) − saída(D).
     // Projeta enquanto houver entrada E saída prevista (entrada não informada = o próprio forecast do dia).
@@ -244,7 +295,7 @@
         const alvo = fM.pecas_entrada !== null && fM.pecas_entrada !== undefined ? Number(fM.pecas_entrada) || 0 : Number(fM.pecas_embarque) || 0;
         const restam = diasUteisDoMes(mesHoje, fM.dias_folga).filter(function (d) { return d > hojeISO; });
         const restante = Math.max(0, alvo - importadoMes);
-        const dist = distribuirNosDias(restante, restam);
+        const dist = distribuirPorPeso(restante, restam, perfil && perfil.entrada);
         Object.keys(fc.entrada).forEach(function (d) {
           if (d.slice(0, 7) !== mesHoje) return;
           fc.entrada[d] = d > hojeISO ? (dist[d] || 0) : d === hojeISO ? agenda.importado_hoje : undefined;
@@ -265,8 +316,24 @@
       }
     }
 
+    const entradaEf = {};
+    (function () {
+      let prevB = null;
+      (diario || []).slice().sort(function (a, b) { return a.dia < b.dia ? -1 : 1; }).forEach(function (r) {
+        if (r.backlog === null || r.backlog === undefined) return;
+        if (prevB && r.dia < hojeISO) entradaEf[r.dia] = Math.max(0, Number(r.backlog) - Number(prevB.backlog) + (Number(r.expedido) || 0));
+        prevB = r;
+      });
+    })();
     const nv = function (v) { return v === undefined ? null : v; };
     return {
+      perfil: perfil,
+      // entrada efetiva (dias que passaram, pela base): vira a linha azul antes de hoje, como a saída
+      entrada_efetiva: dias.map(function (d) {
+        if (entradaEf[d] !== undefined) return entradaEf[d];
+        const w = diaDaSemana(d);   // fim de semana dentro do período da base: sem entrada (a de seg já soma o fim de semana)
+        return ultBk && d <= ultBk.dia && d < hojeISO && (w === 0 || w === 6) ? 0 : null;
+      }),
       dias: dias.map(rotuloDia),
       dias_iso: dias,
       dias_semana: dias.map(function (d) { return SEM[diaDaSemana(d)]; }),
@@ -1106,7 +1173,8 @@
         }
         if (mostra(i)) rot(xF(i), yF(v) - 9, fmtN(v), 'var(--amber)');
       });
-      linha(d.entrada, 'var(--accent)', '', true);
+      const entradaUnica = d.entrada.map(function (v, i) { return i < hi && d.entrada_efetiva && d.entrada_efetiva[i] != null ? d.entrada_efetiva[i] : v; });
+      linha(entradaUnica, 'var(--accent)', '', true);
       // saída: TRACEJADA sempre — nos dias que já passaram é o realizado (expedido); de hoje em diante é o forecast
       const saidaUnica = d.saida.map(function (v, i) { return d.saida_efetiva[i] != null ? d.saida_efetiva[i] : v; });
       linha(saidaUnica, 'var(--olive)', '6 4', true);
@@ -1120,7 +1188,7 @@
         '<div class="item"><div class="lab">Saída prevista · hoje</div><div class="val">' + num(d.saida[hi]) + '</div></div>';
       leg.innerHTML = '<span><i style="background:var(--amber)"></i>Backlog (peças em tela)</span>' +
         '<span><i style="background:var(--red)"></i>Não disp. p/ picking</span>' +
-        '<span><i style="background:var(--accent)"></i>Entrada prevista</span>' +
+        '<span><i style="background:var(--accent)"></i>Entrada: dia que passou = realizado · de hoje em diante = prevista</span>' +
         '<span><i style="background:repeating-linear-gradient(90deg,var(--olive) 0 4px,transparent 4px 7px)"></i>Saída: dia que passou = realizado · de hoje em diante = forecast</span>';
       nota.textContent = '';
     }
@@ -1161,7 +1229,7 @@
         };
         html += '<div class="et-cols">' +
           bloco('Backlog', 'var(--amber)', d.backlog_previsto[i], d.backlog_efetivo[i], true) +
-          bloco('Entrada', 'var(--accent)', d.entrada[i], null, false) +
+          bloco('Entrada', 'var(--accent)', d.entrada[i], d.entrada_efetiva ? d.entrada_efetiva[i] : null, false) +
           bloco('Saída', 'var(--olive)', d.saida[i], d.expedido[i], false) + '</div>';
         if (i === hi && serie.agenda && !serie.filtro_ativo) {
           const ag = serie.agenda;
@@ -1628,7 +1696,7 @@
     aoSairDaTela: aoSairDaTela, aoMostrarTela: aoMostrarTela,
     iniciar: iniciar, ligarAdmin: ligarAdmin, processarBaseEmbarque: processarBaseEmbarque, salvarForecast: salvarForecast,
     parsearBaseEmbarque: parsearBaseEmbarque, diasUteisDoMes: diasUteisDoMes, distribuirNosDias: distribuirNosDias,
-    forecastPorDia: forecastPorDia, entradaDoMes: entradaDoMes, entradaAutomatica: entradaAutomatica, validarProporcoes: validarProporcoes, validarCruzada: validarCruzada, matrizPrevista: matrizPrevista, nomeCurtoTransportadora: nomeCurtoTransportadora,
+    forecastPorDia: forecastPorDia, perfilSemana: perfilSemana, distribuirPorPeso: distribuirPorPeso, entradaDoMes: entradaDoMes, entradaAutomatica: entradaAutomatica, validarProporcoes: validarProporcoes, validarCruzada: validarCruzada, matrizPrevista: matrizPrevista, nomeCurtoTransportadora: nomeCurtoTransportadora,
     parsearNotasEmbarcadas: parsearNotasEmbarcadas, aplicarFiltrosNaSerie: aplicarFiltrosNaSerie, montarMix: montarMix, processarNotasEmbarcadas: processarNotasEmbarcadas, montarSerieEmbarque: montarSerieEmbarque, lerMilPecas: lerMilPecas, repartir: repartir, dataDeCelula: dataDeCelula,
     dataSnapshot: function () { return dataSnapshot; },
   };
