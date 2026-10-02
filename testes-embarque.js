@@ -53,7 +53,7 @@ eq(dist['2026-10-01'], 33228, 'o resto da divisão vai nos primeiros dias');
 const fc = E.forecastPorDia([{ mes: '2026-10', pecas_embarque: 731000, pecas_entrada: null, dias_folga: [] }]);
 eq([fc.saida['2026-10-03'], fc.saida['2026-10-04']], [0, 0], 'sábado e domingo do mês com forecast ficam em 0');
 eq(fc.saida['2026-09-30'], undefined, 'mês sem forecast fica sem valor (não 0)');
-eq(Object.keys(fc.entrada).length, 0, 'sem entrada informada, não há entrada prevista');
+eq([fc.entrada['2026-10-01'], fc.entrada['2026-10-03']], [33228, 0], 'sem entrada informada, a entrada prevista = forecast ÷ dias úteis');
 
 secao('série do gráfico (D-30 a D+30)');
 const diario = [
@@ -70,7 +70,7 @@ eq([s.forecast[29], s.forecast[30]], [33228, 33228], 'forecast: 01/10 e 02/10 (p
 eq(s.forecast[28], null, 'antes do mês com forecast: sem forecast');
 eq(s.ultimo_dia_expedicao, '2026-10-01', 'último dia com expedição');
 eq(s.backlog[29], 83515, 'backlog efetivo do último dia');
-eq(s.backlog[30], null, 'sem entrada prevista: backlog futuro NÃO é projetado');
+eq(s.backlog[30], 83515, 'sem entrada informada: entrada = saída prevista, backlog projetado se mantém');
 const s2 = E.montarSerieEmbarque(diario, [{ mes: '2026-10', pecas_embarque: 731000, pecas_entrada: 750000, dias_folga: [] }], '2026-10-02');
 ok(s2.backlog[30] !== null, 'com entrada prevista o backlog do dia seguinte é projetado');
 eq(s2.backlog[30], 83515 + 750000 / 22 - 731000 / 22 > 0 ? Math.round(83515 + 34091 - 33228) : 0, 'backlog(D+1) = backlog(D) + entrada(D) − saída(D)');

@@ -13,7 +13,7 @@
      folga informados). Ex.: out/2026 = 731.000 peças em 22 dias úteis =
      33.227 por dia (o resto da divisão vai 1 a 1 nos primeiros dias, pra o
      mês fechar exato).
-   - Entrada prevista no backlog: opcional (ainda não informada pelo Embarque).
+   - Entrada prevista no backlog: a informada no forecast; vazia = o próprio forecast ÷ dias úteis.
      Sem ela o backlog dos dias futuros NÃO é projetado — não inventamos.
    ============================================================================ */
 (function () {
@@ -160,10 +160,9 @@
       })();
       const dist = distribuirNosDias(Number(f.pecas_embarque) || 0, uteis);
       todos.forEach(function (d) { saida[d] = dist[d] || 0; });
-      if (f.pecas_entrada !== null && f.pecas_entrada !== undefined) {
-        const distE = distribuirNosDias(Number(f.pecas_entrada) || 0, uteis);
-        todos.forEach(function (d) { entrada[d] = distE[d] || 0; });
-      }
+      // entrada prevista: a informada no forecast; sem ela, vale o próprio forecast dividido pelos dias úteis
+      const distE = f.pecas_entrada !== null && f.pecas_entrada !== undefined ? distribuirNosDias(Number(f.pecas_entrada) || 0, uteis) : dist;
+      todos.forEach(function (d) { entrada[d] = distE[d] || 0; });
     });
     return { saida: saida, entrada: entrada };
   }
@@ -189,7 +188,7 @@
     const fc = forecastPorDia(forecasts);
 
     // backlog dos dias seguintes à última posição conhecida: backlog(D+1) = backlog(D) + entrada(D) − saída(D).
-    // Só projeta enquanto houver entrada E saída prevista — sem entrada informada não há projeção.
+    // Projeta enquanto houver entrada E saída prevista (entrada não informada = o próprio forecast do dia).
     // Âncora: HOJE = peças em tela (PFAs pendentes do Start Inicial); sem isso, o último backlog da base.
     const temEmTela = emTela && Number.isFinite(Number(emTela.total));
     const ancora = temEmTela ? { dia: hojeISO, valor: Number(emTela.total) } : ultBk;
@@ -585,13 +584,43 @@
       return '<span class="chip' + (!filtros[campo].length ? ' on' : '') + '" data-f="' + campo + '" data-v="">' + todas + '</span>' +
         lista.map(function (v) { return '<span class="chip' + (filtros[campo].indexOf(v) !== -1 ? ' on' : '') + '" data-f="' + campo + '" data-v="' + v + '">' + v + '</span>'; }).join('');
     };
+    const per = periodoAtual();
     alvo.innerHTML =
+      '<div class="filtros"><span class="rot-filtro">Período</span><div class="emb-popwrap"><div class="seg-toggle" id="embMixPeriodo">' +
+        '<button type="button" class="seg-btn' + (periodoMix.modo === 'tudo' ? ' ativo' : '') + '" data-modo="tudo">Todo o período</button>' +
+        '<button type="button" class="seg-btn' + (periodoMix.modo === 'sel' ? ' ativo' : '') + '" data-modo="sel">Selecionar período</button>' +
+      '</div>' + (periodoMix.aberto ? popoverMeses(per.meses, per.anos) : '') + '</div></div>' +
       '<div class="filtros"><span class="rot-filtro">Marca</span>' + chips('marca', op.marca, 'Todas') +
         '<span class="emb-sep"></span><span class="rot-filtro" style="width:auto">Segmento</span>' + chips('seg', op.seg, 'Todos') + '</div>' +
       grupo('Transportadora', 'transp', op.transp, 'Todas') +
       '<div class="emb-rodape" style="justify-content:space-between;align-items:center"><span>' + (filtroAtivo(filtros) ? '<span class="chip" style="color:var(--red)" data-limpar="1">✕ Limpar filtros</span>' : '') + '</span>' +
         '<span class="chip emb-fcbtn" data-fcabrir="1" style="margin:0">Clique para visualizar o forecast</span></div>';
     const bt = alvo.querySelector('[data-fcabrir]'); if (bt) bt.addEventListener('click', abrirForecast);
+    alvo.querySelectorAll('#embMixPeriodo .seg-btn').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (b.dataset.modo === 'tudo') { periodoMix.modo = 'tudo'; periodoMix.aberto = false; atualizarPeriodo(); return; }
+        periodoMix.aberto = !periodoMix.aberto; if (periodoMix.aberto) periodoMix.rascunho = periodoMix.modo === 'sel' ? periodoMix.meses.slice() : [];
+        desenharFiltros();
+      });
+    });
+    const pop = alvo.querySelector('.emb-pop');
+    if (pop) {
+      pop.addEventListener('click', function (e) { e.stopPropagation(); });
+      pop.querySelectorAll('[data-mes]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          const i = periodoMix.rascunho.indexOf(b.dataset.mes);
+          if (i === -1) periodoMix.rascunho.push(b.dataset.mes); else periodoMix.rascunho.splice(i, 1);
+          desenharFiltros();
+        });
+      });
+      pop.querySelectorAll('[data-ano]').forEach(function (b) { b.addEventListener('click', function () { periodoMix.ano = b.dataset.ano; desenharFiltros(); }); });
+      const ok = pop.querySelector('[data-ok]');
+      if (ok) ok.addEventListener('click', function () {
+        if (!periodoMix.rascunho.length) return;
+        periodoMix.meses = periodoMix.rascunho.slice().sort(); periodoMix.modo = 'sel'; periodoMix.aberto = false; atualizarPeriodo();
+      });
+    }
     alvo.querySelectorAll('.chip[data-f]').forEach(function (c) { c.addEventListener('click', function () { alternarFiltro(c.dataset.f, c.dataset.v); }); });
     const lim = alvo.querySelector('[data-limpar]'); if (lim) lim.addEventListener('click', function () { filtros.marca = []; filtros.seg = []; filtros.transp = []; aplicar(); });
   }
@@ -644,11 +673,12 @@
     return h + '<tr class="seplin"><th class="l tot">Total</th>' + mx.segs.map(function (g) { return '<td class="tot">' + val(g.valor) + '</td>'; }).join('') + '<td class="tot sepcol">' + (modo === 'pct' ? '100%' : fmtN(mx.total)) + '</td></tr></table>';
   }
   // realizado (notas embarcadas) de um dia — ou do período todo quando dia = null
-  function matrizRealizada(agg, dia) {
+  function matrizRealizada(agg, dia, sel) {
     const cel = {}, lm = {}, cs = {};
     let total = 0;
     (agg || []).forEach(function (r) {
       if (dia && String(r.d).slice(0, 10) !== dia) return;
+      if (!dia && sel && sel !== 'tudo' && sel.indexOf(String(r.d).slice(0, 7)) === -1) return;
       const sg = segmentoParaFiltro(r.s);
       cel[r.m + '|' + sg] = (cel[r.m + '|' + sg] || 0) + r.p; lm[r.m] = (lm[r.m] || 0) + r.p; cs[sg] = (cs[sg] || 0) + r.p; total += r.p;
     });
@@ -702,14 +732,15 @@
       }
     } else {
       titulo = 'Realizado · marca × segmento';
-      const mx = matrizRealizada(bruto.agg, modalDia);
+      const perJ = periodoAtual();
+      const mx = matrizRealizada(bruto.agg, modalDia, perJ.sel);
       const dias = Array.from(new Set((bruto.agg || []).map(function (r) { return String(r.d).slice(0, 10); }))).sort();
       if (modalDia) {
         const iD = serieBase ? serieBase.dias_iso.indexOf(modalDia) : -1, expBase = iD >= 0 ? serieBase.expedido[iD] : null;
         sub = rotuloDiaCompleto(modalDia) + (mx ? ' · ' + fmtN(mx.total) + ' peças embarcadas' : expBase ? ' · ' + fmtN(expBase) + ' peças expedidas (base do Embarque)' : '');
         corpo = mx ? blocos(mx, COR_VD) : expBase ? msg('Sem detalhe de marca × segmento para este dia: o detalhado de notas cobre ' + (dias.length ? rotuloDia(dias[0]) + ' a ' + rotuloDia(dias[dias.length - 1]) : 'nenhum dia') + '.') : msg(dias.length ? 'Sem notas embarcadas neste dia no detalhado (as notas cobrem ' + rotuloDia(dias[0]) + ' a ' + rotuloDia(dias[dias.length - 1]) + ').' : 'Sem detalhado de notas embarcadas.');
       } else {
-        sub = dias.length ? 'Período todo · ' + rotuloDia(dias[0]) + ' a ' + rotuloDia(dias[dias.length - 1]) + (mx ? ' · ' + fmtN(mx.total) + ' peças' : '') : '';
+        sub = (perJ.sel === 'tudo' ? (dias.length ? 'Todo o período · ' + rotuloDia(dias[0]) + ' a ' + rotuloDia(dias[dias.length - 1]) : '') : 'Período selecionado: ' + textoMeses(perJ.sel)) + (mx ? ' · ' + fmtN(mx.total) + ' peças' : '');
         corpo = mx ? blocos(mx, COR_VD) : msg('Sem detalhado de notas embarcadas.');
       }
     }
@@ -753,6 +784,19 @@
     barra.addEventListener('pointerup', function () { mov = false; });
     barra.addEventListener('pointercancel', function () { mov = false; });
   }
+  // período geral do relatório (Todo o período / meses escolhidos): vale para o Mix e para a janela do forecast
+  function periodoAtual() {
+    const agg = bruto ? bruto.agg : [];
+    const meses = Array.from(new Set(agg.map(function (r) { return String(r.d).slice(0, 7); }))).sort();
+    const anos = Array.from(new Set(meses.map(function (x) { return x.slice(0, 4); }))).sort();
+    if (meses.length && (!periodoMix.ano || anos.indexOf(periodoMix.ano) === -1)) periodoMix.ano = anos[anos.length - 1];
+    if (periodoMix.modo === 'sel') {
+      periodoMix.meses = periodoMix.meses.filter(function (x) { return meses.indexOf(x) !== -1; });
+      if (!periodoMix.meses.length) periodoMix.meses = meses.length ? [meses[meses.length - 1]] : [];
+    }
+    return { meses: meses, anos: anos, sel: periodoMix.modo === 'sel' ? periodoMix.meses.slice().sort() : 'tudo' };
+  }
+  function atualizarPeriodo() { desenharFiltros(); desenharMix(); if (document.getElementById('embFcModal')) preencherForecast(); }
   function popoverMeses(meses, anos) {
     const rasc = periodoMix.rascunho;
     return '<div class="emb-pop"><div class="ano">' +
@@ -777,20 +821,13 @@
       return r.length === 1 ? rot(r[0]) : r.length === 2 ? rot(r[0]) + ' e ' + rot(r[1]) : rot(r[0]) + ' a ' + rot(r[r.length - 1]);
     }).join(', ') + (anosSel.length === 1 ? '/' + anosSel[0].slice(2) : '');
   }
-  if (typeof document !== 'undefined') document.addEventListener('click', function () { if (periodoMix.aberto) { periodoMix.aberto = false; desenharMix(); } });
+  if (typeof document !== 'undefined') document.addEventListener('click', function () { if (periodoMix.aberto) { periodoMix.aberto = false; desenharFiltros(); } });
   function desenharMix() {
     const alvo = document.getElementById('embMix');
     if (!alvo) return;
     const agg = bruto ? bruto.agg : [];
     if (!agg.length) { alvo.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px 0">Sem detalhado de notas embarcadas ainda. Suba o arquivo em Abastecimento › Embarque › Notas embarcadas.</div>'; return; }
-    const meses = Array.from(new Set(agg.map(function (r) { return String(r.d).slice(0, 7); }))).sort();
-    const anos = Array.from(new Set(meses.map(function (x) { return x.slice(0, 4); }))).sort();
-    if (!periodoMix.ano || anos.indexOf(periodoMix.ano) === -1) periodoMix.ano = anos[anos.length - 1];
-    if (periodoMix.modo === 'sel') {
-      periodoMix.meses = periodoMix.meses.filter(function (x) { return meses.indexOf(x) !== -1; });
-      if (!periodoMix.meses.length) periodoMix.meses = [meses[meses.length - 1]];
-    }
-    const sel = periodoMix.modo === 'sel' ? periodoMix.meses.slice().sort() : 'tudo';
+    const per = periodoAtual(), meses = per.meses, sel = per.sel;
     const m = montarMix(agg, filtros, sel);
     const T = m.total.p || 1;
     const maxCel = Math.max(1, Math.max.apply(null, Object.keys(m.cel).map(function (k) { return m.cel[k]; })));
@@ -798,10 +835,6 @@
     let html =
       '<div class="week-head" style="margin-bottom:12px">' +
         '<div class="section-title" style="margin-bottom:0">Mix do embarque</div>' +
-        '<div class="emb-popwrap"><div class="seg-toggle" id="embMixPeriodo">' +
-          '<button type="button" class="seg-btn' + (periodoMix.modo === 'tudo' ? ' ativo' : '') + '" data-modo="tudo">Todo o período</button>' +
-          '<button type="button" class="seg-btn' + (periodoMix.modo === 'sel' ? ' ativo' : '') + '" data-modo="sel">Selecionar período</button>' +
-        '</div>' + (periodoMix.aberto ? popoverMeses(meses, anos) : '') + '</div>' +
         '<div class="week-totais"><div class="item"><div class="lab">Peças</div><div class="val">' + fmtN(m.total.p) + '</div></div>' +
           '<div class="item"><div class="lab">Volumes</div><div class="val">' + fmtN(m.total.v) + '</div></div>' +
           '<div class="item"><div class="lab">Notas</div><div class="val">' + fmtN(m.total.n) + '</div></div></div>' +
@@ -840,31 +873,6 @@
     alvo.innerHTML = html;
     const caixa = alvo.querySelector('.emb-transp'), linhasT = alvo.querySelectorAll('.emb-t-row');
     if (caixa && linhasT.length > VISIVEIS) caixa.style.maxHeight = (VISIVEIS * (linhasT[0].getBoundingClientRect().height + 4)) + 'px';
-    alvo.querySelectorAll('#embMixPeriodo .seg-btn').forEach(function (b) {
-      b.addEventListener('click', function (e) {
-        e.stopPropagation();
-        if (b.dataset.modo === 'tudo') { periodoMix.modo = 'tudo'; periodoMix.aberto = false; }
-        else { periodoMix.aberto = !periodoMix.aberto; if (periodoMix.aberto) periodoMix.rascunho = periodoMix.modo === 'sel' ? periodoMix.meses.slice() : []; }
-        desenharMix();
-      });
-    });
-    const pop = alvo.querySelector('.emb-pop');
-    if (pop) {
-      pop.addEventListener('click', function (e) { e.stopPropagation(); });
-      pop.querySelectorAll('[data-mes]').forEach(function (b) {
-        b.addEventListener('click', function () {
-          const i = periodoMix.rascunho.indexOf(b.dataset.mes);
-          if (i === -1) periodoMix.rascunho.push(b.dataset.mes); else periodoMix.rascunho.splice(i, 1);
-          desenharMix();
-        });
-      });
-      pop.querySelectorAll('[data-ano]').forEach(function (b) { b.addEventListener('click', function () { periodoMix.ano = b.dataset.ano; desenharMix(); }); });
-      const ok = pop.querySelector('[data-ok]');
-      if (ok) ok.addEventListener('click', function () {
-        if (!periodoMix.rascunho.length) return;
-        periodoMix.meses = periodoMix.rascunho.slice().sort(); periodoMix.modo = 'sel'; periodoMix.aberto = false; desenharMix();
-      });
-    }
     alvo.querySelectorAll('.emb-t-row').forEach(function (r) { r.addEventListener('click', function () { alternarFiltro('transp', r.dataset.t); }); });
   }
 
