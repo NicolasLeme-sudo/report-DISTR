@@ -177,14 +177,59 @@
       return out;
     };
     const ps = pesos(sai), pe = pesos(ent);
-    return ps || pe ? { saida: ps, entrada: pe } : null;
+    // momento do mês: cada mês fechado (últimos 12) dividido em 5 partes pelos dias úteis; peso = média da parte ÷ média do mês
+    const porMes = {};
+    let prevB = null;
+    rows.forEach(function (r) {
+      const w = diaDaSemana(r.dia), temB = r.backlog !== null && r.backlog !== undefined;
+      if (w >= 1 && w <= 5 && r.dia >= somaDias(rows[rows.length - 1].dia, -400)) {
+        (porMes[r.dia.slice(0, 7)] = porMes[r.dia.slice(0, 7)] || []).push({
+          s: Number(r.expedido) || 0, e: temB && prevB ? Math.max(0, Number(r.backlog) - Number(prevB.backlog) + (Number(r.expedido) || 0)) : null });
+      }
+      if (temB) prevB = r;
+    });
+    const fs = { 0: [], 1: [], 2: [], 3: [], 4: [] }, fe = { 0: [], 1: [], 2: [], 3: [], 4: [] };
+    const ultimoMes = rows.length ? rows[rows.length - 1].dia.slice(0, 7) : '';
+    Object.keys(porMes).forEach(function (m) {
+      const L = porMes[m];
+      if (m === ultimoMes && L.length < 18) return;          // mês em andamento não entra
+      if (L.length < 15) return;
+      const ms = L.reduce(function (t, x) { return t + x.s; }, 0) / L.length;
+      const le = L.filter(function (x) { return x.e !== null; }), me = le.reduce(function (t, x) { return t + x.e; }, 0) / Math.max(1, le.length);
+      L.forEach(function (x, i) {
+        const q = Math.min(4, Math.floor(i / L.length * 5));
+        if (ms > 0) fs[q].push(x.s / ms);
+        if (me > 0 && x.e !== null) fe[q].push(x.e / me);
+      });
+    });
+    const fase = function (f) {
+      if ([0, 1, 2, 3, 4].some(function (q) { return f[q].length < 6; })) return null;
+      const v = [0, 1, 2, 3, 4].map(function (q) { return f[q].reduce(function (t, x) { return t + x; }, 0) / f[q].length; });
+      const mm = v.reduce(function (t, x) { return t + x; }, 0) / 5, out = {};
+      v.forEach(function (x, q) { out[q] = x / mm; });
+      return out;
+    };
+    const fS = fase(fs), fE = fase(fe);
+    return ps || pe || fS || fE ? { saida: ps, entrada: pe, fase_saida: fS, fase_entrada: fE } : null;
+  }
+  // peso de cada dia útil do mês = peso do dia da semana × peso do momento do mês (1º a 5º quinto dos dias úteis)
+  function pesosDoMes(perfil, tipo, mes, folgas) {
+    if (!perfil) return null;
+    const ds = perfil[tipo], fa = perfil[tipo === 'saida' ? 'fase_saida' : 'fase_entrada'];
+    if (!ds && !fa) return null;
+    const uteis = diasUteisDoMes(mes, folgas), out = {};
+    uteis.forEach(function (d, i) {
+      const q = Math.min(4, Math.floor(i / uteis.length * 5));
+      out[d] = (ds ? ds[diaDaSemana(d)] || 1 : 1) * (fa ? fa[q] || 1 : 1);
+    });
+    return out;
   }
   // Reparte `total` (inteiro) entre os dias pelo peso do dia da semana, fechando EXATO no total (maiores restos).
   function distribuirPorPeso(total, dias, pesos) {
     if (!pesos) return distribuirNosDias(total, dias);
     const out = {};
     if (!dias.length) return out;
-    const w = dias.map(function (d) { return pesos[diaDaSemana(d)] || 1; });
+    const w = dias.map(function (d) { return (pesos[d] !== undefined ? pesos[d] : pesos[diaDaSemana(d)]) || 1; });
     const sw = w.reduce(function (t, x) { return t + x; }, 0);
     const bruto = w.map(function (x) { return total * x / sw; });
     const base = bruto.map(Math.floor);
@@ -238,12 +283,13 @@
         for (let d = 1; d <= n; d++) l.push(p[0] + '-' + pad2(p[1]) + '-' + pad2(d));
         return l;
       })();
-      const dist = distribuirPorPeso(Number(f.pecas_embarque) || 0, uteis, perfil && perfil.saida);
+      const pS = pesosDoMes(perfil, 'saida', f.mes, f.dias_folga);
+      const dist = distribuirPorPeso(Number(f.pecas_embarque) || 0, uteis, pS);
       todos.forEach(function (d) { saida[d] = dist[d] || 0; });
       // entrada prevista: a informada no forecast; sem ela, a automática (entrada média do mês anterior × % do forecast sobre
       // o expedido dele); sem histórico para isso, o próprio forecast dividido pelos dias úteis
       const auto = f.pecas_entrada !== null && f.pecas_entrada !== undefined ? null : entradaAutomatica(diario, f);
-      const pE = perfil && perfil.entrada;
+      const pE = pesosDoMes(perfil, 'entrada', f.mes, f.dias_folga);
       const distE = f.pecas_entrada !== null && f.pecas_entrada !== undefined ? distribuirPorPeso(Number(f.pecas_entrada) || 0, uteis, pE)
         : auto ? distribuirPorPeso(auto.entrada_dia * uteis.length, uteis, pE) : distribuirPorPeso(Number(f.pecas_embarque) || 0, uteis, pE);
       todos.forEach(function (d) { entrada[d] = distE[d] || 0; });
@@ -295,7 +341,7 @@
         const alvo = fM.pecas_entrada !== null && fM.pecas_entrada !== undefined ? Number(fM.pecas_entrada) || 0 : Number(fM.pecas_embarque) || 0;
         const restam = diasUteisDoMes(mesHoje, fM.dias_folga).filter(function (d) { return d > hojeISO; });
         const restante = Math.max(0, alvo - importadoMes);
-        const dist = distribuirPorPeso(restante, restam, perfil && perfil.entrada);
+        const dist = distribuirPorPeso(restante, restam, pesosDoMes(perfil, 'entrada', mesHoje, fM.dias_folga));
         Object.keys(fc.entrada).forEach(function (d) {
           if (d.slice(0, 7) !== mesHoje) return;
           fc.entrada[d] = d > hojeISO ? (dist[d] || 0) : d === hojeISO ? agenda.importado_hoje : undefined;
@@ -1112,9 +1158,12 @@
     cr.setAttribute('x', 0); cr.setAttribute('y', 0); cr.setAttribute('width', W); cr.setAttribute('height', h - pB + 1.5);
     cp.appendChild(cr); defs.appendChild(cp);
 
-    const series = visao === 'forecast' ? [d.expedido, d.forecast] : [d.entrada, d.saida, d.saida_efetiva, d.backlog];
+    const series = visao === 'forecast' ? [d.expedido, d.forecast] : [d.backlog];
     const mx = Math.max(1, ...series.flat().filter(function (v) { return v != null; })) * 1.18;
     const xF = function (i) { return pL + i * step; }, yF = function (v) { return (h - pB) - (v / mx) * (h - pT - pB); };
+    // backlog: entrada e saída numa escala própria (são ~1/6 do backlog; na mesma escala ficariam achatadas no rodapé)
+    const mxL = Math.max(1, ...[d.entrada, d.saida, d.saida_efetiva, d.entrada_efetiva || []].flat().filter(function (v) { return v != null; })) * 1.15;
+    const yL = function (v) { return (h - pB) - (v / mxL) * (h - pT - pB) * 0.85; };
 
     if (hi < n - 1) {
       el('rect', { x: xF(hi), y: pT - 40, width: W - xF(hi) - 4, height: h - pB - pT + 40, fill: 'var(--accent-soft)', opacity: 0.55, rx: 6 });
@@ -1125,8 +1174,9 @@
 
     const rotulos = [];
     const rot = function (x, y, txt, cor) { rotulos.push(function () { labelComFundo(svg, x, Math.min(y, h - pB - 8), txt, { fontSize: FS, cor: cor }); }); };
-    const linha = function (vals, cor, dash, suave) {
-      const pts = vals.map(function (v, i) { return v == null ? null : [xF(i), yF(v), v, i]; }).filter(Boolean);
+    const linha = function (vals, cor, dash, suave, escala) {
+      const yy = escala || yF;
+      const pts = vals.map(function (v, i) { return v == null ? null : [xF(i), yy(v), v, i]; }).filter(Boolean);
       if (pts.length > 1) el('path', { d: suave ? pathMonotono(pts) : pathSuave(pts), fill: 'none', 'clip-path': 'url(#embClip)',
         stroke: cor, 'stroke-width': 3.2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-dasharray': dash || '' });
       if (!suave) pts.forEach(function (pt) { el('circle', { cx: pt[0], cy: pt[1], r: 4.2, fill: cor }); });
@@ -1174,10 +1224,10 @@
         if (mostra(i)) rot(xF(i), yF(v) - 9, fmtN(v), 'var(--amber)');
       });
       const entradaUnica = d.entrada.map(function (v, i) { return i < hi && d.entrada_efetiva && d.entrada_efetiva[i] != null ? d.entrada_efetiva[i] : v; });
-      linha(entradaUnica, 'var(--accent)', '', true);
+      linha(entradaUnica, 'var(--accent)', '', true, yL);
       // saída: TRACEJADA sempre — nos dias que já passaram é o realizado (expedido); de hoje em diante é o forecast
       const saidaUnica = d.saida.map(function (v, i) { return d.saida_efetiva[i] != null ? d.saida_efetiva[i] : v; });
-      linha(saidaUnica, 'var(--olive)', '6 4', true);
+      linha(saidaUnica, 'var(--olive)', '6 4', true, yL);
       const bh = serie.backlog_hoje;
       const dataEmTela = bh && bh.gerado_em ? String(bh.gerado_em).slice(0, 10) : null;
       const antHoje = bh && bh.anterior !== undefined ? bh.anterior : (!serie.filtro_ativo && serie.agenda ? serie.agenda.anterior : null);
@@ -1260,7 +1310,7 @@
 
   async function carregarDados(supabaseClient) {
     const hoje = hojeLocalISO();
-    const de = somaDias(hoje.slice(0, 7) + '-01', -75), ate = somaDias(hoje, 31);   // 2 meses fechados para a entrada automática
+    const de = somaDias(hoje, -400), ate = somaDias(hoje, 31);   // ~13 meses: entrada automática e perfil operacional (dia da semana e momento do mês)
     const res = await Promise.all([
       supabaseClient.from('embarque_diario').select('dia, expedido, backlog, atualizado_em').gte('dia', de).lte('dia', ate).order('dia'),
       supabaseClient.from('embarque_diario').select('dia, expedido').not('expedido', 'is', null).order('dia', { ascending: false }).limit(1),
@@ -1696,7 +1746,7 @@
     aoSairDaTela: aoSairDaTela, aoMostrarTela: aoMostrarTela,
     iniciar: iniciar, ligarAdmin: ligarAdmin, processarBaseEmbarque: processarBaseEmbarque, salvarForecast: salvarForecast,
     parsearBaseEmbarque: parsearBaseEmbarque, diasUteisDoMes: diasUteisDoMes, distribuirNosDias: distribuirNosDias,
-    forecastPorDia: forecastPorDia, perfilSemana: perfilSemana, distribuirPorPeso: distribuirPorPeso, entradaDoMes: entradaDoMes, entradaAutomatica: entradaAutomatica, validarProporcoes: validarProporcoes, validarCruzada: validarCruzada, matrizPrevista: matrizPrevista, nomeCurtoTransportadora: nomeCurtoTransportadora,
+    forecastPorDia: forecastPorDia, perfilSemana: perfilSemana, pesosDoMes: pesosDoMes, distribuirPorPeso: distribuirPorPeso, entradaDoMes: entradaDoMes, entradaAutomatica: entradaAutomatica, validarProporcoes: validarProporcoes, validarCruzada: validarCruzada, matrizPrevista: matrizPrevista, nomeCurtoTransportadora: nomeCurtoTransportadora,
     parsearNotasEmbarcadas: parsearNotasEmbarcadas, aplicarFiltrosNaSerie: aplicarFiltrosNaSerie, montarMix: montarMix, processarNotasEmbarcadas: processarNotasEmbarcadas, montarSerieEmbarque: montarSerieEmbarque, lerMilPecas: lerMilPecas, repartir: repartir, dataDeCelula: dataDeCelula,
     dataSnapshot: function () { return dataSnapshot; },
   };
