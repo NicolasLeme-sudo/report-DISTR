@@ -165,5 +165,23 @@ eq(E.aplicarFiltrosNaSerie(base, Object.assign({}, ctx, { filtros: { marca: ['UN
 const semProp = [{ mes: '2026-10', pecas_embarque: 731000, pecas_entrada: null, dias_folga: [], prop_marca: [], prop_segmento: [] }];
 eq(E.aplicarFiltrosNaSerie(E.montarSerieEmbarque(diario, semProp, '2026-10-02'), Object.assign({}, ctx, { forecasts: semProp })).forecast[30], null, 'mês sem proporção cadastrada: sem forecast filtrado (não inventa)');
 
+secao('proporção cruzada (segmento dentro de cada marca)');
+const cz = E.validarCruzada([
+  { nome: 'olympikus', pct: '60', segmentos: [{ nome: 'MEIA', pct: '80' }, { nome: 'VESTUÁRIO', pct: '20' }, { nome: '', pct: '' }] },
+  { nome: 'MIZUNO', pct: '40', segmentos: [{ nome: 'VESTUÁRIO', pct: '50' }, { nome: 'CALÇADO', pct: '50' }] },
+]);
+eq(cz.prop_marca, [{ nome: 'OLYMPIKUS', pct: 60 }, { nome: 'MIZUNO', pct: 40 }], 'marcas viram a proporção por marca');
+eq(cz.prop_segmento, [{ nome: 'MEIA', pct: 48 }, { nome: 'VESTUÁRIO', pct: 32 }, { nome: 'CALÇADO', pct: 20 }], 'segmento geral = Σ marca% × segmento%');
+let erroCz = ''; try { E.validarCruzada([{ nome: 'MIZUNO', pct: 100, segmentos: [{ nome: 'MEIA', pct: 70 }] }]); } catch (e) { erroCz = e.message; }
+ok(/Segmentos de MIZUNO.*100%/.test(erroCz), 'segmentos de uma marca precisam somar 100%');
+erroCz = ''; try { E.validarCruzada([{ nome: 'MIZUNO', pct: 100, segmentos: [] }]); } catch (e) { erroCz = e.message; }
+ok(/Segmentos de MIZUNO/.test(erroCz), 'marca sem segmentos dá erro claro');
+const mxC = E.matrizPrevista(Object.assign({ mes: '2026-10', pecas_embarque: 1000 }, cz), []);
+eq([mxC.cel['OLYMPIKUS|MEIA'], mxC.cel['OLYMPIKUS|VESTUÁRIO'], mxC.cel['MIZUNO|VESTUÁRIO'], mxC.cel['MIZUNO|CALÇADO']], [480, 120, 200, 200], 'matriz do forecast usa a célula exata informada');
+eq(mxC.segs.map(function (g) { return g.nome; }), ['MEIA', 'VESTUÁRIO', 'CALÇADO', 'ACESSÓRIO'], 'colunas na ordem fixa');
+const fcz = [Object.assign({ mes: '2026-10', pecas_embarque: 731000, pecas_entrada: null, dias_folga: [] }, cz)];
+const sCz = E.aplicarFiltrosNaSerie(E.montarSerieEmbarque(diario, fcz, '2026-10-02'), { filtros: { marca: ['MIZUNO'], seg: ['CALÇADO'], transp: [] }, agg: agg, forecasts: fcz, emTela: null });
+eq(sCz.forecast[30], Math.round(33228 * 0.2), 'filtro Mizuno + Calçado = célula informada (40% × 50% = 20%), não o produto das margens');
+
 console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
 process.exit(falhas === 0 ? 0 : 1);

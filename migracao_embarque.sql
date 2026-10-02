@@ -67,6 +67,9 @@ on conflict (mes) do nothing;
 alter table embarque_forecast_mensal
   add column if not exists prop_marca jsonb not null default '[]'::jsonb,      -- [{"nome":"OLYMPIKUS","pct":50}, ...] soma 100
   add column if not exists prop_segmento jsonb not null default '[]'::jsonb;   -- [{"nome":"CALÇADO","pct":60}, ...] soma 100
+-- Proporção cruzada (opcional): % da marca no total e % de cada segmento dentro da marca.
+-- [{"nome":"OLYMPIKUS","pct":61.04,"segmentos":[{"nome":"MEIA","pct":85.5}, ...]}, ...]; prop_marca/prop_segmento são derivadas dela.
+alter table public.embarque_forecast_mensal add column if not exists prop_cruzada jsonb;
 
 -- Backlog de HOJE = peças (pares) dos PFAs pendentes em tela (Start Inicial), do último
 -- snapshot de PFAs, com o total por situação ("Nao disp. picking" vira a parte vermelha da coluna).

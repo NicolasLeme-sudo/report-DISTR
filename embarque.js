@@ -378,6 +378,14 @@
     // forecast e entrada previstos, reduzidos pela proporção
     const shT = (F.transp || []).length ? (totAll ? totTransp / totAll : null) : 1;
     const fator = base.dias_iso.map(function (d) {
+      const fcM = (ctx.forecasts || []).filter(function (x) { return x.mes === d.slice(0, 7); })[0];
+      if (fcM && Array.isArray(fcM.prop_cruzada) && fcM.prop_cruzada.length && shT !== null) {   // marca × segmento informado: usa a célula exata
+        return fcM.prop_cruzada.reduce(function (t, m) {
+          if ((F.marca || []).length && F.marca.indexOf(m.nome) === -1) return t;
+          const sg = (m.segmentos || []).reduce(function (t2, g) { return (F.seg || []).length && F.seg.indexOf(g.nome) === -1 ? t2 : t2 + Number(g.pct); }, 0);
+          return t + Number(m.pct) / 100 * sg / 100;
+        }, 0) * shT;
+      }
       const a = shareProps(ctx.forecasts, d, 'prop_marca', F.marca), b = shareProps(ctx.forecasts, d, 'prop_segmento', F.seg);
       return a === null || b === null || shT === null ? null : a * b * shT;
     });
@@ -656,6 +664,16 @@
   function rotuloMes(x) { return MESES[Number(x.slice(5)) - 1] + '/' + x.slice(2, 4); }
   // Forecast só traz total por marca e por segmento: o cruzamento é estimado (IPF) partindo do mix realizado no histórico
   function matrizPrevista(fc, agg) {
+    if (Array.isArray(fc.prop_cruzada) && fc.prop_cruzada.length) {
+      const cel = {}, cs = {};
+      const pmC = repartir(fc.pecas_embarque, fc.prop_cruzada);
+      pmC.forEach(function (a) {
+        const orig = fc.prop_cruzada.filter(function (x) { return x.nome === a.nome; })[0];
+        repartir(a.valor, orig.segmentos).forEach(function (g) { cel[a.nome + '|' + g.nome] = g.valor; cs[g.nome] = (cs[g.nome] || 0) + g.valor; });
+      });
+      return { marcas: itensFixos(pmC.map(function (a) { return { nome: a.nome, valor: a.valor }; }), ORDEM_MARCAS),
+        segs: itensFixos(Object.keys(cs).map(function (k) { return { nome: k, valor: cs[k] }; }), ORDEM_SEGS), cel: cel, total: fc.pecas_embarque, exata: true };
+    }
     const pm = repartir(fc.pecas_embarque, fc.prop_marca), ps = repartir(fc.pecas_embarque, fc.prop_segmento);
     if (!pm.length || !ps.length) return null;
     const semente = {};
@@ -1105,7 +1123,7 @@
       supabaseClient.from('embarque_diario').select('dia, expedido, backlog, atualizado_em').gte('dia', de).lte('dia', ate).order('dia'),
       supabaseClient.from('embarque_diario').select('dia, expedido').not('expedido', 'is', null).order('dia', { ascending: false }).limit(1),
       supabaseClient.from('embarque_diario').select('dia, backlog').not('backlog', 'is', null).order('dia', { ascending: false }).limit(1),
-      supabaseClient.from('embarque_forecast_mensal').select('mes, pecas_embarque, pecas_entrada, dias_folga, prop_marca, prop_segmento, atualizado_em'),
+      supabaseClient.from('embarque_forecast_mensal').select('mes, pecas_embarque, pecas_entrada, dias_folga, prop_marca, prop_segmento, prop_cruzada, atualizado_em'),
       supabaseClient.rpc('embarque_backlog_em_tela'),
       supabaseClient.rpc('embarque_notas_agregado', { p_de: somaDias(hoje, -400) }),
     ]);
@@ -1250,6 +1268,26 @@
     if (Math.abs(soma - 100) > 0.05) throw new Error(rotulo + ': as proporções somam ' + String(Math.round(soma * 100) / 100).replace('.', ',') + '%, precisam somar 100%.');
     return lista;
   }
+  /* Proporção cruzada: [{nome, pct, segmentos:[{nome, pct}]}] — % da marca no total e % de cada segmento DENTRO da marca.
+     Devolve também as proporções separadas (marca e segmento) derivadas dela, usadas no resto do gráfico. */
+  function validarCruzada(linhas) {
+    const marcas = validarProporcoes('Marca', (linhas || []).map(function (l) { return { nome: l.nome, pct: l.pct }; }));
+    if (!marcas.length) throw new Error('Informe ao menos uma marca com a proporção.');
+    const cruz = marcas.map(function (m) {
+      const orig = (linhas || []).filter(function (l) { return String(l.nome || '').trim().toUpperCase() === m.nome; })[0];
+      const segs = validarProporcoes('Segmentos de ' + m.nome, orig ? orig.segmentos : []);
+      if (!segs.length) throw new Error('Segmentos de ' + m.nome + ': informe a divisão por segmento (precisa somar 100%).');
+      return { nome: m.nome, pct: m.pct, segmentos: segs };
+    });
+    const porSeg = {};
+    cruz.forEach(function (m) { m.segmentos.forEach(function (g) { porSeg[g.nome] = (porSeg[g.nome] || 0) + m.pct * g.pct / 100; }); });
+    return {
+      prop_cruzada: cruz,
+      prop_marca: cruz.map(function (m) { return { nome: m.nome, pct: m.pct }; }),
+      prop_segmento: Object.keys(porSeg).map(function (k) { return { nome: k, pct: Math.round(porSeg[k] * 100) / 100 }; })
+        .sort(function (a, b) { return b.pct - a.pct; }),
+    };
+  }
   async function salvarForecast(supabaseClient, f) {
     if (!/^\d{4}-\d{2}$/.test(f.mes || '')) throw new Error('Escolha o mês e o ano.');
     const pecas = lerMilPecas(f.pecas);
@@ -1258,7 +1296,8 @@
     if (entrada !== null && isNaN(entrada)) throw new Error('Entrada prevista inválida.');
     const { error } = await supabaseClient.from('embarque_forecast_mensal').upsert(
       { mes: f.mes, pecas_embarque: pecas, pecas_entrada: entrada, dias_folga: lerFolgas(f.folgas),
-        prop_marca: validarProporcoes('Marca', f.marcas), prop_segmento: validarProporcoes('Segmento', f.segmentos),
+        ...(f.cruzada ? validarCruzada(f.cruzada)
+          : { prop_marca: validarProporcoes('Marca', f.marcas), prop_segmento: validarProporcoes('Segmento', f.segmentos), prop_cruzada: null }),
         atualizado_em: new Date().toISOString() },
       { onConflict: 'mes' });
     if (error) throw error;
@@ -1355,12 +1394,84 @@
       } catch (e) { txt = e.message; }
       $('embPreview').textContent = txt;
       somaTxt($('embPropMarca'), $('embSomaMarca')); somaTxt($('embPropSeg'), $('embSomaSeg'));
+      if ($('embPropCruz')) somaCruz();
     };
     ['embMes', 'embPecas', 'embEntrada', 'embFolgas'].forEach(function (id) { $(id).addEventListener('input', prever); });
+    // ---- modo "segmento dentro de cada marca" ----
+    let modoProp = 'sep';
+    const inp = 'padding:6px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)';
+    const blocoMarca = function (nome, pct, segs) {
+      const box = document.createElement('div');
+      box.className = 'emb-cruz-marca';
+      box.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:8px 0;min-width:340px';
+      box.innerHTML = '<div style="display:flex;gap:8px;align-items:center">' +
+          '<input type="text" class="emb-cz-nome" list="dlEmbMarcas" placeholder="Marca" style="' + inp + ';width:170px;font-weight:700">' +
+          '<input type="text" class="emb-cz-pct" placeholder="% do total" style="' + inp + ';width:90px">' +
+          '<span style="font-size:11px;color:var(--text-muted)">do total</span>' +
+          '<button type="button" class="btn-mini" title="Remover marca" style="margin-left:auto">×</button></div>' +
+        '<div style="font-size:11px;color:var(--text-label);margin:8px 0 2px;text-transform:uppercase;letter-spacing:.06em">Segmentos dentro da marca (%)</div>' +
+        '<div class="emb-cz-segs"></div>' +
+        '<div style="display:flex;gap:12px;align-items:center;margin-top:4px"><button type="button" class="btn-mini emb-cz-add">+ segmento</button><span class="emb-cz-soma" style="font-size:12px;font-weight:600"></span></div>';
+      box.querySelector('.emb-cz-nome').value = nome || '';
+      box.querySelector('.emb-cz-pct').value = pct == null ? '' : String(pct).replace('.', ',');
+      box.querySelector('button[title="Remover marca"]').addEventListener('click', function () { box.remove(); prever(); });
+      box.querySelectorAll('input').forEach(function (i) { i.addEventListener('input', prever); });
+      const segBox = box.querySelector('.emb-cz-segs');
+      const addSeg = function (n, p) {
+        const div = document.createElement('div');
+        div.className = 'emb-cz-seg';
+        div.style.cssText = 'display:flex;gap:8px;align-items:center;margin:4px 0';
+        div.innerHTML = '<input type="text" class="emb-cz-snome" list="dlEmbSegmentos" placeholder="Segmento" style="' + inp + ';width:150px">' +
+          '<input type="text" class="emb-cz-spct" placeholder="%" style="' + inp + ';width:70px">' +
+          '<span class="emb-cz-tot" style="font-size:11px;color:var(--text-muted);min-width:90px"></span>' +
+          '<button type="button" class="btn-mini" title="Remover">×</button>';
+        div.querySelector('.emb-cz-snome').value = n || '';
+        div.querySelector('.emb-cz-spct').value = p == null ? '' : String(p).replace('.', ',');
+        div.querySelector('button').addEventListener('click', function () { div.remove(); prever(); });
+        div.querySelectorAll('input').forEach(function (i) { i.addEventListener('input', prever); });
+        segBox.appendChild(div);
+      };
+      box.querySelector('.emb-cz-add').addEventListener('click', function () { addSeg(); });
+      (segs && segs.length ? segs : [{}, {}, {}, {}]).forEach(function (g) { addSeg(g.nome, g.pct); });
+      $('embPropCruz').appendChild(box);
+    };
+    const lerCruzada = function () {
+      return Array.from($('embPropCruz').querySelectorAll('.emb-cruz-marca')).map(function (b) {
+        return { nome: b.querySelector('.emb-cz-nome').value, pct: b.querySelector('.emb-cz-pct').value,
+          segmentos: Array.from(b.querySelectorAll('.emb-cz-seg')).map(function (l) { return { nome: l.querySelector('.emb-cz-snome').value, pct: l.querySelector('.emb-cz-spct').value }; }) };
+      });
+    };
+    const numBR = function (v) { const n = Number(String(v == null ? '' : v).replace(',', '.')); return n > 0 ? n : 0; };
+    const fmtP = function (v) { return String(Math.round(v * 100) / 100).replace('.', ',') + '%'; };
+    const somaCruz = function () {
+      let tm = 0;
+      $('embPropCruz').querySelectorAll('.emb-cruz-marca').forEach(function (b) {
+        const pm = numBR(b.querySelector('.emb-cz-pct').value); tm += pm;
+        let ts = 0;
+        b.querySelectorAll('.emb-cz-seg').forEach(function (l) {
+          const ps = numBR(l.querySelector('.emb-cz-spct').value); ts += ps;
+          l.querySelector('.emb-cz-tot').textContent = pm && ps ? '= ' + fmtP(pm * ps / 100) + ' do total' : '';
+        });
+        const el = b.querySelector('.emb-cz-soma');
+        el.textContent = ts > 0 ? 'Soma: ' + fmtP(ts) : ''; el.style.color = Math.abs(ts - 100) <= 0.05 ? 'var(--olive)' : 'var(--amber)';
+      });
+      const el = $('embSomaCruz');
+      el.textContent = tm > 0 ? 'Soma das marcas: ' + fmtP(tm) : ''; el.style.color = Math.abs(tm - 100) <= 0.05 ? 'var(--olive)' : 'var(--amber)';
+    };
+    const definirModoProp = function (m) {
+      modoProp = m;
+      $('embPropSepWrap').style.display = m === 'sep' ? 'flex' : 'none';
+      $('embPropCruzWrap').style.display = m === 'cruz' ? '' : 'none';
+      document.querySelectorAll('#embModoProp .seg-btn').forEach(function (b) { b.classList.toggle('ativo', b.dataset.modo === m); });
+      if (m === 'cruz' && !$('embPropCruz').children.length) blocoMarca();
+      prever();
+    };
+    document.querySelectorAll('#embModoProp .seg-btn').forEach(function (b) { b.addEventListener('click', function () { definirModoProp(b.dataset.modo); }); });
+    $('btnAddMarcaCruz').addEventListener('click', function () { blocoMarca(); });
     $('btnAddMarca').addEventListener('click', function () { linhaProp($('embPropMarca')); });
     $('btnAddSeg').addEventListener('click', function () { linhaProp($('embPropSeg')); });
     const limparForm = function () {
-      $('embPropMarca').innerHTML = ''; $('embPropSeg').innerHTML = '';
+      $('embPropMarca').innerHTML = ''; $('embPropSeg').innerHTML = ''; $('embPropCruz').innerHTML = '';
       linhaProp($('embPropMarca')); linhaProp($('embPropSeg'));
     };
     limparForm();
@@ -1375,8 +1486,9 @@
           (f.pecas_entrada != null ? ' · entrada ' + fmtN(f.pecas_entrada) : '') +
           '</span><button class="btn-mini" data-mes="' + f.mes + '" title="Editar">Editar</button>' +
           '<button class="btn-mini" data-del="' + f.mes + '" title="Remover">×</button></div>' +
-          ((f.prop_marca || []).length ? '<div style="margin-left:2px">Marca: ' + resumoProp(f.prop_marca) + '</div>' : '') +
-          ((f.prop_segmento || []).length ? '<div style="margin-left:2px">Segmento: ' + resumoProp(f.prop_segmento) + '</div>' : '') + '</div>';
+          ((f.prop_cruzada || []).length ? f.prop_cruzada.map(function (m) { return '<div style="margin-left:2px">' + m.nome + ' ' + String(m.pct).replace('.', ',') + '%: ' + resumoProp(m.segmentos) + '</div>'; }).join('') :
+          ((f.prop_marca || []).length ? '<div style="margin-left:2px">Marca: ' + resumoProp(f.prop_marca) + '</div>' : '')) +
+          (!(f.prop_cruzada || []).length && (f.prop_segmento || []).length ? '<div style="margin-left:2px">Segmento: ' + resumoProp(f.prop_segmento) + '</div>' : '') + '</div>';
       }).join('') : 'Nenhum forecast informado.';
       $('embForecastLista').querySelectorAll('button[data-mes]').forEach(function (b) {
         b.addEventListener('click', function () {
@@ -1389,7 +1501,9 @@
           (f.prop_segmento || []).forEach(function (x) { linhaProp($('embPropSeg'), x.nome, x.pct); });
           if (!(f.prop_marca || []).length) linhaProp($('embPropMarca'));
           if (!(f.prop_segmento || []).length) linhaProp($('embPropSeg'));
-          prever();
+          $('embPropCruz').innerHTML = '';
+          (f.prop_cruzada || []).forEach(function (m) { blocoMarca(m.nome, m.pct, m.segmentos); });
+          definirModoProp((f.prop_cruzada || []).length ? 'cruz' : 'sep');
         });
       });
       $('embForecastLista').querySelectorAll('button[data-del]').forEach(function (b) {
@@ -1405,7 +1519,7 @@
       const log = $('logForecastEmbarque'); log.textContent = '';
       try {
         await salvarForecast(supabaseClient, { mes: $('embMes').value, pecas: $('embPecas').value, entrada: $('embEntrada').value, folgas: $('embFolgas').value,
-          marcas: lerLinhas($('embPropMarca')), segmentos: lerLinhas($('embPropSeg')) });
+          marcas: lerLinhas($('embPropMarca')), segmentos: lerLinhas($('embPropSeg')), cruzada: modoProp === 'cruz' ? lerCruzada() : null });
         log.textContent = '✔ Forecast salvo.';
         listar(); if (bruto) recarregar(supabaseClient);
       } catch (e) { log.textContent = 'ERRO: ' + (e && e.message ? e.message : String(e)); }
@@ -1416,7 +1530,7 @@
   const api = {
     iniciar: iniciar, ligarAdmin: ligarAdmin, processarBaseEmbarque: processarBaseEmbarque, salvarForecast: salvarForecast,
     parsearBaseEmbarque: parsearBaseEmbarque, diasUteisDoMes: diasUteisDoMes, distribuirNosDias: distribuirNosDias,
-    forecastPorDia: forecastPorDia, validarProporcoes: validarProporcoes, nomeCurtoTransportadora: nomeCurtoTransportadora,
+    forecastPorDia: forecastPorDia, validarProporcoes: validarProporcoes, validarCruzada: validarCruzada, matrizPrevista: matrizPrevista, nomeCurtoTransportadora: nomeCurtoTransportadora,
     parsearNotasEmbarcadas: parsearNotasEmbarcadas, aplicarFiltrosNaSerie: aplicarFiltrosNaSerie, montarMix: montarMix, processarNotasEmbarcadas: processarNotasEmbarcadas, montarSerieEmbarque: montarSerieEmbarque, lerMilPecas: lerMilPecas, repartir: repartir, dataDeCelula: dataDeCelula,
     dataSnapshot: function () { return dataSnapshot; },
   };
