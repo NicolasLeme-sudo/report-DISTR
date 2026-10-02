@@ -76,3 +76,42 @@ create or replace function public.embarque_backlog_em_tela() returns jsonb langu
         from s, jsonb_array_elements(s.payload->'pendentes') r group by 1, 2)
   select jsonb_build_object('gerado_em', max(gerado_em), 'total', coalesce(sum(pares), 0), 'por_situacao', coalesce(jsonb_object_agg(sit, pares), '{}'::jsonb)) from g;
 $$;
+
+-- ----------------------------------------------------------------------------
+-- 02/10/2026 — detalhado das notas embarcadas (filtros e mix por marca/segmento/transportadora)
+-- ----------------------------------------------------------------------------
+create table if not exists embarque_notas (
+  nf text primary key,             -- nota fiscal (chave: reenviar o arquivo nunca duplica)
+  embarque date not null,          -- data de embarque (coluna "Embarque OT 1P.")
+  emissao date,
+  pecas integer not null,
+  volumes integer,
+  valor numeric(14,2),
+  familia text,
+  marca text,                      -- vem de dim_familias
+  segmento text,                   -- segmento macro (CALÇADO/VESTUÁRIO/MEIA/ACESSÓRIO), chuteira e chinelo dentro de CALÇADO
+  transportadora text,             -- nome completo; a tela mostra só o nome curto
+  atualizado_em timestamptz not null default now()
+);
+create index if not exists embarque_notas_embarque_idx on embarque_notas (embarque);
+alter table embarque_notas enable row level security;
+drop policy if exists ler_embarque_notas on embarque_notas;
+create policy ler_embarque_notas on embarque_notas for select to authenticated using (meu_papel() is not null);
+drop policy if exists gravar_embarque_notas on embarque_notas;
+create policy gravar_embarque_notas on embarque_notas for all to authenticated using (meu_papel() = 'admin') with check (meu_papel() = 'admin');
+
+create or replace function public.embarque_notas_agregado(p_de date default null) returns jsonb language sql stable security invoker set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('d', embarque, 'm', marca, 's', segmento, 't', transportadora, 'p', p, 'v', v, 'n', n)), '[]'::jsonb)
+  from (select embarque, marca, segmento, transportadora, sum(pecas)::int p, coalesce(sum(volumes), 0)::int v, count(*)::int n
+        from embarque_notas where (p_de is null or embarque >= p_de) group by 1, 2, 3, 4) g;
+$$;
+
+-- backlog em tela, agora também por marca / segmento / transportadora (filtros do Embarque)
+create or replace function public.embarque_backlog_em_tela() returns jsonb language sql stable security invoker set search_path = public as $$
+  with s as (select payload, gerado_em from dashboard_snapshots where pagina = 'pfas' order by gerado_em desc limit 1),
+  g as (select s.gerado_em, r->>'situacao' as sit, r->>'marca' as m, r->>'segmento_macro' as seg, r->>'transportadora_nome' as t, sum((r->>'pares')::int) as pares
+        from s, jsonb_array_elements(s.payload->'pendentes') r group by 1, 2, 3, 4, 5)
+  select jsonb_build_object('gerado_em', max(gerado_em), 'total', coalesce(sum(pares), 0),
+    'por_situacao', coalesce((select jsonb_object_agg(sit, p) from (select sit, sum(pares) p from g group by sit) x), '{}'::jsonb),
+    'grupos', coalesce(jsonb_agg(jsonb_build_object('m', m, 's', seg, 't', t, 'sit', sit, 'p', pares)), '[]'::jsonb)) from g;
+$$;
