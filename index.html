@@ -1483,9 +1483,10 @@ tr.total > th, tr.total > td {
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
           Escolha o <strong>mês e o ano</strong> e informe quantos <strong>mil peças</strong> devem ser embarcadas (ex.: <strong>731</strong> = 731.000).
           O sistema divide por igual entre os <strong>dias úteis (seg–sex)</strong> e aplica no gráfico. Abaixo, informe a
-          <strong>proporção esperada por marca e por segmento</strong> (cada grupo precisa somar 100%): o forecast de cada dia aparece aberto por
-          marca e segmento ao passar o mouse no gráfico. Os campos de proporção são opcionais, e dá para reabastecer o mês quando chegar o dado real.
-          Feriado ou dia sem embarque: informe em "Dias sem embarque". A <strong>entrada prevista</strong> (opcional) permite projetar o backlog dos dias futuros.
+          <strong>proporção esperada</strong>: separada (marca e segmento, cada grupo somando 100%) ou com o <strong>segmento dentro de cada marca</strong>,
+          quando vier esse detalhe. Ela abre o forecast por marca × segmento na janela "Clique para visualizar o forecast" e nos filtros da tela Embarque.
+          Os campos de proporção são opcionais, e dá para reabastecer o mês quando chegar o dado real.
+          Feriado ou dia sem embarque: informe em "Dias sem embarque". A <strong>entrada prevista</strong> é opcional: vazia, vale o próprio forecast do dia.
         </p>
         <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
           <div><label style="font-size:11px;color:var(--text-label);display:block;margin-bottom:4px">Mês / ano</label>
@@ -1837,7 +1838,8 @@ function mostrarSecao(secao) {
   if (secao === 'embarque' && !embarqueCarregado) {
     embarqueCarregado = true;
     window.Embarque.iniciar('embarque-conteudo', supabaseClient);
-  }
+  } else if (secao === 'embarque') window.Embarque.aoMostrarTela();
+  if (secao !== 'embarque' && embarqueCarregado) window.Embarque.aoSairDaTela();
   if (secao === 'atualizar') { mostrarOrigemPersona(); window.Embarque.ligarAdmin(supabaseClient); }
 }
 

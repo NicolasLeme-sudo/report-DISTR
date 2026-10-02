@@ -183,5 +183,15 @@ const fcz = [Object.assign({ mes: '2026-10', pecas_embarque: 731000, pecas_entra
 const sCz = E.aplicarFiltrosNaSerie(E.montarSerieEmbarque(diario, fcz, '2026-10-02'), { filtros: { marca: ['MIZUNO'], seg: ['CALÇADO'], transp: [] }, agg: agg, forecasts: fcz, emTela: null });
 eq(sCz.forecast[30], Math.round(33228 * 0.2), 'filtro Mizuno + Calçado = célula informada (40% × 50% = 20%), não o produto das margens');
 
+secao('nomes digitados no forecast viram o nome dos dados');
+eq(E.validarProporcoes('Segmento', [{ nome: 'Calçados', pct: '60' }, { nome: 'vestuario', pct: '30' }, { nome: 'MEIAS', pct: '10' }]).map(function (x) { return x.nome; }),
+  ['CALÇADO', 'VESTUÁRIO', 'MEIA'], 'plural, sem acento e minúsculo -> CALÇADO / VESTUÁRIO / MEIA');
+eq(E.validarProporcoes('Marca', [{ nome: 'Under Armor', pct: 40 }, { nome: 'olympikus', pct: 60 }]).map(function (x) { return x.nome; }),
+  ['UNDER ARMOUR', 'OLYMPIKUS'], '"Under Armor" -> UNDER ARMOUR');
+eq(E.validarProporcoes('Marca', [{ nome: 'Fila', pct: 100 }])[0].nome, 'FILA', 'nome desconhecido fica como digitado (maiúsculo)');
+let erroDup = ''; try { E.validarProporcoes('Segmento', [{ nome: 'Calçado', pct: 50 }, { nome: 'CALÇADOS', pct: 50 }]); } catch (e) { erroDup = e.message; }
+ok(/repetido/.test(erroDup), 'Calçado e Calçados juntos = nome repetido');
+eq(E.validarCruzada([{ nome: 'Mizuno', pct: 100, segmentos: [{ nome: 'calcados', pct: 100 }] }]).prop_cruzada[0], { nome: 'MIZUNO', pct: 100, segmentos: [{ nome: 'CALÇADO', pct: 100 }] }, 'cruzada também normaliza marca e segmento');
+
 console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
 process.exit(falhas === 0 ? 0 : 1);

@@ -14,7 +14,6 @@
      33.227 por dia (o resto da divisão vai 1 a 1 nos primeiros dias, pra o
      mês fechar exato).
    - Entrada prevista no backlog: a informada no forecast; vazia = o próprio forecast ÷ dias úteis.
-     Sem ela o backlog dos dias futuros NÃO é projetado — não inventamos.
    ============================================================================ */
 (function () {
   'use strict';
@@ -564,7 +563,7 @@
       '.emb-legenda-per{font-size:11px;color:var(--text-muted);margin-top:14px;text-align:left}' +
       '.emb-meses{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:-2px 0 14px}' +
       '.emb-meses .ano{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-label);font-weight:600;margin-right:4px}' +
-      '.emb-meses .seg-btn.off{opacity:.35;cursor:default;pointer-events:none}' +
+      '.emb-meses .seg-btn.off,.emb-pop .seg-btn.off{opacity:.35;cursor:default;pointer-events:none}' +
       '.emb-sep{width:1px;height:18px;background:var(--border);margin:0 8px}' +
       '.emb-matriz td.tot,.emb-matriz th.tot{color:var(--text);background:transparent;font-weight:700}' +
       '.emb-matriz td.vz{color:var(--text-muted);font-weight:400}' +
@@ -596,7 +595,9 @@
     if (!alvo) return;
     const agg = bruto ? bruto.agg : [];
     if (!agg.length) {
-      alvo.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">Filtros por marca, segmento e transportadora ficam disponíveis depois que o detalhado de notas embarcadas for carregado (Abastecimento › Embarque).</div>';
+      alvo.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">Filtros por marca, segmento e transportadora ficam disponíveis depois que o detalhado de notas embarcadas for carregado (Abastecimento › Embarque).</div>' +
+        '<div class="emb-rodape"><span class="chip emb-fcbtn" data-fcabrir="1" style="margin:0">Clique para visualizar o forecast</span></div>';
+      const bt0 = alvo.querySelector('[data-fcabrir]'); if (bt0) bt0.addEventListener('click', abrirForecast);
       return;
     }
     const op = opcoesDoDetalhe(agg);
@@ -633,6 +634,7 @@
       pop.addEventListener('click', function (e) { e.stopPropagation(); });
       pop.querySelectorAll('[data-mes]').forEach(function (b) {
         b.addEventListener('click', function () {
+          if (b.classList.contains('off')) return;
           const i = periodoMix.rascunho.indexOf(b.dataset.mes);
           if (i === -1) periodoMix.rascunho.push(b.dataset.mes); else periodoMix.rascunho.splice(i, 1);
           desenharFiltros();
@@ -900,7 +902,7 @@
     html += '<div class="emb-mix"><div>';
     // --- realizado: matriz marca × segmento (% do total), verde
     html += '<div><div class="emb-sub">Realizado · marca × segmento · % das peças · ' + periodoTxt + '</div>';
-    if (!m.marcas.length) html += '<div style="font-size:12px;color:var(--text-muted)">Nenhuma nota nesse recorte.</div>';
+    if (!m.total.p) html += '<div style="font-size:12px;color:var(--text-muted)">Nenhuma nota nesse recorte.</div>';
     else {
       html += '<table class="emb-matriz"><tr><th></th>' + m.segs.map(function (g) { return '<th>' + g + '</th>'; }).join('') + '<th class="tot sepcol">Total</th></tr>';
       m.marcas.forEach(function (mk) {
@@ -1175,7 +1177,11 @@
     window.addEventListener('mouseup', function () { ativo = false; });
     let t = null;
     window.addEventListener('resize', function () {
-      clearTimeout(t); t = setTimeout(function () { if (document.getElementById('secao-embarque').classList.contains('ativa')) desenhar(); }, 200);
+      clearTimeout(t); t = setTimeout(function () {
+        if (document.getElementById('secao-embarque').classList.contains('ativa')) desenhar();
+        const mo = document.getElementById('embFcModal');   // janela flutuante não fica fora da tela
+        if (mo) { mo.style.left = Math.max(0, Math.min(window.innerWidth - 80, mo.offsetLeft)) + 'px'; mo.style.top = Math.max(0, Math.min(window.innerHeight - 50, mo.offsetTop)) + 'px'; }
+      }, 200);
     });
     await recarregar(supabaseClient);
   }
@@ -1186,6 +1192,7 @@
       serieBase = montarSerieEmbarque(bruto.diario, bruto.forecasts, bruto.hoje, bruto.ultimos, bruto.emTela);
       serie = aplicarFiltrosNaSerie(serieBase, { filtros: filtros, agg: bruto.agg, forecasts: bruto.forecasts, emTela: bruto.emTela });
       desenharFiltros(); desenhar(); desenharMix();
+      if (document.getElementById('embFcModal')) preencherForecast();
       if (window.dataSnapshotEmbarqueDefinir) window.dataSnapshotEmbarqueDefinir(dataSnapshot);
     } catch (e) {
       console.error(e);
@@ -1254,9 +1261,16 @@
     return out;
   }
   /* Proporções [{nome,pct}]: linhas vazias somem; se houver alguma, precisam somar 100%. */
+  // "Calçados", "CALCADO", "meias", "Under Armor" -> o nome usado nos dados (CALÇADO, MEIA, UNDER ARMOUR)
+  function nomeCanonico(nome) {
+    const chave = function (t) { return semAcento(t).replace(/\s+/g, ' ').replace(/S$/, '').replace(/ARMOR$/, 'ARMOUR'); };
+    const k = chave(nome);
+    const achou = ORDEM_MARCAS.concat(ORDEM_SEGS).filter(function (c) { return chave(c) === k; })[0];
+    return achou || String(nome || '').trim().toUpperCase();
+  }
   function validarProporcoes(rotulo, linhas) {
     const lista = (linhas || []).map(function (l) {
-      return { nome: String(l.nome || '').trim().toUpperCase(), pct: Number(String(l.pct).replace(',', '.')) };
+      return { nome: String(l.nome || '').trim() ? nomeCanonico(l.nome) : '', pct: Number(String(l.pct).replace(',', '.')) };
     }).filter(function (l) { return l.nome || (l.pct && l.pct > 0); });
     if (!lista.length) return [];
     lista.forEach(function (l) {
@@ -1274,7 +1288,7 @@
     const marcas = validarProporcoes('Marca', (linhas || []).map(function (l) { return { nome: l.nome, pct: l.pct }; }));
     if (!marcas.length) throw new Error('Informe ao menos uma marca com a proporção.');
     const cruz = marcas.map(function (m) {
-      const orig = (linhas || []).filter(function (l) { return String(l.nome || '').trim().toUpperCase() === m.nome; })[0];
+      const orig = (linhas || []).filter(function (l) { return String(l.nome || '').trim() && nomeCanonico(l.nome) === m.nome; })[0];
       const segs = validarProporcoes('Segmentos de ' + m.nome, orig ? orig.segmentos : []);
       if (!segs.length) throw new Error('Segmentos de ' + m.nome + ': informe a divisão por segmento (precisa somar 100%).');
       return { nome: m.nome, pct: m.pct, segmentos: segs };
@@ -1527,7 +1541,12 @@
     estado(); listar(); prever();
   }
 
+  // troca de setor: a janela flutuante e o seletor de meses não ficam por cima das outras telas
+  function aoSairDaTela() { if (document.getElementById('embFcModal')) fecharForecast(); if (periodoMix.aberto) { periodoMix.aberto = false; desenharFiltros(); } esconderTip(); }
+  function aoMostrarTela() { if (serie) desenhar(); }   // largura pode ter mudado enquanto a aba estava escondida
+
   const api = {
+    aoSairDaTela: aoSairDaTela, aoMostrarTela: aoMostrarTela,
     iniciar: iniciar, ligarAdmin: ligarAdmin, processarBaseEmbarque: processarBaseEmbarque, salvarForecast: salvarForecast,
     parsearBaseEmbarque: parsearBaseEmbarque, diasUteisDoMes: diasUteisDoMes, distribuirNosDias: distribuirNosDias,
     forecastPorDia: forecastPorDia, validarProporcoes: validarProporcoes, validarCruzada: validarCruzada, matrizPrevista: matrizPrevista, nomeCurtoTransportadora: nomeCurtoTransportadora,
