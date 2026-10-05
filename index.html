@@ -3122,7 +3122,7 @@ function avaliarDiasRessuprimento(dias) {
       if (!v) problemas.push(ROT_TURNO[t] + ' sem movimento');
       else if (!t03Parcial(d, t) && v < medianas[t] * 0.25) problemas.push(ROT_TURNO[t] + ' com ' + Math.round(v / medianas[t] * 100) + '% do normal');
     });
-    if (problemas.length) suspeitos.push({ dia: d.dia, problemas: problemas });
+    if (problemas.length && !diasRessupConfirmados[d.dia]) suspeitos.push({ dia: d.dia, problemas: problemas });
   });
   const suspeitosSet = new Set(suspeitos.map(function (s) { return s.dia; }));
   const fechados = dias.filter(function (d) {
@@ -3273,7 +3273,39 @@ function filtrarTextoValidacao(texto) {
    [filtroHistDe, filtroHistAte], default últimos 10 dias corridos até hoje.
    Tabela ausente (migração não rodada) vira lista vazia — o card cai de
    volta pro período único do último Kardex, sem quebrar a tela. */
+/* Dias que o admin confirmou como operação real (05/10/2026: "Não é B.O., realmente
+   fizemos isso nesse dia"): saem do aviso de Kardex com período errado e voltam pra
+   média. Guardado em dashboard_snapshots (pagina 'ressup_dias_confirmados', a linha
+   mais recente vale) — só admin grava, todo mundo lê, sem tabela nova. */
+let diasRessupConfirmados = {};
+async function carregarDiasRessupConfirmados() {
+  try {
+    const { data, error } = await supabaseClient.from('dashboard_snapshots').select('payload')
+      .eq('pagina', 'ressup_dias_confirmados').order('gerado_em', { ascending: false }).limit(1);
+    diasRessupConfirmados = (!error && data && data[0] && data[0].payload && data[0].payload.dias) || {};
+  } catch (e) { diasRessupConfirmados = {}; }
+}
+async function gravarDiasRessupConfirmados(novo) {
+  const { error } = await supabaseClient.from('dashboard_snapshots').insert({ pagina: 'ressup_dias_confirmados', payload: { dias: novo } });
+  if (error) throw error;
+  diasRessupConfirmados = novo;
+}
+async function confirmarDiaRessuprimento(dia) {
+  if (!confirm('Confirmar que ' + formatarDataSimples(dia) + ' foi operação real (não é erro de abastecimento do Kardex)?\n\nO dia sai do aviso e volta a contar na média.')) return;
+  const novo = Object.assign({}, diasRessupConfirmados);
+  novo[dia] = { por: perfilAtual || '', em: new Date().toISOString() };
+  try { await gravarDiasRessupConfirmados(novo); renderizarRessuprimento(); }
+  catch (e) { alert('Não consegui gravar: ' + (e && e.message ? e.message : e)); }
+}
+async function desfazerDiaRessuprimento(dia) {
+  const novo = Object.assign({}, diasRessupConfirmados);
+  delete novo[dia];
+  try { await gravarDiasRessupConfirmados(novo); renderizarRessuprimento(); }
+  catch (e) { alert('Não consegui gravar: ' + (e && e.message ? e.message : e)); }
+}
+
 async function carregarHistoricoRessuprimento() {
+  await carregarDiasRessupConfirmados();
   if (!filtroHistDe) filtroHistDe = window.diaISO ? window.diaISO(-9, hojeISO()) : hojeISO();
   if (!filtroHistAte) filtroHistAte = hojeISO();
   try {
@@ -5914,10 +5946,19 @@ function blocoMovimentacoes() {
     ? '<div class="aviso erro" style="border-color:var(--red);color:var(--red);margin-bottom:10px">' +
         '<strong>⚠ Kardex possivelmente abastecido com o período errado</strong> — ' +
         avaliacaoDias.suspeitos.map(function (s) {
-          return formatarDataSimples(s.dia) + ' (' + diaSemanaAbrev(s.dia) + '): ' + s.problemas.join(', ');
+          return formatarDataSimples(s.dia) + ' (' + diaSemanaAbrev(s.dia) + '): ' + s.problemas.join(', ') +
+            (perfilAtual === 'admin' ? ' <span class="chip" style="font-size:10.5px;padding:2px 9px;margin-left:4px;color:var(--text);border-color:var(--red)" ' +
+              'title="O dia sai do aviso e volta a contar na média" onclick="confirmarDiaRessuprimento(\'' + s.dia + '\')">✓ Não é B.O., fizemos isso nesse dia</span>' : '');
         }).join(' · ') +
         '. Confira o recorte de datas da extração (o T03 atravessa a meia-noite) e reprocesse. Esses dias ficam fora da média.' +
       '</div>'
+    : '';
+  const confirmadosNoPeriodo = dias.filter(function (d) { return diasRessupConfirmados[d.dia]; }).map(function (d) { return d.dia; });
+  const avisoConfirmados = confirmadosNoPeriodo.length
+    ? '<div style="font-size:11px;color:var(--text-muted);margin:-4px 0 10px">Confirmado(s) como operação real (não é erro de Kardex): ' +
+        confirmadosNoPeriodo.map(function (dia) {
+          return formatarDataSimples(dia) + (perfilAtual === 'admin' ? ' <span style="cursor:pointer;text-decoration:underline" onclick="desfazerDiaRessuprimento(\'' + dia + '\')">desfazer</span>' : '');
+        }).join(' · ') + '</div>'
     : '';
   const filaItens = filaItensVisiveis();
   const pecasFila = filaItens ? filaItens.reduce(function (s, f) { return s + f.qtd; }, 0) : null;
@@ -6324,7 +6365,7 @@ function blocoMovimentacoes() {
     seletorIntervalo +
     chipsTurno +
     chipsSegmentoDia +
-    alertaAbastecimento +
+    alertaAbastecimento + avisoConfirmados +
     kpis +
     '<div class="barras-dia barras-rotulo-grande">' + barras + '</div>' +
     '<div class="legenda" style="margin-top:10px">' + legendaTurno + '</div>' +
