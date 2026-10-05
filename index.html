@@ -5950,7 +5950,6 @@ function blocoMovimentacoes() {
             (perfilAtual === 'admin' ? ' <span class="chip" style="font-size:10.5px;padding:2px 9px;margin-left:4px;color:var(--text);border-color:var(--red)" ' +
               'title="O dia sai do aviso e volta a contar na média" onclick="confirmarDiaRessuprimento(\'' + s.dia + '\')">✓ Confirmar ressuprimento do dia</span>' : '');
         }).join(' · ') +
-        '. Confira o recorte de datas da extração (o T03 atravessa a meia-noite) e reprocesse. Esses dias ficam fora da média.' +
       '</div>'
     : '';
   const confirmadosNoPeriodo = dias.filter(function (d) { return diasRessupConfirmados[d.dia]; }).map(function (d) { return d.dia; });
