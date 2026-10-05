@@ -5948,7 +5948,7 @@ function blocoMovimentacoes() {
         avaliacaoDias.suspeitos.map(function (s) {
           return formatarDataSimples(s.dia) + ' (' + diaSemanaAbrev(s.dia) + '): ' + s.problemas.join(', ') +
             (perfilAtual === 'admin' ? ' <span class="chip" style="font-size:10.5px;padding:2px 9px;margin-left:4px;color:var(--text);border-color:var(--red)" ' +
-              'title="O dia sai do aviso e volta a contar na média" onclick="confirmarDiaRessuprimento(\'' + s.dia + '\')">✓ Não é B.O., fizemos isso nesse dia</span>' : '');
+              'title="O dia sai do aviso e volta a contar na média" onclick="confirmarDiaRessuprimento(\'' + s.dia + '\')">✓ Confirmar ressuprimento do dia</span>' : '');
         }).join(' · ') +
         '. Confira o recorte de datas da extração (o T03 atravessa a meia-noite) e reprocesse. Esses dias ficam fora da média.' +
       '</div>'
