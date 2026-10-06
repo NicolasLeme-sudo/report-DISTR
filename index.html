@@ -689,9 +689,8 @@ tr.total > th, tr.total > td {
 /* rosca na 4ª coluna — mesma grade (4 colunas, gap 12px) dos cards de baixo: fica com a largura do "Fila em andamento" */
 .ressup-topo > .ressup-rosca-area { grid-column: 4; display: flex; align-items: stretch; margin-bottom: 14px; }
 .ressup-rosca-area > .card-comp { flex: 1; min-width: 0; overflow: hidden; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
-.ressup-rosca-area > .card-comp { padding: 6px 8px; }
-.ressup-rosca-area > .card-comp > .corpo-comp { justify-content: space-between; gap: 4px; }
-.ressup-rosca-area .leg-comp { font-size: 11px; padding: 3px 4px; gap: 6px; white-space: nowrap; justify-content: flex-end; }
+.ressup-rosca-area > .card-comp > .corpo-comp { justify-content: center; gap: 6px; }
+.ressup-rosca-area .leg-comp { font-size: 11px; padding: 3px 4px; gap: 6px; white-space: nowrap; }
 @media (max-width: 1100px) { .ressup-topo { grid-template-columns: 1fr; } .ressup-topo > .ressup-filtros, .ressup-topo > .ressup-rosca-area { grid-column: auto; } }
 .barras-dia.clicavel .col-dia { cursor: pointer; }
 .barras-dia.clicavel .seg { cursor: pointer; }
@@ -6383,7 +6382,7 @@ function blocoMovimentacoes() {
     '</div>' +
     // Rosca do período por segmento (06/10/2026): no lugar do card "Composição" que ficava embaixo
     '<div class="ressup-rosca-area"><div class="card-comp" id="card-comp-ressup">' +
-      (totalSegMov ? corpoRoscaSegmento('card-comp-ressup', segsRoscaMov, 'peças', 184)
+      (totalSegMov ? corpoRoscaSegmento('card-comp-ressup', segsRoscaMov, 'peças', 150)
                    : '<div class="aviso">Sem ressuprimento no período.</div>') +
       avisoSemFamilia +
     '</div></div></div>' +
