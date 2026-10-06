@@ -685,8 +685,10 @@ tr.total > th, tr.total > td {
 .card-comp .leg-comp.ativo { background: var(--bg-input); font-weight: 700; }
 /* Ressuprimento: planejado × realizado (largo) + rosca por segmento (estreito). */
 .ressup-topo { display: flex; gap: 24px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
-.ressup-topo > .ressup-filtros { flex: 1 1 520px; min-width: 0; }
-.ressup-topo > .card-comp { flex: 0 1 380px; margin: 0 0 10px; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.ressup-topo > .ressup-filtros { flex: 0 1 auto; min-width: 0; }
+/* rosca centralizada no espaço livre à direita dos filtros, com o contorno dos cards (.kpi) */
+.ressup-topo > .ressup-rosca-area { flex: 1 1 360px; display: flex; justify-content: center; align-items: center; align-self: stretch; margin-bottom: 14px; }
+.ressup-rosca-area > .card-comp { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 22px; }
 .barras-dia.clicavel .col-dia { cursor: pointer; }
 .barras-dia.clicavel .seg { cursor: pointer; }
 .barras-dia.clicavel .seg:hover { filter: brightness(1.15); }
@@ -6376,11 +6378,11 @@ function blocoMovimentacoes() {
       chipsSegmentoDia +
     '</div>' +
     // Rosca do período por segmento (06/10/2026): no lugar do card "Composição" que ficava embaixo
-    '<div class="card-comp" id="card-comp-ressup">' +
+    '<div class="ressup-rosca-area"><div class="card-comp" id="card-comp-ressup">' +
       (totalSegMov ? corpoRoscaSegmento('card-comp-ressup', segsRoscaMov, 'peças', 140)
                    : '<div class="aviso">Sem ressuprimento no período.</div>') +
       avisoSemFamilia +
-    '</div></div>' +
+    '</div></div></div>' +
     alertaAbastecimento + avisoConfirmados +
     kpis +
     '<div class="barras-dia barras-rotulo-grande' + (usaHistorico ? ' clicavel' : '') + '">' + barras + '</div>' +
