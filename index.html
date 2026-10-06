@@ -684,6 +684,12 @@ tr.total > th, tr.total > td {
   margin-bottom: 2px; border-radius: 6px; cursor: default; }
 .card-comp .leg-comp.ativo { background: var(--bg-input); font-weight: 700; }
 /* Ressuprimento: planejado × realizado (largo) + rosca por segmento (estreito). */
+.ressup-topo { display: flex; gap: 24px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+.ressup-topo > .ressup-filtros { flex: 1 1 520px; min-width: 0; }
+.ressup-topo > .card-comp { flex: 0 1 380px; margin: 0 0 10px; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.barras-dia.clicavel .col-dia { cursor: pointer; }
+.barras-dia.clicavel .seg { cursor: pointer; }
+.barras-dia.clicavel .seg:hover { filter: brightness(1.15); }
 .grid-plano-seg { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 400px); gap: 16px; align-items: stretch; }
 .grid-plano-seg > .card { margin-bottom: 0; }
 .grid-plano-seg { margin-bottom: 16px; }
@@ -5905,6 +5911,7 @@ function blocoMovimentacoes() {
     ? historicoRessuprimento.filter(function (h) { return filtroSegmentoRessuprimentoDia.has(h.segmento); })
     : historicoRessuprimento;
   const dias = usaHistorico ? diasDoHistorico(historicoParaDias) : (m ? m.por_dia || [] : []);
+  historicoRessupClique = usaHistorico ? historicoParaDias : [];
   const porTurnoFonte = usaHistorico ? porTurnoDoHistorico(historicoParaDias) : (m ? m.por_turno || [] : []);
 
   // "Operadores" por dia, a partir do histórico de QUEM trabalhou (ver
@@ -6049,9 +6056,11 @@ function blocoMovimentacoes() {
       if (!dt || dt.pecas <= 0) return;
       const parte = totalDia > 0 ? (dt.pecas / totalDia) * 100 : 0;
       pilha += '<div class="seg" style="height:' + parte + '%;background:var(' + COR_TURNO[t] + ')" ' +
-        'title="' + ROT_TURNO[t] + ' · ' + fmtInt(dt.pecas) + ' peças em ' + fmtInt(dt.movimentos) + ' movimentos"></div>';
+        (usaHistorico ? 'onclick="event.stopPropagation();abrirSegDiaRessup(\'' + d.dia + '\',\'' + t + '\',event)" ' : '') +
+        'title="' + ROT_TURNO[t] + ' · ' + fmtInt(dt.pecas) + ' peças em ' + fmtInt(dt.movimentos) + ' movimentos' + (usaHistorico ? ' — clique para ver por segmento' : '') + '"></div>';
     });
-    barras += '<div class="col-dia" title="' + formatarDataSimples(d.dia) + ' · ' + fmtInt(totalDia) + ' peças">' +
+    barras += '<div class="col-dia" title="' + formatarDataSimples(d.dia) + ' · ' + fmtInt(totalDia) + ' peças' + (usaHistorico ? ' — clique para ver por segmento' : '') + '"' +
+      (usaHistorico ? ' onclick="abrirSegDiaRessup(\'' + d.dia + '\',null,event)"' : '') + '>' +
       '<div class="valor-dia">' + (totalDia > 0 ? fmtInt(totalDia) : '') + '</div>' +
       '<div class="pilha" style="height:' + alturaTotal + '%">' + pilha + '</div>' +
       '<div class="rot-dia"><div>' + d.dia.slice(8, 10) + '/' + d.dia.slice(5, 7) + '</div>' +
@@ -6360,13 +6369,21 @@ function blocoMovimentacoes() {
       '<span>Ressuprimento por dia — ' + escapar(periodo) + '</span>' +
       '<button class="btn-mini" onclick="exportarCSVMovimentacoes()">⬇ CSV</button>' +
     '</div>' +
-    '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Conta o movimento que <strong>chega no Picking</strong> (Pulmão ou corredor de ressuprimento), uma peça só uma vez.</p>' +
-    seletorIntervalo +
-    chipsTurno +
-    chipsSegmentoDia +
+    '<div class="ressup-topo"><div class="ressup-filtros">' +
+      '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Conta o movimento que <strong>chega no Picking</strong> (Pulmão ou corredor de ressuprimento), uma peça só uma vez.</p>' +
+      seletorIntervalo +
+      chipsTurno +
+      chipsSegmentoDia +
+    '</div>' +
+    // Rosca do período por segmento (06/10/2026): no lugar do card "Composição" que ficava embaixo
+    '<div class="card-comp" id="card-comp-ressup">' +
+      (totalSegMov ? corpoRoscaSegmento('card-comp-ressup', segsRoscaMov, 'peças', 140)
+                   : '<div class="aviso">Sem ressuprimento no período.</div>') +
+      avisoSemFamilia +
+    '</div></div>' +
     alertaAbastecimento + avisoConfirmados +
     kpis +
-    '<div class="barras-dia barras-rotulo-grande">' + barras + '</div>' +
+    '<div class="barras-dia barras-rotulo-grande' + (usaHistorico ? ' clicavel' : '') + '">' + barras + '</div>' +
     '<div class="legenda" style="margin-top:10px">' + legendaTurno + '</div>' +
     '<div style="overflow-x:auto;margin-top:16px"><table class="arvore"><thead><tr>' +
       '<th class="esq">Dia</th><th>T01</th><th>T02</th><th>T03</th>' +
@@ -6382,18 +6399,53 @@ function blocoMovimentacoes() {
         ' movimento(s); presumido pelo horário: ' + fmtInt(m.resolucao_turno.por_horario) + '.' : '') +
     '</div>' : '') +
   '</div>' +
-  '<div class="grid-plano-seg">' +
-    blocoPlanejamento +
-    '<div class="card card-comp" id="card-comp-ressup">' +
-      '<div class="section-title">Composição do ressuprimento por segmento</div>' +
-      '<p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">' + escapar(periodo) +
-        (filtroTurnoRessuprimento.size ? ' · ' + rotuloTurnosSelecionados(filtroTurnoRessuprimento) : '') + '</p>' +
-      (totalSegMov ? corpoRoscaSegmento('card-comp-ressup', segsRoscaMov, 'peças', 165)
-                   : '<div class="aviso">Sem ressuprimento no período.</div>') +
-      avisoSemFamilia +
-    '</div>' +
-  '</div>';
+  blocoPlanejamento;
 }
+
+/* Clique numa coluna (dia) ou numa cor (turno) do gráfico de ressuprimento (06/10/2026):
+   pizza com a quebra por segmento, quantidade e %. Usa o mesmo recorte da tela
+   (período, segmento; turno do clique ou os turnos filtrados). */
+let historicoRessupClique = [];
+function fecharSegDiaRessup() { const t = document.getElementById('tooltip-seg-ressup'); if (t) t.remove(); }
+function abrirSegDiaRessup(dia, turno, ev) {
+  fecharSegDiaRessup();
+  const turnos = turno ? [turno] : (filtroTurnoRessuprimento.size ? Array.from(filtroTurnoRessuprimento) : null);
+  const porSeg = new Map();
+  historicoRessupClique.forEach(function (h) {
+    if (h.dia !== dia) return;
+    if (turnos && turnos.indexOf(normalizarTurnoLegado(h.turno)) === -1) return;
+    const seg = (h.segmento === 'CHUTEIRA' || h.segmento === 'CHINELO') ? 'CALÇADO' : (h.segmento || 'SEM FAMÍLIA');
+    porSeg.set(seg, (porSeg.get(seg) || 0) + (Number(h.pecas) || 0));
+  });
+  const segs = Array.from(porSeg.entries()).filter(function (e) { return e[1] > 0; }).sort(function (a, b) { return b[1] - a[1]; })
+    .map(function (e) { return { rotulo: e[0], valor: e[1], cor: 'var(' + (e[0] === 'SEM FAMÍLIA' ? '--laranja' : (COR_SEGMENTO_COMP[e[0]] || '--gelo')) + ')' }; });
+  const total = segs.reduce(function (t, x) { return t + x.valor; }, 0);
+  if (!total) return;
+  let pos = { top: 80, left: 80 };
+  if (ev) pos = { top: Math.max(12, Math.min(ev.clientY + 12, window.innerHeight - 360)), left: Math.min(Math.max(ev.clientX - 140, 12), window.innerWidth - 300) };
+  const titulo = formatarDataSimples(dia) + ' (' + diaSemanaAbrev(dia) + ') — ' +
+    (turno ? ROT_TURNO[turno] : (turnos ? rotuloTurnosSelecionados(filtroTurnoRessuprimento) : 'todos os turnos'));
+  const legenda = segs.map(function (f) {
+    return '<div style="display:flex;align-items:center;gap:6px;font-size:11.5px;margin-bottom:4px">' +
+      '<span style="width:9px;height:9px;border-radius:50%;background:' + f.cor + ';flex-shrink:0"></span>' +
+      '<span style="flex:1">' + escapar(f.rotulo) + '</span><b>' + fmtInt(f.valor) + '</b>' +
+      '<span style="color:var(--text-muted);width:48px;text-align:right">' + fmtPct(f.valor / total * 100) + '</span></div>';
+  }).join('');
+  const el = document.createElement('div');
+  el.id = 'tooltip-seg-ressup';
+  el.innerHTML =
+    '<div style="position:fixed;inset:0;z-index:998" onclick="fecharSegDiaRessup()"></div>' +
+    '<div style="position:fixed;top:' + pos.top + 'px;left:' + pos.left + 'px;z-index:999;background:var(--bg-card);border:1px solid var(--border);' +
+      'border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.35);padding:14px;width:280px;max-width:calc(100vw - 24px)" onclick="event.stopPropagation()">' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:10px">' +
+        '<strong style="font-size:12px">' + escapar(titulo) + '</strong>' +
+        '<span class="chip" onclick="fecharSegDiaRessup()" style="cursor:pointer;font-size:10px">✕</span></div>' +
+      '<div style="display:flex;justify-content:center">' + donutMultiSegmento(segs, 'peças') + '</div>' +
+      '<div style="margin-top:10px">' + legenda + '</div>' +
+    '</div>';
+  document.body.appendChild(el);
+}
+window.addEventListener('scroll', function () { fecharSegDiaRessup(); }, { passive: true });
 
 function exportarCSVMovimentacoes() {
   const m = dadosMovimentacoes;
