@@ -261,6 +261,13 @@ html { overflow-x: hidden; }
 .week-head .section-title { flex: 1 1 auto; }
 .week-ctrl { display: flex; flex-wrap: wrap; gap: 8px 12px; }
 .seg-toggle { display: inline-flex; gap: 6px; }
+.pnf-wrap { position: relative; display: inline-block; }
+.pnf-pop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 50; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; box-shadow: 0 10px 30px rgba(0,0,0,.45); min-width: 230px; }
+.pnf-ano { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-label); font-weight: 600; margin-bottom: 8px; display: flex; gap: 6px; align-items: center; }
+.pnf-grade { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.pnf-grade .seg-btn { text-align: center; }
+.pnf-grade .seg-btn.off { opacity: .35; cursor: default; pointer-events: none; }
+.pnf-rod { display: flex; justify-content: flex-end; margin-top: 10px; }
 .seg-btn {
   padding: 5px 13px; border-radius: 20px; font-size: 12px; font-weight: 600; font-family: inherit;
   border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer;
@@ -3964,6 +3971,42 @@ function alternarDatasNf() {
   const seta = document.querySelector('.matriz-nf .mz-seta');
   if (seta) seta.textContent = datasNfAbertas ? '▾' : '▸';
 }
+/* Período da Matriz NF × Segmento (pedido do usuário, 06/10/2026): recorta as DATAS DA NOTA por mês,
+   mesmo seletor do Embarque. "Sem nota fiscal" não tem data e fica sempre. */
+const MESES_NF = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+let periodoNf = { modo: 'tudo', meses: [], ano: null, aberto: false, rascunho: [] };
+function redesenharMatrizNf() { const y = window.scrollY; renderizarPfas(); window.scrollTo(0, y); }
+function modoPeriodoNf(modo, ev) {
+  if (ev) ev.stopPropagation();
+  if (modo === 'tudo') { periodoNf.modo = 'tudo'; periodoNf.aberto = false; }
+  else { periodoNf.aberto = !periodoNf.aberto; if (periodoNf.aberto) periodoNf.rascunho = periodoNf.modo === 'sel' ? periodoNf.meses.slice() : []; }
+  redesenharMatrizNf();
+}
+function mesPeriodoNf(x, ev) {
+  if (ev) ev.stopPropagation();
+  const i = periodoNf.rascunho.indexOf(x);
+  if (i === -1) periodoNf.rascunho.push(x); else periodoNf.rascunho.splice(i, 1);
+  redesenharMatrizNf();
+}
+function anoPeriodoNf(a, ev) { if (ev) ev.stopPropagation(); periodoNf.ano = a; redesenharMatrizNf(); }
+function okPeriodoNf(ev) {
+  if (ev) ev.stopPropagation();
+  if (!periodoNf.rascunho.length) return;
+  periodoNf.meses = periodoNf.rascunho.slice().sort(); periodoNf.modo = 'sel'; periodoNf.aberto = false;
+  redesenharMatrizNf();
+}
+document.addEventListener('click', function (e) {
+  if (periodoNf.aberto && !(e.target.closest && e.target.closest('.pnf-wrap'))) { periodoNf.aberto = false; if (dadosPfas) redesenharMatrizNf(); }
+});
+function textoPeriodoNf(sel) {
+  const idx = function (x) { return Number(x.slice(0, 4)) * 12 + Number(x.slice(5)) - 1; };
+  const anos = Array.from(new Set(sel.map(function (x) { return x.slice(0, 4); })));
+  const rot = function (x) { return MESES_NF[Number(x.slice(5)) - 1] + (anos.length > 1 ? '/' + x.slice(2, 4) : ''); };
+  const runs = [];
+  sel.forEach(function (x) { const r = runs[runs.length - 1]; if (r && idx(x) === idx(r[r.length - 1]) + 1) r.push(x); else runs.push([x]); });
+  return runs.map(function (r) { return r.length === 1 ? rot(r[0]) : r.length === 2 ? rot(r[0]) + ' e ' + rot(r[1]) : rot(r[0]) + ' a ' + rot(r[r.length - 1]); }).join(', ') +
+    (anos.length === 1 ? '/' + anos[0].slice(2) : '');
+}
 function alternarModoMatrizNf(modo) {
   modoMatrizNf = modo;
   const scrollY = window.scrollY;
@@ -4486,7 +4529,31 @@ function renderizarPfas() {
     c.pecas += r.pares || 0; c.pfas.add(r.pfa);
   });
   const colsMatriz = COLS_MATRIZ_NF.concat(temOutrosMatriz ? [{ chave: 'OUTROS', rotulo: 'Outros' }] : []);
-  const datasNotaMz = Array.from(matrizNf.keys()).filter(function (k) { return k !== 'SEM'; }).sort();
+  const datasNotaTodas = Array.from(matrizNf.keys()).filter(function (k) { return k !== 'SEM'; }).sort();
+  const mesesNfDisp = Array.from(new Set(datasNotaTodas.map(function (d) { return d.slice(0, 7); })));
+  const anosNfDisp = Array.from(new Set(mesesNfDisp.map(function (x) { return x.slice(0, 4); })));
+  if (mesesNfDisp.length && (!periodoNf.ano || anosNfDisp.indexOf(periodoNf.ano) === -1)) periodoNf.ano = anosNfDisp[anosNfDisp.length - 1];
+  if (periodoNf.modo === 'sel') {
+    periodoNf.meses = periodoNf.meses.filter(function (x) { return mesesNfDisp.indexOf(x) !== -1; });
+    if (!periodoNf.meses.length) periodoNf.modo = 'tudo';
+  }
+  const datasNotaMz = periodoNf.modo === 'sel'
+    ? datasNotaTodas.filter(function (d) { return periodoNf.meses.indexOf(d.slice(0, 7)) !== -1; })
+    : datasNotaTodas;
+  const popoverNf = periodoNf.aberto
+    ? '<div class="pnf-pop" onclick="event.stopPropagation()"><div class="pnf-ano">' +
+        (anosNfDisp.length > 1 ? anosNfDisp.map(function (a) {
+          return '<button type="button" class="seg-btn' + (periodoNf.ano === a ? ' ativo' : '') + '" onclick="anoPeriodoNf(\'' + a + '\', event)">' + a + '</button>';
+        }).join('') : (periodoNf.ano || '')) +
+      '</div><div class="pnf-grade">' +
+        MESES_NF.map(function (nome, i) {
+          const x = periodoNf.ano + '-' + String(i + 1).padStart(2, '0'), tem = mesesNfDisp.indexOf(x) !== -1;
+          return '<button type="button" class="seg-btn' + (periodoNf.rascunho.indexOf(x) !== -1 ? ' ativo' : '') + (tem ? '' : ' off') + '"' +
+            (tem ? ' onclick="mesPeriodoNf(\'' + x + '\', event)"' : ' tabindex="-1" aria-disabled="true"') + '>' + nome + '</button>';
+        }).join('') +
+      '</div><div class="pnf-rod"><button type="button" class="seg-btn ativo" onclick="okPeriodoNf(event)"' +
+        (periodoNf.rascunho.length ? '' : ' disabled style="opacity:.4"') + '>Ok</button></div></div>'
+    : '';
   const emPecasMz = modoMatrizNf === 'pecas';
   const valorCelula = function (lista) {
     if (emPecasMz) return lista.reduce(function (a, c) { return a + c.pecas; }, 0);
@@ -4521,9 +4588,16 @@ function renderizarPfas() {
   const blocoMatrizNf = '<div class="card" style="position:relative">' +
     '<div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
       '<span>Matriz — Nota fiscal × Segmento</span>' +
-      '<div class="filtros" style="margin:-8px 0 -6px">' +
-        '<span class="chip' + (emPecasMz ? ' on' : '') + '" onclick="alternarModoMatrizNf(\'pecas\')">Peças</span>' +
-        '<span class="chip' + (!emPecasMz ? ' on' : '') + '" onclick="alternarModoMatrizNf(\'pfas\')">Qtde PFAs</span>' +
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+        '<div class="pnf-wrap"><div class="seg-toggle">' +
+          '<button type="button" class="seg-btn' + (periodoNf.modo === 'tudo' ? ' ativo' : '') + '" onclick="modoPeriodoNf(\'tudo\', event)">Todo o período</button>' +
+          '<button type="button" class="seg-btn' + (periodoNf.modo === 'sel' ? ' ativo' : '') + '" onclick="modoPeriodoNf(\'sel\', event)" title="Filtra as datas de NF por mês">' +
+            (periodoNf.modo === 'sel' ? textoPeriodoNf(periodoNf.meses) : 'Selecionar período') + '</button>' +
+        '</div>' + popoverNf + '</div>' +
+        '<div class="filtros" style="margin:-8px 0 -6px">' +
+          '<span class="chip' + (emPecasMz ? ' on' : '') + '" onclick="alternarModoMatrizNf(\'pecas\')">Peças</span>' +
+          '<span class="chip' + (!emPecasMz ? ' on' : '') + '" onclick="alternarModoMatrizNf(\'pfas\')">Qtde PFAs</span>' +
+        '</div>' +
       '</div>' +
     '</div>' +
     '<div style="overflow-x:auto"><table class="matriz-nf"><thead><tr><th class="esq">Data da nota</th>' +
@@ -4550,7 +4624,7 @@ function renderizarPfas() {
         '<td>' + fmtInt(valorCelula(celulasDe(todasLinhasMz, null))) + '</td></tr>' +
     '</tbody></table></div>' +
     '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">' +
-      'Clique em "Com NF emitida" para abrir as datas. Calçados inclui chinelos e chuteiras.' +
+      (periodoNf.modo === 'sel' ? 'Período aplicado às datas de NF; "Sem nota fiscal" não tem data e sempre aparece. ' : '') + 'Clique em "Com NF emitida" para abrir as datas. Calçados inclui chinelos e chuteiras.' +
       (emPecasMz ? '' : ' Totais contam cada PFA uma vez.') + ' Clique num valor com data para ver os dias desde a NF.</p>' +
     detalheSegColeta +
   '</div>';
