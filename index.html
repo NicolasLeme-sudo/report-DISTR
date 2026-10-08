@@ -360,6 +360,10 @@ html { overflow-x: hidden; }
 .kpi-row-ocup { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 /* Pulmão (08/10/2026): rosca geral na 1ª coluna (mesma largura do Total do Picking) + livres por rua nas outras 4. */
 .ocup-pulmao { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.ocup-pulmao > .kpi-ocup { gap: 10px; padding: 13px 12px; }
+.ocup-pulmao > .kpi-ocup .rot { font-size: 12px; }
+.ocup-pulmao > .kpi-ocup .val.forte { font-size: 27px; line-height: 1.15; }
+.ocup-pulmao > .kpi-ocup .sub { font-size: 13px; white-space: nowrap; }
 .ocup-pulmao > .lr-card { grid-column: 2 / -1; min-width: 0; justify-content: flex-start; }
 @media (max-width: 1100px) { .ocup-pulmao { grid-template-columns: 1fr; } .ocup-pulmao > .lr-card { grid-column: auto; } }
 .lr-card { width: 100%; }
@@ -5053,14 +5057,15 @@ const ROT_FILTRO_RESSUP = { picking: 'Picking', pulmao: 'Pulmão', todos: 'Todos
 
 /* Rosca de ocupação — SVG inline, sem lib (mesma filosofia dos outros
    gráficos desta tela: string HTML pronta, sem canvas/lib externa). */
-function donutOcupacao(pctVal, cor) {
+function donutOcupacao(pctVal, cor, tamTela) {
   // Aumentada de 56 pra 72 (10/09/2026, pedido do usuário: "gráfico de rosca
   // muito pequeno") — junto com o stroke mais grosso, fica proporcional ao
   // card em vez de sumir num canto.
   const tam = 72, r = 27, c = 2 * Math.PI * r;
   const pv = Math.max(0, Math.min(100, pctVal || 0));
   const off = c * (1 - pv / 100);
-  return '<svg width="' + tam + '" height="' + tam + '" viewBox="0 0 ' + tam + ' ' + tam + '" class="donut-ocup">' +
+  // tamTela: só aumenta o desenho (viewBox fixo) — rosca do Pulmão geral, 08/10/2026.
+  return '<svg width="' + (tamTela || tam) + '" height="' + (tamTela || tam) + '" viewBox="0 0 ' + tam + ' ' + tam + '" class="donut-ocup">' +
     '<circle cx="' + (tam / 2) + '" cy="' + (tam / 2) + '" r="' + r + '" fill="none" stroke="var(--border)" stroke-width="7"/>' +
     '<circle cx="' + (tam / 2) + '" cy="' + (tam / 2) + '" r="' + r + '" fill="none" stroke="' + cor + '" stroke-width="7" ' +
       'stroke-linecap="round" stroke-dasharray="' + c.toFixed(2) + '" stroke-dashoffset="' + off.toFixed(2) + '" ' +
@@ -5376,7 +5381,7 @@ function renderizarEstoqueOperacao(p) {
       return cabecalho +
         '<div class="ocup-pulmao">' +
           '<div class="kpi kpi-ocup" onclick="alternarTipOcup(this, event)">' +
-            '<div class="donut-wrap" style="color:' + corT + '">' + donutOcupacao(linha.total.pct, corT) + '</div>' +
+            '<div class="donut-wrap" style="color:' + corT + '">' + donutOcupacao(linha.total.pct, corT, 86) + '</div>' +
             '<div>' +
               '<div class="rot">' + ROT_BUCKET.total + '</div>' +
               '<div class="val forte" style="color:' + corT + '">' + fmtPct(linha.total.pct) + '</div>' +
