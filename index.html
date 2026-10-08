@@ -358,6 +358,31 @@ html { overflow-x: hidden; }
    vertical em vez de lado a lado, espremendo a rosca e deformando o card
    (bug real reportado pelo usuário, 10/09/2026). */
 .kpi-row-ocup { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+/* Pulmão (08/10/2026): rosca geral na 1ª coluna (mesma largura do Total do Picking) + livres por rua nas outras 4. */
+.ocup-pulmao { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.ocup-pulmao > .lr-card { grid-column: 2 / -1; min-width: 0; justify-content: flex-start; }
+@media (max-width: 1100px) { .ocup-pulmao { grid-template-columns: 1fr; } .ocup-pulmao > .lr-card { grid-column: auto; } }
+.lr-card { width: 100%; }
+.lr-cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; margin-bottom: 6px; }
+.lr-cab .rot { min-height: 0; margin: 0; }
+.lr-acoes { display: flex; align-items: center; gap: 6px; }
+.lr-export { position: relative; }
+.lr-export > summary { list-style: none; cursor: pointer; }
+.lr-export > summary::-webkit-details-marker { display: none; }
+.lr-export-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: flex; flex-direction: column; gap: 6px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.45); white-space: nowrap; }
+.lr-tabela { width: 100%; overflow-x: auto; }
+.lr-tabela table { width: 100%; border-collapse: separate; border-spacing: 3px 0; table-layout: fixed; }
+.lr-tabela col.lr-col-rot { width: 72px; }
+.lr-tabela th, .lr-tabela td { text-align: center; font-size: 12px; padding: 4px 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lr-tabela thead th { font-size: 11px; color: var(--text-label); font-weight: 600; }
+.lr-tabela .lr-rot { text-align: left; font-size: 11px; color: var(--text-label); font-weight: 600; padding-right: 8px; }
+.lr-tabela .lr-cel { display: block; border-radius: 4px; padding: 4px 0; font-weight: 700; color: var(--text); }
+.lr-tabela .lr-zero { color: var(--text-muted); }
+.lr-tabela .lr-tot { font-weight: 700; }
+.lr-tabela tr.lr-ocup > * { border-top: 1px solid var(--border); padding-top: 7px; font-size: 11px; font-weight: 700; }
+.lr-tabela tbody tr:first-child > * { padding-bottom: 7px; }
+.lr-nota { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
 .kpi-ocup { display: flex; flex-direction: row; justify-content: flex-start; align-items: center; gap: 14px; }
 .kpi-ocup .rot { min-height: 0; font-size: 11px; }
 .kpi-ocup { position: relative; cursor: pointer; }
@@ -1713,6 +1738,9 @@ function fmtMoedaCurta(v) {
 function fmtPct(v) {
   const n = Number(v) || 0;
   return n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+}
+function fmtPct0(v) {
+  return Math.round(Number(v) || 0).toLocaleString('pt-BR') + '%';
 }
 function fmtDec1(v) {
   const n = Number(v) || 0;
@@ -3150,34 +3178,19 @@ function avaliarDiasRessuprimento(dias) {
   return { fechados: fechados, suspeitos: suspeitos };
 }
 const abertosRessuprimento = new Set();
-// Árvore Rua › Picking/Pulmão › Vazio/Menos de N pç do card "Endereços
-// vazios e com menos de N peças" (Estoque) — mesmo padrão de
-// abertosRessuprimento acima.
-const abertosOciosos = new Set();
-function alternarNoOciosos(chave) {
-  if (abertosOciosos.has(chave)) abertosOciosos.delete(chave); else abertosOciosos.add(chave);
-  renderizarEstoqueOperacao();
-}
-function expandirTudoOciosos() {
-  const p = window._snapshotRessuprimento;
-  const oc = p && p.enderecos_ociosos;
-  if (!oc) return;
-  // Mesma chave de zona usada em blocoOciosos: 'OC|R|<rua>|Z|picking' ou
-  // '...|Z|pulmao' — vazio/picado ficam no nível 3, sempre sem filhos.
-  const listas = [
-    { zona: 'picking', lista: filtrarOciosos('picking', oc.picking.vazios) }, { zona: 'picking', lista: filtrarOciosos('picking', oc.picking.picados) },
-    { zona: 'pulmao', lista: filtrarOciosos('pulmao', oc.pulmao.vazios) }, { zona: 'pulmao', lista: filtrarOciosos('pulmao', oc.pulmao.picados) },
-  ];
-  listas.forEach(function (c) {
-    c.lista.forEach(function (l) {
-      const rua = l[0];
-      const chaveR = 'OC|R|' + rua, chaveZ = chaveR + '|Z|' + c.zona;
-      abertosOciosos.add(chaveR); abertosOciosos.add(chaveZ);
-    });
+// Área "Endereços livres por rua" da linha do Pulmão (08/10/2026): mostra o
+// Pulmão ou o Picking — independente do toggle Endereços/Itens do Picking.
+let ladoLivresRua = 'pulmao';
+// Menu "⬇ Exportar" (<details>) fecha ao clicar fora ou depois de escolher.
+document.addEventListener('click', function (e) {
+  document.querySelectorAll('details.lr-export[open]').forEach(function (d) {
+    if (!d.contains(e.target) || e.target.closest('.lr-export-menu button')) d.removeAttribute('open');
   });
-  renderizarEstoqueOperacao();
+});
+function alternarLadoLivresRua(lado) {
+  ladoLivresRua = lado;
+  const y = window.scrollY; renderizarEstoqueOperacao(); window.scrollTo(0, y);
 }
-function recolherTudoOciosos() { abertosOciosos.clear(); renderizarEstoqueOperacao(); }
 // Busca por artigo/SKU no card "Detalhamento — Marca › Grupo › Família"
 // (pedido do usuário, 15/09/2026, mesmo padrão da busca de Estoque) — troca
 // a árvore agregada por um detalhamento até o ENDEREÇO (rua-nível-box),
@@ -5260,6 +5273,69 @@ function renderizarEstoqueOperacao(p) {
      (critério validado contra a planilha de Ocupação da gestão em 02/09/2026).
      Dizer só "pos." dava a entender "posição com material", que é outra coisa
      — essa é a régua de Itens. */
+  /* Livres por rua = capacidade da rua (planilha, menos o desconto do Picking)
+     − endereços ocupados nela. Rua acima da capacidade conta 0 livre e não
+     desconta das outras: o total de livres é a soma das ruas. */
+  function livresPorRuaTela(lado) {
+    const opr = p.ocupacao_por_rua;
+    if (!opr) return null;
+    const cap = (window.CAPACIDADE_RUA && window.CAPACIDADE_RUA[lado]) || opr.capacidade[lado] || {};
+    const occ = opr[lado] || {};
+    const desc = (lado === 'picking' && opr.desconto_picking) || {};
+    const ruas = Object.keys(cap).filter(function (r) { return (cap[r] || 0) - (desc[r] || 0) > 0 && Number(r) <= 15; })
+      .sort(function (a, b) { return Number(a) - Number(b); })
+      .map(function (r) {
+        const c = cap[r] - (desc[r] || 0), o = occ[r] || 0;
+        return { rua: r, capacidade: c, ocupado: o, livres: Math.max(0, c - o), pct: c > 0 ? o / c * 100 : 0 };
+      });
+    const capT = ruas.reduce(function (t, x) { return t + x.capacidade; }, 0);
+    const occT = ruas.reduce(function (t, x) { return t + x.ocupado; }, 0);
+    return { ruas: ruas, livres: ruas.reduce(function (t, x) { return t + x.livres; }, 0), pct: capT ? occT / capT * 100 : 0 };
+  }
+  function blocoLivresPorRua() {
+    const lado = ladoLivresRua;
+    const d = livresPorRuaTela(lado);
+    const lim = p.enderecos_ociosos ? p.enderecos_ociosos.limite_picado : 10;
+    const cab = '<div class="lr-cab"><div class="rot">Endereços livres por rua' + (lado === 'picking' ? ' — Picking (sem SKU cadastrado)' : '') + '</div>' +
+      '<div class="lr-acoes">' +
+        '<span class="chip' + (lado === 'pulmao' ? ' on' : '') + '" onclick="alternarLadoLivresRua(\'pulmao\')">Pulmão</span>' +
+        '<span class="chip' + (lado === 'picking' ? ' on' : '') + '" onclick="alternarLadoLivresRua(\'picking\')">Picking</span>' +
+        (p.enderecos_ociosos
+          ? '<details class="lr-export"><summary class="btn-mini">⬇ Exportar ▾</summary><div class="lr-export-menu">' +
+              '<button class="btn-mini" onclick="exportarPosicoesOciosas(\'pulmao\', \'vazios\')">Posições vazias — Pulmão</button>' +
+              '<button class="btn-mini" onclick="exportarPosicoesOciosas(\'picking\', \'vazios\')">Cadastrados sem saldo — Picking</button>' +
+              '<button class="btn-mini" onclick="exportarPosicoesOciosas(null, \'picados\')">Endereços com &lt; ' + lim + ' pç</button>' +
+            '</div></details>'
+          : '') +
+      '</div></div>';
+    if (!d || !d.ruas.length) {
+      return '<div class="kpi lr-card">' + cab + '<div class="aviso" style="margin:0">Reprocesse <strong>Picking + Pulmão</strong> em Admin › Abastecimento para ver os livres por rua.</div></div>';
+    }
+    const maxL = d.ruas.reduce(function (m, x) { return Math.max(m, x.livres); }, 0);
+    const corPct = function (v) { return v >= 95 ? 'var(--red)' : v >= 85 ? 'var(--amber)' : 'var(--olive)'; };
+    const acima = d.ruas.filter(function (x) { return x.ocupado > x.capacidade; });
+    return '<div class="kpi lr-card">' + cab +
+      '<div class="lr-tabela"><table><colgroup><col class="lr-col-rot"></colgroup><thead><tr><th></th>' +
+        d.ruas.map(function (x) { return '<th>Rua ' + escapar(x.rua) + '</th>'; }).join('') + '<th class="lr-tot">Total</th></tr></thead><tbody>' +
+        '<tr><th class="lr-rot">Livres</th>' +
+          d.ruas.map(function (x) {
+            const tit = 'Rua ' + x.rua + ': ' + fmtInt(x.ocupado) + ' de ' + fmtInt(x.capacidade) + ' endereços ocupados';
+            if (!x.livres) return '<td class="lr-zero" title="' + tit + '">—</td>';
+            const a = maxL > 0 ? 0.18 + 0.67 * (x.livres / maxL) : 0.18;
+            return '<td title="' + tit + '"><span class="lr-cel" style="background:rgba(41,122,223,' + a.toFixed(2) + ')">' + fmtInt(x.livres) + '</span></td>';
+          }).join('') +
+          '<td class="lr-tot">' + fmtInt(d.livres) + '</td></tr>' +
+        '<tr class="lr-ocup"><th class="lr-rot">Ocupação</th>' +
+          d.ruas.map(function (x) { return '<td style="color:' + corPct(x.pct) + '">' + fmtPct0(x.pct) + '</td>'; }).join('') +
+          '<td class="lr-tot" style="color:' + corPct(d.pct) + '">' + fmtPct0(d.pct) + '</td></tr>' +
+      '</tbody></table></div>' +
+      (acima.length
+        ? '<div class="lr-nota">' + acima.map(function (x) {
+            return 'Rua ' + escapar(x.rua) + ' tem ' + fmtInt(x.ocupado) + ' endereços com material, mas a capacidade cadastrada é ' + fmtInt(x.capacidade);
+          }).join(' · ') + ' — confira a capacidade da planilha.</div>'
+        : '') +
+    '</div>';
+  }
   function linhaOcupacao(titulo, secao, modo) {
     const arvore = (modo === 'itens' ? p.ocupacao_itens : p.ocupacao) || {};
     const linha = arvore[secao];
@@ -5290,6 +5366,32 @@ function renderizarEstoqueOperacao(p) {
     const card = function (b) {
       return cardOcupacao(ROT_BUCKET[b], linha[b], unidade, tooltipOcupacao(ROT_BUCKET[b], linha[b] || {}, unidadeLonga, b));
     };
+    if (secao === 'pulmao') {
+      // Pulmão (08/10/2026): o estoque está misturado entre os segmentos, então
+      // sai a quebra por segmento — fica a rosca geral e, ao lado, os livres
+      // por rua (no lugar do antigo card "Endereços vazios e com menos de 10 peças").
+      const lp = livresPorRuaTela('pulmao');
+      const livresTot = lp ? lp.livres : linha.total.disponivel;
+      const corT = corOcupacao(linha.total);
+      return cabecalho +
+        '<div class="ocup-pulmao">' +
+          '<div class="kpi kpi-ocup" onclick="alternarTipOcup(this, event)">' +
+            '<div class="donut-wrap" style="color:' + corT + '">' + donutOcupacao(linha.total.pct, corT) + '</div>' +
+            '<div>' +
+              '<div class="rot">' + ROT_BUCKET.total + '</div>' +
+              '<div class="val forte" style="color:' + corT + '">' + fmtPct(linha.total.pct) + '</div>' +
+              '<div class="sub">' + fmtInt(linha.total.capacidade) + ' endereços</div>' +
+              '<div class="sub"><strong>' + fmtInt(livresTot) + ' livres</strong></div>' +
+            '</div>' +
+            '<div class="tip-ocup"><div class="tip-tit">Pulmão · geral</div>' +
+              '<div class="tip-linha"><span>Capacidade (endereços)</span><b>' + fmtInt(linha.total.capacidade) + '</b></div>' +
+              '<div class="tip-linha"><span>Ocupados</span><b>' + fmtInt(linha.total.ocupado) + '</b></div>' +
+              '<div class="tip-linha"><span>Livres</span><b>' + fmtInt(livresTot) + '</b></div>' +
+            '</div>' +
+          '</div>' +
+          blocoLivresPorRua() +
+        '</div>';
+    }
     return cabecalho +
       '<div class="kpi-row kpi-row-ocup">' +
         cardOcupacao(ROT_BUCKET.total, linha.total, unidade, tooltipOcupacaoTotal(titulo, linha, unidadeLonga)) +
@@ -5301,154 +5403,6 @@ function renderizarEstoqueOperacao(p) {
   // em Itens fica oculta até a gestão pedir de novo.
   const kpisOcupacao = linhaOcupacao('Picking', 'picking', modoOcupacaoPicking) +
     linhaOcupacao('Pulmão', 'pulmao', 'endereco');
-
-  /* ---------- endereços vazios e picados (< 10 pç) — 23/09/2026 ----------
-     Base pra avaliar compactar volume "picado" em poucos endereços. Sempre
-     global (zona física), como a ocupação acima. */
-  let blocoOciosos = '';
-  const oc = p.enderecos_ociosos;
-  if (!oc) {
-    blocoOciosos = '<div class="card"><div class="section-title">Endereços vazios e com menos de 10 peças</div>' +
-      '<div class="aviso">Reprocesse <strong>Picking + Pulmão</strong> em Admin › Abastecimento para mapear os endereços vazios.</div></div>';
-  } else {
-    // Árvore Rua › Picking/Pulmão › Vazio/Menos de N pç (pedido do usuário,
-    // 23/09/2026: "Numero da rua>PICKING/PULMÃO>VAZIO/MENOS DE 10 PÇS" — a
-    // zona (Picking ou Pulmão) vem antes do tipo, não misturados num rótulo
-    // só como antes ("Picking vazio", "Pulmão < N pç" etc.).
-    //
-    // Rua > 15 fica de fora aqui também, na tela, além de já ficar de fora
-    // no ingest (pedido do usuário, 23/09/2026: prédio físico só vai até a
-    // rua 15) — reforço client-side pra valer mesmo em snapshots antigos,
-    // gerados antes desse corte existir no ingest, sem esperar reprocessar.
-    const LIMITE_RUA_FISICA_TELA = 15;
-    /* Mesma régua dos cards de ocupação (24/09/2026): LIVRE = capacidade da
-       rua (planilha) − endereços ocupados nela. Picking ainda mostra à parte o
-       endereço CADASTRADO sem saldo (tem SKU alocado, zero peça). Snapshot
-       antigo, sem ocupacao_por_rua, cai na estimativa por posição de antes. */
-    const opr = p.ocupacao_por_rua;
-    const livresPorRua = function (linha) {
-      const saida = [];
-      if (!opr) return saida;
-      // Capacidade por rua do código atual (window.CAPACIDADE_RUA) vale sobre a
-      // gravada no snapshot: correção de planilha entra sem reprocessar.
-      const cap = (window.CAPACIDADE_RUA && window.CAPACIDADE_RUA[linha]) || opr.capacidade[linha] || {};
-      const occ = opr[linha] || {};
-      // Endereços do Picking fora da capacidade (faixa sem parametrização, sem saldo).
-      const descPick = (linha === 'picking' && opr.desconto_picking) || {};
-      // Conta POR SEGMENTO, igual aos cards (capacidade das ruas do segmento −
-      // ocupados nelas): rua acima da capacidade (ex.: Picking 15) desconta das
-      // outras ruas do mesmo segmento em vez de só zerar — senão o bloco e o
-      // card davam números diferentes. Sem RUAS_ZONA, cai na conta por rua.
-      const zonas = (window.RUAS_ZONA && window.RUAS_ZONA[linha])
-        ? Object.keys(window.RUAS_ZONA[linha]).map(function (b) { return window.RUAS_ZONA[linha][b]; })
-        : Object.keys(cap).map(function (rua) { return [rua]; });
-      zonas.forEach(function (ruas) {
-        let livres = Math.max(0, ruas.reduce(function (t, rua) { return t + (cap[rua] || 0) - (descPick[rua] || 0) - (occ[rua] || 0); }, 0));
-        ruas.forEach(function (rua) {
-          const n = Math.min(livres, Math.max(0, (cap[rua] || 0) - (descPick[rua] || 0) - (occ[rua] || 0)));
-          for (let i = 0; i < n; i++) saida.push([rua, '', '', 0]);
-          livres -= n;
-        });
-      });
-      return saida;
-    };
-    const ZONAS_OCIOSOS = [
-      { chave: 'picking', rotulo: 'Picking', tipos: [
-        { chave: 'livre', rotulo: 'Livre (sem SKU cadastrado)', lista: livresPorRua('picking'), cor: null },
-        { chave: 'vazio', rotulo: 'Cadastrado sem saldo', lista: filtrarOciosos('picking', oc.picking.vazios), cor: null },
-        { chave: 'picado', rotulo: 'Menos de ' + oc.limite_picado + ' pç', lista: filtrarOciosos('picking', oc.picking.picados), cor: '--amber' },
-      ] },
-      { chave: 'pulmao', rotulo: 'Pulmão', tipos: [
-        opr ? { chave: 'livre', rotulo: 'Livre', lista: livresPorRua('pulmao'), cor: null }
-            : { chave: 'vazio', rotulo: 'Vazio (estimado)', lista: filtrarOciosos('pulmao', oc.pulmao.vazios), cor: null },
-        { chave: 'picado', rotulo: 'Menos de ' + oc.limite_picado + ' pç', lista: filtrarOciosos('pulmao', oc.pulmao.picados), cor: '--amber' },
-      ] },
-    ];
-    const ruas = new Map(); // rua -> { zonas: Map(chave -> { rotulo, tipos: Map(chave -> {rotulo, cor, end, pecas}), end, pecas }), end, pecas }
-    const tot = { pl: 0, pv: 0, pp: 0, uv: 0, up: 0 };
-    const TOT_CHAVE = { picking: { livre: 'pl', vazio: 'pv', picado: 'pp' }, pulmao: { livre: 'uv', vazio: 'uv', picado: 'up' } };
-    ZONAS_OCIOSOS.forEach(function (z) {
-      z.tipos.forEach(function (t) {
-        t.lista.forEach(function (l) {
-          const rua = l[0], pecas = l[3];
-          if (Number(rua) > LIMITE_RUA_FISICA_TELA) return;
-          tot[TOT_CHAVE[z.chave][t.chave]]++;
-          if (!ruas.has(rua)) ruas.set(rua, { zonas: new Map(), end: 0, pecas: 0 });
-          const r = ruas.get(rua);
-          r.end++; r.pecas += pecas;
-          if (!r.zonas.has(z.chave)) r.zonas.set(z.chave, { rotulo: z.rotulo, tipos: new Map(), end: 0, pecas: 0 });
-          const zn = r.zonas.get(z.chave);
-          zn.end++; zn.pecas += pecas;
-          if (!zn.tipos.has(t.chave)) zn.tipos.set(t.chave, { rotulo: t.rotulo, cor: t.cor, end: 0, pecas: 0 });
-          const tp = zn.tipos.get(t.chave);
-          tp.end++; tp.pecas += pecas;
-        });
-      });
-    });
-    const ruasOrdenadas = Array.from(ruas.keys()).sort(function (a, b) { return Number(a) - Number(b); });
-    const totEnd = tot.pl + tot.pv + tot.pp + tot.uv + tot.up;
-    const totPecas = ruasOrdenadas.reduce(function (s, r) { return s + ruas.get(r).pecas; }, 0);
-
-    function linhaOciosos(nivel, chave, rotulo, endCount, pecasCount, temFilhos, cor) {
-      const aberto = temFilhos && abertosOciosos.has(chave);
-      const btn = temFilhos
-        ? '<span class="toggle" onclick="alternarNoOciosos(\'' + escaparJs(chave) + '\')">' + (aberto ? '−' : '+') + '</span>'
-        : '<span class="toggle vazio">·</span>';
-      return '<tr class="n' + nivel + '">' +
-        '<th class="ind-' + nivel + '"><span class="desc">' + btn + '<span' + (cor ? ' style="color:var(' + cor + ')"' : '') + '>' + rotulo + '</span></span></th>' +
-        '<td>' + fmtInt(endCount) + '</td>' +
-        '<td>' + (pecasCount ? fmtInt(pecasCount) : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
-      '</tr>';
-    }
-    let linhasArvoreOciosos = '';
-    ruasOrdenadas.forEach(function (rua) {
-      const r = ruas.get(rua);
-      const chaveR = 'OC|R|' + rua;
-      linhasArvoreOciosos += linhaOciosos(1, chaveR, 'Rua ' + rua, r.end, r.pecas, true, null);
-      if (!abertosOciosos.has(chaveR)) return;
-      ZONAS_OCIOSOS.forEach(function (z) {
-        const zn = r.zonas.get(z.chave);
-        if (!zn) return;
-        const chaveZ = chaveR + '|Z|' + z.chave;
-        linhasArvoreOciosos += linhaOciosos(2, chaveZ, z.rotulo, zn.end, zn.pecas, true, null);
-        if (!abertosOciosos.has(chaveZ)) return;
-        z.tipos.forEach(function (t) {
-          const tp = zn.tipos.get(t.chave);
-          if (!tp) return;
-          linhasArvoreOciosos += linhaOciosos(3, chaveZ + '|T|' + t.chave, tp.rotulo, tp.end, tp.pecas, false, tp.cor);
-        });
-      });
-    });
-
-    blocoOciosos = '<div class="card">' +
-      '<div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
-        '<span>Endereços vazios e com menos de ' + oc.limite_picado + ' peças</span>' +
-        '<span style="display:flex;gap:6px;flex-wrap:wrap">' +
-          '<button class="btn-mini" onclick="expandirTudoOciosos()">Expandir tudo</button>' +
-          '<button class="btn-mini" onclick="recolherTudoOciosos()">Recolher tudo</button>' +
-          '<button class="btn-mini" onclick="exportarPosicoesOciosas(\'picking\', \'vazios\')">⬇ Cadastrados sem saldo — Picking</button>' +
-          '<button class="btn-mini" onclick="exportarPosicoesOciosas(\'pulmao\', \'vazios\')" title="Lista de posições vazias identificadas no arquivo (box existe na rua, nível sem volume) — pode não cobrir todas as livres">⬇ Posições vazias — Pulmão</button>' +
-          '<button class="btn-mini" onclick="exportarPosicoesOciosas(null, \'picados\')">⬇ Endereços com &lt; ' + oc.limite_picado + ' pç</button>' +
-        '</span>' +
-      '</div>' +
-      (opr
-        ? '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Livre = capacidade da rua menos os endereços ocupados — mesma conta dos cards de ocupação. ' +
-          'Picking "cadastrado sem saldo" = endereço com SKU alocado e zero peça.</p>'
-        : '<div class="aviso" style="margin-bottom:12px">Reprocesse <strong>Picking + Pulmão</strong> para o livre por rua usar a mesma régua dos cards de ocupação.</div>') +
-      '<div class="kpi-row">' +
-        (opr ? '<div class="kpi"><div class="rot">Picking livre</div><div class="val forte">' + fmtInt(tot.pl) + '</div><div class="sub">sem SKU cadastrado</div></div>' : '') +
-        '<div class="kpi"><div class="rot">Picking cadastrado sem saldo</div><div class="val forte">' + fmtInt(tot.pv) + '</div><div class="sub">SKU alocado, zero peça</div></div>' +
-        '<div class="kpi"><div class="rot">Picking &lt; ' + oc.limite_picado + ' pç</div><div class="val forte" style="color:var(--amber)">' + fmtInt(tot.pp) + '</div><div class="sub">candidatos a compactar</div></div>' +
-        '<div class="kpi"><div class="rot">Pulmão livre' + (opr ? '' : ' (estimado)') + '</div><div class="val forte">' + fmtInt(tot.uv) + '</div><div class="sub">posições de porta-pallet livres</div></div>' +
-        '<div class="kpi"><div class="rot">Pulmão &lt; ' + oc.limite_picado + ' pç</div><div class="val forte" style="color:var(--amber)">' + fmtInt(tot.up) + '</div><div class="sub">candidatos a compactar</div></div>' +
-      '</div>' +
-      '<div class="tabela-rolavel tabela-5-linhas" style="margin-top:12px"><table class="arvore"><thead><tr>' +
-        '<th class="esq">Rua › Picking/Pulmão › Vazio/Menos de ' + oc.limite_picado + ' pç</th><th>Endereços</th><th>Peças</th>' +
-      '</tr></thead><tbody>' + linhasArvoreOciosos +
-        '<tr class="total"><th class="esq">TOTAL</th><td>' + fmtInt(totEnd) + '</td><td>' + fmtInt(totPecas) + '</td></tr>' +
-      '</tbody></table></div>' +
-    '</div>';
-  }
 
   const arvoreAtual = arvoreFiltradaRessuprimento(p);
   const totalGeral = arvoreAtual.reduce(function (s, m) { return s + m.qtd; }, 0);
@@ -5815,7 +5769,6 @@ function renderizarEstoqueOperacao(p) {
     '</div>' +
       blocoComposicao +
     '</div>' +
-    blocoOciosos +
     blocoBO +
     '<div style="font-size:11px;color:var(--text-muted);margin-top:12px">' +
       'Picking: ' + escapar(p.arquivo_picking || '—') + ' · Pulmão: ' + escapar(p.arquivo_pulmao || '—') +
