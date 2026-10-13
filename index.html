@@ -4615,6 +4615,7 @@ function renderizarPfas() {
           '<span class="chip' + (emPecasMz ? ' on' : '') + '" onclick="alternarModoMatrizNf(\'pecas\')">Peças</span>' +
           '<span class="chip' + (!emPecasMz ? ' on' : '') + '" onclick="alternarModoMatrizNf(\'pfas\')">Qtde PFAs</span>' +
         '</div>' +
+        (datasNotaMz.length ? '<button class="btn-mini" onclick="exportarCSVPfasComNf()" title="Base completa das PFAs com NF emitida no recorte (filtros do topo + período)">⬇ PFAs com NF</button>' : '') +
       '</div>' +
     '</div>' +
     '<div style="overflow-x:auto"><table class="matriz-nf"><thead><tr><th class="esq">Data da nota</th>' +
@@ -4711,24 +4712,45 @@ function exportarCSVPfas() {
   // Mesmo recorte da tabela — marca, segmento, FIFO, etapa, conferência e
   // busca. O "Mostrar N" NÃO entra: ele é corte de exibição, então 100 na tela
   // com 1.000 no recorte exporta as 1.000.
-  const linhas = linhasTabelaPfa();
-  const saida = [['PFA', 'Data importacao', 'Dias em aberto', 'Etapa', 'Cliente', 'Marca', 'Segmento',
-    'Familia', 'Transportadora', 'Cluster', 'Volumes', 'Pares', 'Conferencia', 'Volumes lidos', 'Volumes total',
-    'Situacao PFA', 'Data NF']];
+  baixarCSVPfas(linhasTabelaPfa(), 'pfas-em-tela-distribuidora.csv');
+}
+/* Base das PFAs "Com NF emitida" da Matriz NF × Segmento (pedido do usuário,
+   13/10/2026): mesmo recorte da matriz — filtros do topo + período das datas
+   de NF —, uma linha por PFA, com todas as colunas do Pendentes. */
+function exportarCSVPfasComNf() {
+  if (!dadosPfas) return;
+  const linhas = pendentesFiltradosPfa().filter(function (r) {
+    if (!r.data_nota) return false;
+    return periodoNf.modo !== 'sel' || periodoNf.meses.indexOf(String(r.data_nota).slice(0, 7)) !== -1;
+  }).sort(function (a, b) { return String(a.data_nota).localeCompare(String(b.data_nota)) || String(a.pfa).localeCompare(String(b.pfa)); });
+  if (!linhas.length) { alert('Nenhuma PFA com NF emitida neste recorte.'); return; }
+  baixarCSVPfas(linhas, 'pfas-com-nf-emitida' + (periodoNf.modo === 'sel' ? '-' + periodoNf.meses.join('_') : '') + '.csv');
+}
+function baixarCSVPfas(linhas, nomeArquivo) {
+  const saida = [['PFA', 'Encomenda', 'Data importacao', 'Dias em aberto', 'Etapa', 'Data situacao', 'Dias na etapa',
+    'Cliente codigo', 'Cliente', 'Marca', 'Segmento', 'Familia', 'Transportadora', 'Cluster', 'Volumes', 'Pares',
+    'Conferencia', 'Volumes lidos', 'Volumes total', 'Situacao PFA', 'Nota fiscal', 'Data NF', 'Dias desde a NF']];
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
   linhas.forEach(function (r) {
-    saida.push([r.pfa, r.data_importacao || '', r.dias_abertos === null ? '' : r.dias_abertos,
-      rotEtapaPfa(r.situacao), r.cliente_nome, r.marca, r.segmento_macro, r.familia_codigo,
+    let diasNf = '';
+    if (r.data_nota) {
+      const d = new Date(String(r.data_nota).slice(0, 10) + 'T00:00:00');
+      if (!isNaN(d)) diasNf = Math.max(0, Math.round((hoje - d) / 86400000));
+    }
+    saida.push([r.pfa, r.encomenda || '', r.data_importacao || '', r.dias_abertos === null ? '' : r.dias_abertos,
+      rotEtapaPfa(r.situacao), r.data_situacao || '', r.dias_na_etapa === null || r.dias_na_etapa === undefined ? '' : r.dias_na_etapa,
+      r.cliente_codigo || '', r.cliente_nome, r.marca, r.segmento_macro, r.familia_codigo,
       r.transportadora_nome, r.cluster, r.qt_volumes, r.pares,
-      ROT_CONFERENCIA[r.conferencia].rotulo, r.conferencia_lidos, r.conferencia_total,
-      (ROT_SITUACAO_PFA[r.situacao_pfa] || ROT_SITUACAO_PFA.normal).rotulo, r.data_nota || '']);
+      (ROT_CONFERENCIA[r.conferencia] || ROT_CONFERENCIA.nao_iniciada).rotulo, r.conferencia_lidos, r.conferencia_total,
+      (ROT_SITUACAO_PFA[r.situacao_pfa] || ROT_SITUACAO_PFA.normal).rotulo, r.nota_fiscal || '', r.data_nota || '', diasNf]);
   });
   const csv = saida.map(function (l) {
     return l.map(function (c) { return '"' + String(c === null || c === undefined ? '' : c).replace(/"/g, '""') + '"'; }).join(';');
   }).join('\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'pfas-em-tela-distribuidora.csv';
+  a.download = nomeArquivo;
   a.click();
   URL.revokeObjectURL(a.href);
 }
