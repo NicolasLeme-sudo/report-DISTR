@@ -232,6 +232,10 @@ html { overflow-x: hidden; }
   cursor: pointer; font-family: inherit;
 }
 .btn-mini:hover { border-color: var(--accent); }
+/* Botão de exportar só com ícone (bandeja + seta), quadrado e arredondado. */
+.btn-icone-exp { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0;
+  border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-label); cursor: pointer; }
+.btn-icone-exp:hover { border-color: var(--accent); color: var(--text); }
 
 .conteudo { margin-left: 260px; padding: 70px 22px 40px; }
 .secao { display: none; }
@@ -4615,7 +4619,9 @@ function renderizarPfas() {
           '<span class="chip' + (emPecasMz ? ' on' : '') + '" onclick="alternarModoMatrizNf(\'pecas\')">Peças</span>' +
           '<span class="chip' + (!emPecasMz ? ' on' : '') + '" onclick="alternarModoMatrizNf(\'pfas\')">Qtde PFAs</span>' +
         '</div>' +
-        (datasNotaMz.length ? '<button class="btn-mini" style="padding:3px 7px" onclick="exportarCSVPfasComNf()" title="Exportar a base das PFAs com NF emitida (filtros do topo + período)" aria-label="Exportar PFAs com NF emitida">⬇</button>' : '') +
+        (datasNotaMz.length ? '<button class="btn-icone-exp" onclick="exportarCSVPfasComNf()" title="Exportar a base das PFAs com NF emitida (filtros do topo + período)" aria-label="Exportar PFAs com NF emitida">' +
+          '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+            '<path d="M12 4v11"/><path d="M7.5 10.5 12 15l4.5-4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg></button>' : '') +
       '</div>' +
     '</div>' +
     '<div style="overflow-x:auto"><table class="matriz-nf"><thead><tr><th class="esq">Data da nota</th>' +
