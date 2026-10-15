@@ -267,18 +267,17 @@ html { overflow-x: hidden; }
 .seg-toggle { display: inline-flex; gap: 6px; }
 /* Popover de filtro (Abastecimento) — identidade da tela: título em caixa alta,
    checkbox próprio azul da marca, linhas com hover suave (15/10/2026). */
-.pf-pop { position: absolute; top: 100%; left: 0; margin-top: 6px; z-index: 999; min-width: 290px; max-width: 360px;
+.pf-pop { position: absolute; top: 100%; left: 0; margin-top: 6px; z-index: 999; width: max-content; min-width: 220px;
   max-height: 360px; overflow-y: auto; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
   box-shadow: 0 10px 30px rgba(0,0,0,.45); padding: 10px 8px 8px; }
-.pf-cab { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 0 6px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
-.pf-tit { white-space: nowrap; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-label); font-weight: 600; }
+.pf-cab { display: flex; align-items: center; gap: 14px; white-space: nowrap; padding: 0 6px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
+.pf-tit { margin-right: auto; white-space: nowrap; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-label); font-weight: 600; }
 .pf-todos { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--accent); font-weight: 600; cursor: pointer; white-space: nowrap; }
-.pf-opcao { display: flex; align-items: center; gap: 10px; padding: 7px 6px; font-size: 12.5px; color: var(--text); cursor: pointer; border-radius: 6px; line-height: 1.3; }
+.pf-opcao { display: flex; align-items: center; gap: 10px; padding: 7px 6px; font-size: 12.5px; color: var(--text); cursor: pointer; border-radius: 6px; line-height: 1.3; white-space: nowrap; }
 .pf-opcao:hover { background: var(--bg-input); }
 .pf-opcao span { flex: 1; }
 .pf-vazio { font-size: 11px; color: var(--text-muted); padding: 6px; }
-.pf-rod { display: flex; justify-content: flex-end; border-top: 1px solid var(--border); margin-top: 6px; padding: 8px 6px 0; }
-.pf-limpar { font-size: 11px; color: var(--red); cursor: pointer; font-weight: 600; }
+.pf-limpar { font-size: 11px; color: var(--red); cursor: pointer; font-weight: 600; white-space: nowrap; }
 .chk-vb { appearance: none; -webkit-appearance: none; flex: none; width: 16px; height: 16px; margin: 0; border-radius: 4px;
   border: 1.5px solid var(--text-muted); background: var(--bg-input); cursor: pointer; display: inline-grid; place-content: center;
   transition: background .12s, border-color .12s; }
@@ -4008,9 +4007,9 @@ function botaoFiltroPopover(nome, rotulo, set, opcoes, fn) {
                   ' onchange="selecionarTodosPopover(\'' + nome + '\', event)">' +
                 '<span>Selecionar todos</span></label>'
             : '') +
+          (ativos ? '<span class="pf-limpar" onclick="' + fn + '(null)">Limpar</span>' : '') +
         '</div>' +
         (opcoes.length ? linhas : '<div class="pf-vazio">Sem opções neste recorte.</div>') +
-        (ativos ? '<div class="pf-rod"><span class="pf-limpar" onclick="' + fn + '(null)">Limpar filtro</span></div>' : '') +
       '</div>'
     : '';
   return '<div style="position:relative;display:inline-block">' +
