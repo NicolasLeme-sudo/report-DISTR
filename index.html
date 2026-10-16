@@ -1521,7 +1521,9 @@ tr.total > th, tr.total > td {
           Envie o <strong>.xlsx</strong> da base do Embarque (a mesma do modelo antigo de backlog, aba "Plan1": uma coluna por dia).
           O sistema lê <strong>Expedição, Backlog, Separação e Faturamento</strong> (linhas "Peças") e grava um registro por dia.
           Pode subir a base completa de novo quando quiser: o dia é a chave, então <strong>nada duplica</strong> — o arquivo mais novo
-          atualiza só os dias que ele traz. Alimenta o gráfico da tela <strong>Embarque</strong>.
+          atualiza só os dias que ele traz. Alimenta o gráfico da tela <strong>Embarque</strong> no período antigo:
+          desde 16/10/2026 a expedição diária vem do <strong>NFs Embarcadas</strong> (data de embarque, sem CROSSDOC), o backlog do
+          <strong>Pendentes</strong> de cada dia e a entrada pela data de importação das PFAs — onde houver esses dados, eles valem sobre esta base.
         </p>
         <div class="dropzone" id="dropzoneBaseEmbarque">
           <span id="dropzoneBaseEmbarqueTexto">Clique para selecionar o .xlsx da base de Embarque</span>

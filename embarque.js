@@ -366,10 +366,26 @@
     (function () {
       let prevB = null;
       (diario || []).slice().sort(function (a, b) { return a.dia < b.dia ? -1 : 1; }).forEach(function (r) {
+        // entrada efetiva: PFAs importadas no dia (Pendentes); sem isso, a conta pela base (Δbacklog + expedido)
+        if (r.entrada !== null && r.entrada !== undefined && r.dia < hojeISO) { entradaEf[r.dia] = r.entrada; if (r.backlog !== null && r.backlog !== undefined) prevB = r; return; }
         if (r.backlog === null || r.backlog === undefined) return;
-        if (prevB && r.dia < hojeISO) entradaEf[r.dia] = Math.max(0, Number(r.backlog) - Number(prevB.backlog) + (Number(r.expedido) || 0));
+        if (prevB && r.dia < hojeISO && !r.fonte_backlog) entradaEf[r.dia] = Math.max(0, Number(r.backlog) - Number(prevB.backlog) + (Number(r.expedido) || 0));
         prevB = r;
       });
+    })();
+    // Backlog dos dias passados sem Pendentes abastecido (fim de semana, feriado): parte do último backlog
+    // conhecido e segue com entrada − saída efetivas, a mesma conta do previsto.
+    const backlogPassado = {};
+    (function () {
+      let b = null;
+      for (let d = dias[0]; d < hojeISO; d = somaDias(d, 1)) {
+        const r = porDia[d];
+        if (r && r.backlog !== null && r.backlog !== undefined) { b = Number(r.backlog); continue; }
+        const ant = somaDias(d, -1), ra = porDia[ant];
+        if (b === null || entradaEf[ant] === undefined) { b = null; continue; }
+        b = Math.max(0, b + entradaEf[ant] - (ra && ra.expedido ? Number(ra.expedido) : 0));
+        backlogPassado[d] = Math.round(b);
+      }
     })();
     const nv = function (v) { return v === undefined ? null : v; };
     return {
@@ -395,7 +411,7 @@
       backlog_efetivo: dias.map(function (d) {
         if (temEmTela && d === hojeISO) return Number(emTela.total);
         const r = porDia[d];
-        return r && r.backlog !== null && r.backlog !== undefined ? r.backlog : null;
+        return r && r.backlog !== null && r.backlog !== undefined ? r.backlog : backlogPassado[d] === undefined ? null : backlogPassado[d];
       }),
       // parte do backlog de hoje que está "Não disp. picking" (coluna empilhada em vermelho)
       backlog_nao_disp: dias.map(function (d) { return temEmTela && d === hojeISO ? naoDisp : null; }),
@@ -414,6 +430,7 @@
         if (temEmTela && d === hojeISO) return Number(emTela.total);
         const r = porDia[d];
         if (r && r.backlog !== null && r.backlog !== undefined) return r.backlog;
+        if (backlogPassado[d] !== undefined) return backlogPassado[d];
         return backlogPrev[d] === undefined ? null : backlogPrev[d];
       }),
       hoje_idx: 30,
@@ -1308,6 +1325,30 @@
      ============================================================================ */
   let dataSnapshot = null;
 
+  /* Base de Embarque (.xlsx, até 01/10/2026) + o que já é abastecido todo dia (16/10/2026):
+     expedido do NFs Embarcadas (GCI, data de embarque, sem CROSSDOC), backlog do 1º Pendentes do dia e
+     entrada pela data de importação das PFAs. Onde há dado abastecido ele vale; a base cobre o período antigo. */
+  function mesclarHistoricoOperacao(diario, hist) {
+    const porDia = {};
+    (diario || []).forEach(function (r) { porDia[r.dia] = Object.assign({}, r); });
+    (Array.isArray(hist) ? hist : []).forEach(function (h) {
+      const d = String(h.dia).slice(0, 10);
+      const r = porDia[d] || (porDia[d] = { dia: d, expedido: null, backlog: null });
+      if (h.expedido !== null && h.expedido !== undefined) { r.expedido = Number(h.expedido); r.fonte_expedido = 'nfs_embarcadas'; }
+      if (h.backlog !== null && h.backlog !== undefined) { r.backlog = Number(h.backlog); r.fonte_backlog = 'pendentes'; }
+      if (h.entrada !== null && h.entrada !== undefined) r.entrada = Number(h.entrada);
+    });
+    // Dias com expedição pelo NFs Embarcadas: o que não teve nota nesse período (fim de semana, feriado) = 0
+    const comExp = Object.keys(porDia).filter(function (d) { return porDia[d].fonte_expedido; }).sort();
+    if (comExp.length) {
+      for (let d = comExp[0]; d <= comExp[comExp.length - 1]; d = somaDias(d, 1)) {
+        const r = porDia[d] || (porDia[d] = { dia: d, expedido: null, backlog: null });
+        if (r.expedido === null || r.expedido === undefined) { r.expedido = 0; r.fonte_expedido = 'nfs_embarcadas'; }
+      }
+    }
+    return Object.keys(porDia).sort().map(function (d) { return porDia[d]; });
+  }
+
   async function carregarDados(supabaseClient) {
     const hoje = hojeLocalISO();
     const de = somaDias(hoje, -400), ate = somaDias(hoje, 31);   // ~13 meses: entrada automática e perfil operacional (dia da semana e momento do mês)
@@ -1318,10 +1359,12 @@
       supabaseClient.from('embarque_forecast_mensal').select('mes, pecas_embarque, pecas_entrada, dias_folga, prop_marca, prop_segmento, prop_cruzada, atualizado_em'),
       supabaseClient.rpc('embarque_backlog_em_tela'),
       supabaseClient.rpc('embarque_notas_agregado', { p_de: somaDias(hoje, -400) }),
+      supabaseClient.rpc('embarque_historico_operacao', { p_de: somaDias(hoje, -400) }),
     ]);
     res.slice(0, 4).forEach(function (r) { if (r.error) throw r.error; });
     if (res[4].error) console.warn('Backlog em tela indisponível (rode migracao_embarque.sql):', res[4].error.message);
-    const diario = res[0].data || [];
+    if (res[6].error) console.warn('Histórico pelo NFs Embarcadas/Pendentes indisponível (rode migracao_embarque.sql):', res[6].error.message);
+    const diario = mesclarHistoricoOperacao(res[0].data || [], res[6].error ? [] : res[6].data);
     const ult = function (r, campo) { return r.data && r.data[0] ? { dia: r.data[0].dia, valor: r.data[0][campo] } : null; };
     const forecasts = res[3].data || [];
     let maisRecente = '';
@@ -1747,7 +1790,7 @@
     iniciar: iniciar, ligarAdmin: ligarAdmin, processarBaseEmbarque: processarBaseEmbarque, salvarForecast: salvarForecast,
     parsearBaseEmbarque: parsearBaseEmbarque, diasUteisDoMes: diasUteisDoMes, distribuirNosDias: distribuirNosDias,
     forecastPorDia: forecastPorDia, perfilSemana: perfilSemana, pesosDoMes: pesosDoMes, distribuirPorPeso: distribuirPorPeso, entradaDoMes: entradaDoMes, entradaAutomatica: entradaAutomatica, validarProporcoes: validarProporcoes, validarCruzada: validarCruzada, matrizPrevista: matrizPrevista, nomeCurtoTransportadora: nomeCurtoTransportadora,
-    parsearNotasEmbarcadas: parsearNotasEmbarcadas, aplicarFiltrosNaSerie: aplicarFiltrosNaSerie, montarMix: montarMix, processarNotasEmbarcadas: processarNotasEmbarcadas, montarSerieEmbarque: montarSerieEmbarque, lerMilPecas: lerMilPecas, repartir: repartir, dataDeCelula: dataDeCelula,
+    parsearNotasEmbarcadas: parsearNotasEmbarcadas, aplicarFiltrosNaSerie: aplicarFiltrosNaSerie, montarMix: montarMix, processarNotasEmbarcadas: processarNotasEmbarcadas, montarSerieEmbarque: montarSerieEmbarque, mesclarHistoricoOperacao: mesclarHistoricoOperacao, lerMilPecas: lerMilPecas, repartir: repartir, dataDeCelula: dataDeCelula,
     dataSnapshot: function () { return dataSnapshot; },
   };
   if (typeof window !== 'undefined') window.Embarque = api;

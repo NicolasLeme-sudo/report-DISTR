@@ -1232,11 +1232,24 @@ async function processarPfas(supabaseClient, filePendentes, fileAnalitico, fileE
       const porPfa = new Map();
       embarcadas.registros.forEach(function (e) { porPfa.set(e.pfa, e); });
       const linhasUp = Array.from(porPfa.values()).map(function (e) {
+        // data_embarque = DATMOD do arquivo (16/10/2026): é o dia em que a nota saiu, base da expedição
+        // diária da tela Embarque (embarque_historico_operacao).
         return { pfa: e.pfa, nota: e.nota || null, data_nota: e.data_nota || null, qtd_total: e.qtd_total,
-          valor_total: e.valor_total, operacao: e.operacao || null, atualizado_em: new Date().toISOString() };
+          valor_total: e.valor_total, operacao: e.operacao || null, data_embarque: e.data_modificacao || null,
+          atualizado_em: new Date().toISOString() };
       });
+      let comDataEmbarque = true;
       for (let i = 0; i < linhasUp.length; i += 500) {
-        const { error } = await supabaseClient.from('pfas_embarcadas').upsert(linhasUp.slice(i, i + 500), { onConflict: 'pfa' });
+        let lote = linhasUp.slice(i, i + 500);
+        if (!comDataEmbarque) lote = lote.map(function (l) { const c = Object.assign({}, l); delete c.data_embarque; return c; });
+        let { error } = await supabaseClient.from('pfas_embarcadas').upsert(lote, { onConflict: 'pfa' });
+        // Coluna data_embarque ainda não criada (migracao_embarque.sql): grava sem ela em vez de falhar.
+        if (error && comDataEmbarque && /data_embarque/.test(error.message || '')) {
+          comDataEmbarque = false;
+          avisar('Aviso: coluna data_embarque não existe em pfas_embarcadas (rode migracao_embarque.sql) — gravando sem a data de embarque.');
+          lote = lote.map(function (l) { const c = Object.assign({}, l); delete c.data_embarque; return c; });
+          error = (await supabaseClient.from('pfas_embarcadas').upsert(lote, { onConflict: 'pfa' })).error;
+        }
         if (error) throw error;
       }
       avisar(linhasUp.length.toLocaleString('pt-BR') + ' NF(s) embarcada(s) gravadas no histórico acumulado.');

@@ -228,5 +228,29 @@ eq(Object.keys(dP).reduce(function (t, k) { return t + dP[k]; }, 0), 731000, 'di
 ok(dP['2026-10-06'] > dP['2026-10-05'], 'terça recebe mais forecast que segunda');
 eq(E.perfilSemana([{ dia: '2026-09-30', expedido: 1, backlog: 1 }], '2026-10-02'), null, 'sem histórico suficiente: sem perfil (divide por igual)');
 
+secao('histórico pelo NFs Embarcadas + Pendentes (16/10/2026)');
+{
+  const base = [{ dia: '2026-09-30', expedido: 20000, backlog: 90000 }, { dia: '2026-10-01', expedido: 18000, backlog: 85000 }];
+  const hist = [
+    { dia: '2026-10-01', expedido: 15822, backlog: 84594, entrada: 30000 },
+    { dia: '2026-10-02', expedido: 11868, backlog: 203208, entrada: 1000 },
+    { dia: '2026-10-03', entrada: 500 },
+    { dia: '2026-10-05', expedido: 27092, backlog: 198833, entrada: 4000 },
+  ];
+  const m = E.mesclarHistoricoOperacao(base, hist);
+  const d = function (x) { return m.filter(function (r) { return r.dia === x; })[0]; };
+  eq(d('2026-09-30').expedido, 20000, 'dia só da base continua igual');
+  eq([d('2026-10-01').expedido, d('2026-10-01').backlog], [15822, 84594], 'dia abastecido: NFs Embarcadas e Pendentes valem sobre a base');
+  eq([d('2026-10-03').expedido, d('2026-10-04').expedido], [0, 0], 'fim de semana dentro do período das NFs = 0 expedido');
+  eq(d('2026-10-03').entrada, 500, 'entrada pela data de importação');
+  const sr = E.montarSerieEmbarque(m, [], '2026-10-06', null, { total: 231538, por_situacao: {} });
+  const ix = function (x) { return sr.dias_iso.indexOf(x); };
+  eq(sr.entrada_efetiva[ix('2026-10-02')], 1000, 'entrada efetiva do dia = importado no dia');
+  eq(sr.saida_efetiva[ix('2026-10-02')], 11868, 'saída efetiva = NFs Embarcadas');
+  eq(sr.backlog_efetivo[ix('2026-10-02')], 203208, 'backlog efetivo = Pendentes do dia');
+  // sábado 03/10 sem Pendentes: 203.208 + 1.000 − 11.868 = 192.340; domingo: 192.340 + 500 − 0
+  eq([sr.backlog_efetivo[ix('2026-10-03')], sr.backlog_efetivo[ix('2026-10-04')]], [192340, 192840], 'fim de semana sem Pendentes: backlog anterior + entrada − saída');
+}
+
 console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
 process.exit(falhas === 0 ? 0 : 1);

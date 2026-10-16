@@ -132,3 +132,34 @@ create or replace function public.embarque_backlog_em_tela() returns jsonb langu
     'por_importacao', coalesce((select jsonb_object_agg(di, p) from (select coalesce(di, 'sem data') di, sum(pares) p from r group by 1) y), '{}'::jsonb),
     'grupos', coalesce(jsonb_agg(jsonb_build_object('m', m, 's', seg, 't', t, 'sit', sit, 'mi', mi, 'p', pares)), '[]'::jsonb)) from g;
 $$;
+
+-- ============================================================================
+-- Histórico do Embarque pelo que já é abastecido (16/10/2026): a Base de Embarque (.xlsx) deixou
+-- de ser enviada e o passado do gráfico ficava vazio. Agora, por dia:
+--   expedido = NFs Embarcadas do GCI pela data de embarque (coluna DATMOD do arquivo), sem CROSSDOC
+--              (transferência pro e-commerce, não é venda — o arquivo do time de embarque também não traz);
+--   backlog  = peças em tela no PRIMEIRO Pendentes abastecido no dia (o mais perto do "amanhecer");
+--   entrada  = pares das PFAs pela data de importação (PFA vista em qualquer Pendentes já abastecido).
+-- ============================================================================
+alter table pfas_embarcadas add column if not exists data_embarque date;
+create index if not exists pfas_embarcadas_data_embarque_idx on pfas_embarcadas (data_embarque);
+
+create or replace function public.embarque_historico_operacao(p_de date) returns jsonb language sql stable security invoker set search_path = public as $$
+  with snaps as (
+    select distinct on ((gerado_em at time zone 'America/Sao_Paulo')::date)
+           (gerado_em at time zone 'America/Sao_Paulo')::date as dia, gerado_em, (payload->'stats'->'pendentes'->>'pares')::int as backlog
+    from dashboard_snapshots where pagina = 'pfas' and (gerado_em at time zone 'America/Sao_Paulo')::date >= p_de
+    order by (gerado_em at time zone 'America/Sao_Paulo')::date, gerado_em),
+  exp as (
+    select data_embarque as dia, sum(qtd_total)::int as expedido, count(distinct nota)::int as notas
+    from pfas_embarcadas where data_embarque >= p_de and coalesce(operacao, '') <> 'CROSSDOC' group by 1),
+  pfa as (
+    select distinct on (x->>'pfa') x->>'pfa' as pfa, nullif(x->>'data_importacao', '')::date as di, (x->>'pares')::int as pares
+    from dashboard_snapshots s, jsonb_array_elements(s.payload->'pendentes') x
+    where s.pagina = 'pfas' order by x->>'pfa', s.gerado_em),
+  ent as (select di as dia, sum(pares)::int as entrada from pfa where di >= p_de group by 1),
+  dias as (select dia from snaps union select dia from exp union select dia from ent)
+  select coalesce(jsonb_agg(jsonb_build_object('dia', d.dia, 'backlog', s.backlog, 'backlog_em', s.gerado_em,
+    'expedido', e.expedido, 'notas', e.notas, 'entrada', n.entrada) order by d.dia), '[]'::jsonb)
+  from dias d left join snaps s using (dia) left join exp e using (dia) left join ent n using (dia);
+$$;
