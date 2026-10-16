@@ -1360,9 +1360,10 @@ tr.total > th, tr.total > td {
           colunas são lidas por posição de caractere, e qualquer reformatação quebra a leitura.
         </p>
         <div class="dropzone" id="dropzone">
-          Clique para selecionar o arquivo .txt
+          <span id="dropzoneTexto">Clique para selecionar o arquivo .txt</span>
           <input type="file" id="inputArquivo" accept=".txt,text/plain" style="display:none">
         </div>
+        <button class="btn-mini" id="btnProcessarEstoque" style="margin-top:12px" disabled>Processar Posição de Estoque</button>
         <div class="aviso ok" id="okIngest" style="display:none;margin-top:10px"></div>
         <div class="log" id="logIngest"></div>
       </div>
@@ -6874,9 +6875,21 @@ function exportarCSVValidacao() {
 document.getElementById('dropzone').addEventListener('click', function () {
   document.getElementById('inputArquivo').click();
 });
-document.getElementById('inputArquivo').addEventListener('change', async function (ev) {
-  const file = ev.target.files && ev.target.files[0];
+// Escolher o arquivo só seleciona; processa no botão, como os outros abastecimentos (16/10/2026).
+let arquivoEstoqueSelecionado = null;
+document.getElementById('inputArquivo').addEventListener('change', function (ev) {
+  arquivoEstoqueSelecionado = (ev.target.files && ev.target.files[0]) || null;
+  document.getElementById('dropzoneTexto').textContent = arquivoEstoqueSelecionado
+    ? '✓ ' + arquivoEstoqueSelecionado.name : 'Clique para selecionar o arquivo .txt';
+  document.getElementById('btnProcessarEstoque').disabled = !arquivoEstoqueSelecionado;
+  document.getElementById('okIngest').style.display = 'none';
+  ev.target.value = '';   // permite reenviar o mesmo arquivo
+});
+document.getElementById('btnProcessarEstoque').addEventListener('click', async function () {
+  const file = arquivoEstoqueSelecionado;
   if (!file) return;
+  const btn = this;
+  btn.disabled = true;
   const log = document.getElementById('logIngest');
   const ok = document.getElementById('okIngest');
   ok.style.display = 'none';
@@ -6891,11 +6904,12 @@ document.getElementById('inputArquivo').addEventListener('change', async functio
     // precisar voltar pra essa tela toda vez.
     ok.textContent = '✔ Processado com sucesso — pode selecionar o próximo arquivo.';
     ok.style.display = '';
+    arquivoEstoqueSelecionado = null;
+    document.getElementById('dropzoneTexto').textContent = 'Clique para selecionar o arquivo .txt';
   } catch (e) {
     escrever('ERRO: ' + (e && e.message ? e.message : String(e)));
     console.error(e);
-  } finally {
-    ev.target.value = '';   // permite reenviar o mesmo arquivo
+    btn.disabled = false;
   }
 });
 
