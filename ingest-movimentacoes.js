@@ -666,6 +666,23 @@ function calcularSemPlanejamento(pecasPorFamiliaDia, planejamento, mapaFamilias,
    agosto/2026 eram 251.639 pç contra 10.818 ainda paradas no corredor —,
    então o KPI "ainda no corredor" passa a ler daqui (23/09/2026). Lista
    por item pra tela filtrar por período e exportar. */
+/* Baixa Pulmão -> corredor que ainda não foi guardada no Picking (o último TL+ do volume é a própria baixa).
+   Desde 20/10/2026 conta como RESSUPRIMENTO de quem baixou (pedido do usuário: a descida do T03 pro T01
+   guardar tem que aparecer). Quando o volume for guardado num Kardex seguinte, ele passa a contar na
+   chegada ao Picking (e a baixa deixa de contar) — a peça nunca conta duas vezes. */
+function baixasPendentes(movs, pernas) {
+  const ultimo = new Map();
+  pernas.forEach(function (p) {
+    if (!ehEntradaNoEndereco(p) || !p.volume) return;
+    const a = ultimo.get(p.volume);
+    if (!a || p.dia > a.dia || (p.dia === a.dia && p.minutos > a.minutos)) ultimo.set(p.volume, p);
+  });
+  return new Set(movs.filter(ehBaixaPendente).filter(function (m) {
+    const u = ultimo.get(m.volume);
+    return u && u.dia === m.dia && u.minutos === m.minutos && u.endereco === m.destino.endereco;
+  }));
+}
+
 function construirFilaItens(movs, pernas) {
   const ultimo = new Map();
   pernas.forEach(function (p) {
@@ -721,6 +738,8 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
 
   let pecasRessupridas = 0, movimentosRessuprimento = 0;
   let pecasEmTransito = 0, movimentosEmTransito = 0;
+  const pendentes = baixasPendentes(movs, parsed.pernas);
+  let pecasBaixadasSemPicking = 0, movimentosBaixadosSemPicking = 0;
   let semFamiliaPecas = 0, semFamiliaMovimentos = 0;
   const artigosSemFamilia = new Set();
   // Quantos movimentos tiveram o turno resolvido pelo cadastro real do
@@ -761,7 +780,9 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
     r.pecas += m.qtd; r.movimentos += 1;
 
     if (ehBaixaPendente(m)) { pecasEmTransito += m.qtd; movimentosEmTransito += 1; }
-    if (!ehRessuprimento(m)) return;
+    const baixadaSemPicking = pendentes.has(m);
+    if (!ehRessuprimento(m) && !baixadaSemPicking) return;
+    if (baixadaSemPicking) { pecasBaixadasSemPicking += m.qtd; movimentosBaixadosSemPicking += 1; }
 
     pecasRessupridas += m.qtd;
     movimentosRessuprimento += 1;
@@ -853,6 +874,9 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
       movimentos_ressuprimento: movimentosRessuprimento,
       pecas_em_transito: pecasEmTransito,
       movimentos_em_transito: movimentosEmTransito,
+      // parte de pecas_ressupridas que foi baixada pro corredor e ainda não chegou no Picking
+      pecas_baixadas_sem_picking: pecasBaixadasSemPicking,
+      movimentos_baixados_sem_picking: movimentosBaixadosSemPicking,
       dias_com_movimento: dias.length,
       operadores_distintos: operadores.size,
     },

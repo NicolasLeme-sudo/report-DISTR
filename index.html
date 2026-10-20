@@ -3075,12 +3075,31 @@ function hojeISO() {
 // recortam por turno quando o filtro está ativo.
 let modoFilaRessuprimento = 'geral'; // fixo em 'geral' desde 24/09/2026 (chips removidos do card)
 function alternarModoFila(modo) { modoFilaRessuprimento = modo; renderizarRessuprimento(); }
+// Clique numa coluna do gráfico "Ressuprimento por dia" recorta a Fila em andamento pelo dia
+// (e pelo turno, se clicou numa cor) — pedido do usuário, 20/10/2026. Clicar de novo limpa.
+let filaRecorteClique = null; // { dia, turno|null }
+function atualizarKpiFila() {
+  const itens = filaItensVisiveis();
+  const v = document.getElementById('kpiFilaValor'), sub = document.getElementById('kpiFilaSub'), tag = document.getElementById('kpiFilaRecorte');
+  if (!v || !itens) return;
+  v.textContent = fmtInt(itens.reduce(function (t, f) { return t + f.qtd; }, 0));
+  sub.textContent = fmtInt(itens.length) + ' baixa(s) de material sem retorno ao Pulmão' +
+    (filaRecorteClique ? ' · baixadas em ' + formatarDataSimples(filaRecorteClique.dia) + (filaRecorteClique.turno ? ' (' + ROT_TURNO[filaRecorteClique.turno] + ')' : '') : '');
+  tag.style.display = filaRecorteClique ? '' : 'none';
+  if (filaRecorteClique) document.getElementById('kpiFilaRecorteTxt').textContent = formatarDataSimples(filaRecorteClique.dia).slice(0, 5) + (filaRecorteClique.turno ? ' ' + ROT_TURNO[filaRecorteClique.turno] : '') + ' ';
+}
+function limparRecorteFila(ev) { if (ev) ev.stopPropagation(); filaRecorteClique = null; atualizarKpiFila(); }
 function filaItensVisiveis() {
   const m = dadosMovimentacoes;
   if (!m || !m.fila_itens) return null;
   const doTurno = filtroTurnoRessuprimento.size
     ? m.fila_itens.filter(function (f) { return filtroTurnoRessuprimento.has(normalizarTurnoLegado(f.turno)); })
     : m.fila_itens;
+  if (filaRecorteClique) {
+    return doTurno.filter(function (f) {
+      return f.dia === filaRecorteClique.dia && (!filaRecorteClique.turno || normalizarTurnoLegado(f.turno) === filaRecorteClique.turno);
+    });
+  }
   if (modoFilaRessuprimento !== 'periodo') return doTurno;
   return doTurno.filter(function (f) {
     return (!filtroHistDe || f.dia >= filtroHistDe) && (!filtroHistAte || f.dia <= filtroHistAte);
@@ -6075,7 +6094,7 @@ function blocoMovimentacoes() {
   const pecasFila = filaItens ? filaItens.reduce(function (s, f) { return s + f.qtd; }, 0) : null;
   // Só o CSV, ao lado do título (24/09/2026) — os chips Fila geral/Período
   // filtrado saíram; a fila é sempre a geral (modoFilaRessuprimento = 'geral').
-  const csvFila = '<span class="chip" style="font-size:10px;padding:2px 8px;cursor:pointer" onclick="exportarCSVFila()" ' +
+  const csvFila = '<span class="chip" style="font-size:10px;padding:2px 8px;cursor:pointer;white-space:nowrap" onclick="exportarCSVFila()" ' +
     'title="Exporta os itens da fila (volume, artigo, quem baixou, origem/destino)">⬇ CSV</span>';
 
   /* ---------- chips de turno (multi-seleção, 05/09/2026) ---------- */
@@ -6138,10 +6157,14 @@ function blocoMovimentacoes() {
     '<div class="kpi"><div class="rot">Média por dia</div>' +
       '<div class="val forte">' + fmtInt(mediaDia) + '</div>' +
       '<div class="sub">peças/dia · ' + fmtInt(avaliacaoDias.fechados.length) + ' dia(s) fechado(s)</div></div>' +
-    '<div class="kpi"><div class="rot" style="display:flex;justify-content:space-between;align-items:center;gap:6px">Fila em andamento' + csvFila + '</div>' +
-      '<div class="val forte" style="color:var(--amber)">' + (pecasFila !== null ? fmtInt(pecasFila) : '—') + '</div>' +
-      '<div class="sub">' + (pecasFila !== null
-        ? fmtInt(filaItens.length) + ' baixa(s) de material sem retorno ao Pulmão'
+    '<div class="kpi"><div class="rot" style="display:flex;justify-content:space-between;align-items:center;gap:6px">Fila em andamento' +
+        '<span style="display:flex;gap:4px;align-items:center"><span class="chip on" id="kpiFilaRecorte" style="font-size:10px;padding:2px 8px;cursor:pointer;white-space:nowrap;' + (filaRecorteClique ? '' : 'display:none') + '" ' +
+          'onclick="limparRecorteFila(event)" title="Fila recortada pelo dia clicado no gráfico — clique para voltar à fila inteira">' +
+          '<span id="kpiFilaRecorteTxt">' + (filaRecorteClique ? formatarDataSimples(filaRecorteClique.dia).slice(0, 5) + (filaRecorteClique.turno ? ' ' + ROT_TURNO[filaRecorteClique.turno] : '') + ' ' : '') + '</span><b>✕</b></span>' + csvFila + '</span></div>' +
+      '<div class="val forte" style="color:var(--amber)" id="kpiFilaValor">' + (pecasFila !== null ? fmtInt(pecasFila) : '—') + '</div>' +
+      '<div class="sub" id="kpiFilaSub">' + (pecasFila !== null
+        ? fmtInt(filaItens.length) + ' baixa(s) de material sem retorno ao Pulmão' +
+          (filaRecorteClique ? ' · baixadas em ' + formatarDataSimples(filaRecorteClique.dia) + (filaRecorteClique.turno ? ' (' + ROT_TURNO[filaRecorteClique.turno] + ')' : '') : '')
         : 'reprocesse o Kardex para listar a fila por item') + '</div></div>' +
   '</div>';
 
@@ -6475,7 +6498,7 @@ function blocoMovimentacoes() {
       '<button class="btn-mini" onclick="exportarCSVMovimentacoes()">⬇ CSV</button>' +
     '</div>' +
     '<div class="ressup-topo"><div class="ressup-filtros">' +
-      '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Conta o movimento que <strong>chega no Picking</strong> (Pulmão ou corredor de ressuprimento), uma peça só uma vez.</p>' +
+      '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Conta o movimento que <strong>chega no Picking</strong> (Pulmão ou corredor de ressuprimento) e também a <strong>baixa do Pulmão pro corredor que ainda não foi guardada</strong> (conta pra quem baixou; quando for guardada, passa a contar pra quem guardou) — uma peça só uma vez. Clique numa coluna para ver a Fila em andamento daquele dia.</p>' +
       seletorIntervalo +
       chipsTurno +
       chipsSegmentoDia +
@@ -6514,6 +6537,11 @@ let historicoRessupClique = [];
 function fecharSegDiaRessup() { const t = document.getElementById('tooltip-seg-ressup'); if (t) t.remove(); }
 function abrirSegDiaRessup(dia, turno, ev) {
   fecharSegDiaRessup();
+  // mesmo dia/turno clicado de novo = volta pra fila inteira
+  const mesmo = filaRecorteClique && filaRecorteClique.dia === dia && filaRecorteClique.turno === (turno || null);
+  filaRecorteClique = mesmo ? null : { dia: dia, turno: turno || null };
+  atualizarKpiFila();
+  if (mesmo) return;
   const turnos = turno ? [turno] : (filtroTurnoRessuprimento.size ? Array.from(filtroTurnoRessuprimento) : null);
   const porSeg = new Map();
   historicoRessupClique.forEach(function (h) {
