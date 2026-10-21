@@ -6602,9 +6602,14 @@ function blocoMovimentacoes() {
    pizza com a quebra por segmento, quantidade e %. Usa o mesmo recorte da tela
    (período, segmento; turno do clique ou os turnos filtrados). */
 let historicoRessupClique = [];
-function fecharSegDiaRessup() { const t = document.getElementById('tooltip-seg-ressup'); if (t) t.remove(); }
+// Fechar a janela (✕ ou clique fora) também tira o recorte da Fila em andamento (21/10/2026).
+function fecharSegDiaRessup(manterFila) {
+  const t = document.getElementById('tooltip-seg-ressup');
+  if (t) t.remove();
+  if (!manterFila && t && filaRecorteClique) { filaRecorteClique = null; atualizarKpiFila(); }
+}
 function abrirSegDiaRessup(dia, turno, ev) {
-  fecharSegDiaRessup();
+  fecharSegDiaRessup(true);
   // mesmo dia/turno clicado de novo = volta pra fila inteira
   const mesmo = filaRecorteClique && filaRecorteClique.dia === dia && filaRecorteClique.turno === (turno || null);
   filaRecorteClique = mesmo ? null : { dia: dia, turno: turno || null };
@@ -6646,7 +6651,7 @@ function abrirSegDiaRessup(dia, turno, ev) {
     '</div>';
   document.body.appendChild(el);
 }
-window.addEventListener('scroll', function () { fecharSegDiaRessup(); }, { passive: true });
+// Rolar a tela não fecha a janela (21/10/2026): ela fica flutuando pra dar pra ver a Fila em andamento lá em cima.
 
 function exportarCSVMovimentacoes() {
   const m = dadosMovimentacoes;
