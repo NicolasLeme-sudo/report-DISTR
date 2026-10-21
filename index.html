@@ -3393,10 +3393,59 @@ async function carregarHistoricoRessuprimento() {
     const { data, error } = await supabaseClient.from('ressuprimento_historico_diario')
       .select('dia, segmento, turno, pecas, movimentos')
       .gte('dia', filtroHistDe).lte('dia', filtroHistAte);
-    historicoRessuprimento = (!error && data) ? data : [];
+    histAlocacaoBruto = (!error && data) ? data : [];
   } catch (e) {
-    historicoRessuprimento = [];
+    histAlocacaoBruto = [];
   }
+  // Retirada do Pulmão (21/10/2026) — tabela ausente (migracao_retirada_pulmao.sql) vira lista vazia
+  try {
+    const [r, o] = await Promise.all([
+      supabaseClient.from('ressuprimento_retirada_diario').select('dia, segmento, turno, pecas, movimentos, diretas_pecas, diretas_movimentos')
+        .gte('dia', filtroHistDe).lte('dia', filtroHistAte),
+      supabaseClient.from('ressuprimento_retirada_operador').select('dia, turno, login').gte('dia', filtroHistDe).lte('dia', filtroHistAte),
+    ]);
+    histRetiradaBruto = (!r.error && r.data) ? r.data : [];
+    opsRetiradaBruto = (!o.error && o.data) ? o.data : [];
+    retiradaDisponivel = !r.error;
+  } catch (e) {
+    histRetiradaBruto = []; opsRetiradaBruto = []; retiradaDisponivel = false;
+  }
+  aplicarEtapaRessup();
+}
+
+/* Interruptor da tela Ressuprimento (21/10/2026): "Alocação no Picking" = quem guardou no Picking (a conta
+   de sempre, uma peça uma vez); "Retirada do Pulmão" = quem tirou do Pulmão (pro corredor ou direto pro
+   Picking); "Geral" = soma das duas atividades — o movimento direto Pulmão -> Picking é uma atividade só e
+   conta uma vez. O resto da tela (KPIs, gráfico, tabela, composição, operadores) lê o recorte escolhido. */
+let etapaRessup = 'alocacao';
+let histAlocacaoBruto = [], histRetiradaBruto = [], opsAlocacaoBruto = [], opsRetiradaBruto = [], retiradaDisponivel = false;
+function aplicarEtapaRessup() {
+  if (etapaRessup === 'retirada') {
+    historicoRessuprimento = histRetiradaBruto.map(function (h) { return { dia: h.dia, segmento: h.segmento, turno: h.turno, pecas: h.pecas, movimentos: h.movimentos }; });
+    historicoOperadorRessuprimento = opsRetiradaBruto;
+  } else if (etapaRessup === 'geral') {
+    const porChave = new Map();
+    const somar = function (h, sinal, pecas, movs) {
+      const k = h.dia + '|' + h.segmento + '|' + h.turno;
+      if (!porChave.has(k)) porChave.set(k, { dia: h.dia, segmento: h.segmento, turno: h.turno, pecas: 0, movimentos: 0 });
+      const x = porChave.get(k); x.pecas += sinal * (Number(pecas) || 0); x.movimentos += sinal * (Number(movs) || 0);
+    };
+    histAlocacaoBruto.forEach(function (h) { somar(h, 1, h.pecas, h.movimentos); });
+    histRetiradaBruto.forEach(function (h) { somar(h, 1, h.pecas, h.movimentos); somar(h, -1, h.diretas_pecas, h.diretas_movimentos); });
+    historicoRessuprimento = Array.from(porChave.values()).filter(function (x) { return x.pecas > 0 || x.movimentos > 0; });
+    const vistos = new Set();
+    historicoOperadorRessuprimento = opsAlocacaoBruto.concat(opsRetiradaBruto).filter(function (o) {
+      const k = o.dia + '|' + o.turno + '|' + o.login; if (vistos.has(k)) return false; vistos.add(k); return true;
+    });
+  } else {
+    historicoRessuprimento = histAlocacaoBruto;
+    historicoOperadorRessuprimento = opsAlocacaoBruto;
+  }
+}
+function alternarEtapaRessup(etapa) {
+  etapaRessup = etapa;
+  aplicarEtapaRessup();
+  const y = window.scrollY; renderizarRessuprimento(); window.scrollTo(0, y);
 }
 
 /* Histórico por família+turno (ressuprimento_familia_diario), mesmo
@@ -3429,10 +3478,11 @@ async function carregarHistoricoOperadorRessuprimento() {
     const { data, error } = await supabaseClient.from('ressuprimento_operador_diario')
       .select('dia, turno, login')
       .gte('dia', filtroHistDe).lte('dia', filtroHistAte);
-    historicoOperadorRessuprimento = (!error && data) ? data : [];
+    opsAlocacaoBruto = (!error && data) ? data : [];
   } catch (e) {
-    historicoOperadorRessuprimento = [];
+    opsAlocacaoBruto = [];
   }
+  aplicarEtapaRessup();
 }
 
 /* ============================================================
@@ -6010,6 +6060,7 @@ function usarUltimos10DiasHistorico() {
 
 function blocoMovimentacoes() {
   const m = dadosMovimentacoes;
+  aplicarEtapaRessup();
   const usaHistorico = historicoRessuprimento && historicoRessuprimento.length > 0;
   if (!m && !usaHistorico) {
     return '<div class="card">' +
@@ -6034,7 +6085,8 @@ function blocoMovimentacoes() {
   const historicoParaDias = filtroSegmentoRessuprimentoDia.size
     ? historicoRessuprimento.filter(function (h) { return filtroSegmentoRessuprimentoDia.has(h.segmento); })
     : historicoRessuprimento;
-  const dias = usaHistorico ? diasDoHistorico(historicoParaDias) : (m ? m.por_dia || [] : []);
+  const dias = usaHistorico ? diasDoHistorico(historicoParaDias)
+    : (m ? (etapaRessup === 'retirada' && m.por_dia_retirada ? m.por_dia_retirada : m.por_dia || []) : []);
   historicoRessupClique = usaHistorico ? historicoParaDias : [];
   const porTurnoFonte = usaHistorico ? porTurnoDoHistorico(historicoParaDias) : (m ? m.por_turno || [] : []);
 
@@ -6147,7 +6199,7 @@ function blocoMovimentacoes() {
   // então o aumento de fonte fica isolado por classe em vez de mexer na
   // regra global.
   const kpis = '<div class="kpi-row kpi-row-destaque">' +
-    '<div class="kpi"><div class="rot">Peças ressupridas</div>' +
+    '<div class="kpi"><div class="rot">' + (etapaRessup === 'retirada' ? 'Peças retiradas do Pulmão' : etapaRessup === 'geral' ? 'Peças movimentadas (retirada + alocação)' : 'Peças ressupridas') + '</div>' +
       '<div class="val forte">' + fmtInt(pecas) + '</div>' +
       '<div class="sub">' + (filtroTurnoRessuprimento.size ? rotuloTurnosSelecionados(filtroTurnoRessuprimento) + ' · ' : '') +
       fmtInt(diasComMovimento) + ' dias com movimento</div></div>' +
@@ -6495,10 +6547,27 @@ function blocoMovimentacoes() {
   return '<div class="card">' +
     '<div class="section-title" style="display:flex;align-items:center;justify-content:space-between">' +
       '<span>Ressuprimento por dia — ' + escapar(periodo) + '</span>' +
-      '<button class="btn-mini" onclick="exportarCSVMovimentacoes()">⬇ CSV</button>' +
+      '<span style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+        '<span class="seg-toggle" title="Qual atividade contar">' +
+          [['alocacao', 'Alocação no Picking'], ['retirada', 'Retirada do Pulmão'], ['geral', 'Geral (soma)']].map(function (e) {
+            return '<button type="button" class="seg-btn' + (etapaRessup === e[0] ? ' ativo' : '') + '" onclick="alternarEtapaRessup(\'' + e[0] + '\')">' + e[1] + '</button>';
+          }).join('') +
+        '</span>' +
+        '<button class="btn-mini" onclick="exportarCSVMovimentacoes()">⬇ CSV</button>' +
+      '</span>' +
     '</div>' +
     '<div class="ressup-topo"><div class="ressup-filtros">' +
-      '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Conta o movimento que <strong>chega no Picking</strong> (Pulmão ou corredor de ressuprimento) e também a <strong>baixa do Pulmão pro corredor que ainda não foi guardada</strong> (conta pra quem baixou; quando for guardada, passa a contar pra quem guardou) — uma peça só uma vez. Clique numa coluna para ver a Fila em andamento daquele dia.</p>' +
+      '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' +
+        (etapaRessup === 'retirada'
+          ? 'Conta quem <strong>tirou do Pulmão</strong> — pro corredor de ressuprimento ou direto pro Picking —, no dia e turno da retirada.'
+          : etapaRessup === 'geral'
+            ? 'Soma as duas atividades: <strong>retirada do Pulmão</strong> (quem desceu) + <strong>alocação no Picking</strong> (quem guardou). O movimento direto Pulmão → Picking é uma atividade só e conta uma vez.'
+            : 'Conta quem <strong>guardou no Picking</strong> (vindo do Pulmão ou do corredor de ressuprimento) — uma peça só uma vez.') +
+        ' Clique numa coluna para ver a Fila em andamento daquele dia.</p>' +
+      (etapaRessup !== 'alocacao' && !histRetiradaBruto.length
+        ? '<div class="aviso" style="margin-bottom:10px">Sem dados de <strong>retirada do Pulmão</strong> neste período' +
+          (retiradaDisponivel ? ' — reprocesse o Kardex em Admin › Abastecimento.' : ' — rode <code>migracao_retirada_pulmao.sql</code> no Supabase e reprocesse o Kardex.') + '</div>'
+        : '') +
       seletorIntervalo +
       chipsTurno +
       chipsSegmentoDia +

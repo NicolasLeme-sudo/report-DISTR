@@ -528,6 +528,13 @@ function casarMovimentos(pernas) {
 function ehRessuprimento(mov) {
   return mov.destino.zona === 'PICKING' && mov.origem.zona !== 'PICKING';
 }
+// Retirada do Pulmão: sai do Pulmão pro corredor de ressuprimento (fora a rua 98, staging de recebimento)
+// ou direto pro Picking. Pulmão -> Pulmão é realocação, não conta.
+function ehRetiradaPulmao(mov) {
+  if (mov.origem.zona !== 'PULMAO') return false;
+  if (mov.destino.zona === 'PICKING') return true;
+  return mov.destino.zona === 'TRANSITO' && !RUAS_FORA_DA_FILA[Number(mov.destino.rua) || 0];
+}
 function ehBaixaPendente(mov) {
   if (mov.origem.zona !== 'PULMAO' || mov.destino.zona !== 'TRANSITO') return false;
   return !RUAS_FORA_DA_FILA[Number(mov.destino.rua) || 0];
@@ -666,23 +673,6 @@ function calcularSemPlanejamento(pecasPorFamiliaDia, planejamento, mapaFamilias,
    agosto/2026 eram 251.639 pç contra 10.818 ainda paradas no corredor —,
    então o KPI "ainda no corredor" passa a ler daqui (23/09/2026). Lista
    por item pra tela filtrar por período e exportar. */
-/* Baixa Pulmão -> corredor que ainda não foi guardada no Picking (o último TL+ do volume é a própria baixa).
-   Desde 20/10/2026 conta como RESSUPRIMENTO de quem baixou (pedido do usuário: a descida do T03 pro T01
-   guardar tem que aparecer). Quando o volume for guardado num Kardex seguinte, ele passa a contar na
-   chegada ao Picking (e a baixa deixa de contar) — a peça nunca conta duas vezes. */
-function baixasPendentes(movs, pernas) {
-  const ultimo = new Map();
-  pernas.forEach(function (p) {
-    if (!ehEntradaNoEndereco(p) || !p.volume) return;
-    const a = ultimo.get(p.volume);
-    if (!a || p.dia > a.dia || (p.dia === a.dia && p.minutos > a.minutos)) ultimo.set(p.volume, p);
-  });
-  return new Set(movs.filter(ehBaixaPendente).filter(function (m) {
-    const u = ultimo.get(m.volume);
-    return u && u.dia === m.dia && u.minutos === m.minutos && u.endereco === m.destino.endereco;
-  }));
-}
-
 function construirFilaItens(movs, pernas) {
   const ultimo = new Map();
   pernas.forEach(function (p) {
@@ -738,8 +728,13 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
 
   let pecasRessupridas = 0, movimentosRessuprimento = 0;
   let pecasEmTransito = 0, movimentosEmTransito = 0;
-  const pendentes = baixasPendentes(movs, parsed.pernas);
-  let pecasBaixadasSemPicking = 0, movimentosBaixadosSemPicking = 0;
+  // RETIRADA DO PULMÃO (21/10/2026): quem tirou do Pulmão — pro corredor de ressuprimento ou direto pro
+  // Picking — no dia/turno da retirada. Separado da ALOCAÇÃO NO PICKING (quem guardou, a conta de sempre):
+  // a tela alterna entre as duas e mostra a soma (o direto Pulmão -> Picking é uma atividade só, conta uma vez).
+  const porDiaSegmentoTurnoRetirada = new Map();
+  const porDiaTurnoOperadorRetirada = new Map();
+  const porDiaRetirada = new Map();
+  let pecasRetiradas = 0, movimentosRetirada = 0, pecasDiretas = 0, movimentosDiretos = 0;
   let semFamiliaPecas = 0, semFamiliaMovimentos = 0;
   const artigosSemFamilia = new Set();
   // Quantos movimentos tiveram o turno resolvido pelo cadastro real do
@@ -780,9 +775,28 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
     r.pecas += m.qtd; r.movimentos += 1;
 
     if (ehBaixaPendente(m)) { pecasEmTransito += m.qtd; movimentosEmTransito += 1; }
-    const baixadaSemPicking = pendentes.has(m);
-    if (!ehRessuprimento(m) && !baixadaSemPicking) return;
-    if (baixadaSemPicking) { pecasBaixadasSemPicking += m.qtd; movimentosBaixadosSemPicking += 1; }
+    if (ehRetiradaPulmao(m)) {
+      const famR = mapaArtigoFamilia.get(m.artigo);
+      const segR = segmentoMacroSeDisponivel(famR ? mapaFamilias.get(famR) : null) || 'SEM FAMÍLIA';
+      const direto = m.destino.zona === 'PICKING';
+      pecasRetiradas += m.qtd; movimentosRetirada += 1;
+      if (direto) { pecasDiretas += m.qtd; movimentosDiretos += 1; }
+      const kR = m.dia + '|' + segR + '|' + m.turno;
+      if (!porDiaSegmentoTurnoRetirada.has(kR)) {
+        porDiaSegmentoTurnoRetirada.set(kR, { dia: m.dia, segmento: segR, turno: m.turno, pecas: 0, movimentos: 0, diretas_pecas: 0, diretas_movimentos: 0 });
+      }
+      const xR = porDiaSegmentoTurnoRetirada.get(kR);
+      xR.pecas += m.qtd; xR.movimentos += 1;
+      if (direto) { xR.diretas_pecas += m.qtd; xR.diretas_movimentos += 1; }
+      const kO = m.dia + '|' + m.turno + '|' + m.login;
+      if (!porDiaTurnoOperadorRetirada.has(kO)) porDiaTurnoOperadorRetirada.set(kO, { dia: m.dia, turno: m.turno, login: m.login, nome: m.nome });
+      if (!porDiaRetirada.has(m.dia)) porDiaRetirada.set(m.dia, { dia: m.dia, pecas: 0, movimentos: 0, turnos: {}, operadores: new Set() });
+      const dR = porDiaRetirada.get(m.dia);
+      dR.pecas += m.qtd; dR.movimentos += 1; dR.operadores.add(m.login);
+      if (!dR.turnos[m.turno]) dR.turnos[m.turno] = { pecas: 0, movimentos: 0 };
+      dR.turnos[m.turno].pecas += m.qtd; dR.turnos[m.turno].movimentos += 1;
+    }
+    if (!ehRessuprimento(m)) return;
 
     pecasRessupridas += m.qtd;
     movimentosRessuprimento += 1;
@@ -874,9 +888,11 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
       movimentos_ressuprimento: movimentosRessuprimento,
       pecas_em_transito: pecasEmTransito,
       movimentos_em_transito: movimentosEmTransito,
-      // parte de pecas_ressupridas que foi baixada pro corredor e ainda não chegou no Picking
-      pecas_baixadas_sem_picking: pecasBaixadasSemPicking,
-      movimentos_baixados_sem_picking: movimentosBaixadosSemPicking,
+      // Retirada do Pulmão (pro corredor ou direto pro Picking) — diretas = parte que já foi direto pro Picking
+      pecas_retiradas: pecasRetiradas,
+      movimentos_retirada: movimentosRetirada,
+      pecas_diretas: pecasDiretas,
+      movimentos_diretos: movimentosDiretos,
       dias_com_movimento: dias.length,
       operadores_distintos: operadores.size,
     },
@@ -891,6 +907,13 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
     // turno) pra alimentar o histórico contínuo de "Ressuprimento por dia"
     // na tela — ver processarMovimentacoes.
     historico_diario: Array.from(porDiaSegmentoTurno.values()),
+    // Retirada do Pulmão por dia+segmento+turno e quem retirou -> ressuprimento_retirada_diario /
+    // ressuprimento_retirada_operador (migracao_retirada_pulmao.sql)
+    historico_retirada: Array.from(porDiaSegmentoTurnoRetirada.values()),
+    historico_retirada_operador: Array.from(porDiaTurnoOperadorRetirada.values()),
+    por_dia_retirada: Array.from(porDiaRetirada.values()).map(function (d) {
+      return { dia: d.dia, pecas: d.pecas, movimentos: d.movimentos, turnos: d.turnos, operadores: d.operadores.size };
+    }).sort(function (a, b) { return a.dia < b.dia ? -1 : 1; }),
     // Vira linhas de ressuprimento_familia_diario (uma por dia+família+turno)
     // — histórico acumulado que alimenta a RECLASSIFICAÇÃO de D0/D-1/
     // pendente/sem-planejamento (agregando os turnos) e a quebra por turno
@@ -1066,6 +1089,7 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
   await upsertHistoricoDiario(supabaseClient, payload.historico_diario, avisar);
   await upsertHistoricoFamiliaDiario(supabaseClient, payload.historico_diario_familia, avisar);
   await upsertHistoricoOperadorDiario(supabaseClient, payload.historico_diario_operador, avisar);
+  await upsertHistoricoRetirada(supabaseClient, payload, avisar);
   await registrarUltimosMovimentos(supabaseClient, construirUltimosMovimentos(parsed.pernas), avisar);
 
   avisar('Concluído.');
@@ -1161,6 +1185,7 @@ async function processarKardexGrande(supabaseClient, file, avisar, opcoes) {
     await upsertHistoricoDiario(supabaseClient, payload.historico_diario, avisar);
     await upsertHistoricoFamiliaDiario(supabaseClient, payload.historico_diario_familia, avisar);
     await upsertHistoricoOperadorDiario(supabaseClient, payload.historico_diario_operador, avisar);
+    await upsertHistoricoRetirada(supabaseClient, payload, avisar);
     await registrarUltimosMovimentos(supabaseClient, construirUltimosMovimentos(parsed.pernas), avisar);
 
     entradas = mesclarEntradasPorVolume(entradas, parsed.pernas, payload.entradas_volume);
@@ -1204,6 +1229,28 @@ async function processarKardexGrande(supabaseClient, file, avisar, opcoes) {
    antes sobrescreve os dias daquele período — o arquivo mais recente sempre
    vence, sem duplicar nem exigir limpeza manual.
    ============================================================================ */
+/* Retirada do Pulmão (21/10/2026): upsert por dia+segmento+turno e por dia+turno+login. Tabela ausente
+   (migracao_retirada_pulmao.sql não rodada) só avisa — o resto do processamento segue. */
+async function upsertHistoricoRetirada(supabaseClient, payload, onAviso) {
+  const avisar = onAviso || function () {};
+  const linhas = (payload.historico_retirada || []), ops = (payload.historico_retirada_operador || []);
+  if (!linhas.length) return;
+  try {
+    for (let i = 0; i < linhas.length; i += 500) {
+      const { error } = await supabaseClient.from('ressuprimento_retirada_diario').upsert(linhas.slice(i, i + 500), { onConflict: 'dia,segmento,turno' });
+      if (error) throw error;
+    }
+    for (let i = 0; i < ops.length; i += 500) {
+      const lote = ops.slice(i, i + 500).map(function (o) { return { dia: o.dia, turno: o.turno, login: o.login, nome: o.nome || null }; });
+      const { error } = await supabaseClient.from('ressuprimento_retirada_operador').upsert(lote, { onConflict: 'dia,turno,login' });
+      if (error) throw error;
+    }
+    avisar(linhas.length.toLocaleString('pt-BR') + ' linha(s) de retirada do Pulmão gravadas no histórico.');
+  } catch (e) {
+    avisar('Aviso: não deu pra gravar a retirada do Pulmão (' + (e && e.message) + ') — rode migracao_retirada_pulmao.sql no Supabase.');
+  }
+}
+
 const LOTE_HISTORICO_DIARIO = 500;
 async function upsertHistoricoDiario(supabaseClient, linhas, onAviso) {
   const avisar = onAviso || function () {};
@@ -1287,6 +1334,7 @@ async function upsertHistoricoOperadorDiario(supabaseClient, linhas, onAviso) {
 
 window.processarMovimentacoes = processarMovimentacoes;
 window.upsertHistoricoDiario = upsertHistoricoDiario;
+window.upsertHistoricoRetirada = upsertHistoricoRetirada;
 window.processarKardexGrande = processarKardexGrande;
 window.criarLeitorKardex = criarLeitorKardex;
 window.mesclarFilaItens = mesclarFilaItens;

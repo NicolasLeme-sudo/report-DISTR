@@ -185,22 +185,31 @@ eq(snapDoisSaltos.total.movimentos_ressuprimento, 1, 'só o salto que chega no P
 eq(snapDoisSaltos.total.pecas_em_transito, 100, 'o salto Pulmão -> trânsito aparece como fila em andamento');
 
 /* ------------------------------------------------------------------ */
-console.log('\n=== baixa pro corredor ainda não guardada conta como ressuprimento de quem baixou (20/10/2026) ===');
+console.log('\n=== retirada do Pulmão x alocação no Picking (21/10/2026) ===');
 const arquivoBaixaT03 = [
   'VULSP|MOVIMENTOS|de:19/10/2026|ate:20/10/2026', CAB,
-  // T03 baixa 30 pç pro corredor e ninguém guarda ainda: CONTA pro T03 (dia 19)
+  // T03 baixa 30 pç pro corredor e ninguém guarda ainda
   linha('C1', 'PT', '40', '19/10/26 22:00', 'TL-', 'RA', '30,000', ' 05,09,010', 'VA', 'EX3', 'OP 3'),
   linha('C1', 'PT', '40', '19/10/26 22:00', 'TL+', 'RA', '30,000', ' 500,01,001', 'VA', 'EX3', 'OP 3'),
-  // T03 baixa 12 pç e o T01 guarda de manhã: conta UMA vez, pro T01 (dia 20)
+  // T03 baixa 12 pç e o T01 guarda de manhã
   linha('C2', 'PT', '41', '19/10/26 23:00', 'TL-', 'RB', '12,000', ' 05,09,011', 'VB', 'EX3', 'OP 3'),
   linha('C2', 'PT', '41', '19/10/26 23:00', 'TL+', 'RB', '12,000', ' 500,01,002', 'VB', 'EX3', 'OP 3'),
   linha('C2', 'PT', '41', '20/10/26 07:00', 'TL-', 'RC', '12,000', ' 500,01,002', 'VB', 'EX1', 'OP 1'),
   linha('C2', 'PT', '41', '20/10/26 07:00', 'TL+', 'RC', '12,000', ' 05,01,010', 'VB', 'EX1', 'OP 1'),
+  // direto Pulmão -> Picking (uma atividade só)
+  linha('C3', 'PT', '42', '20/10/26 08:00', 'TL-', 'RD', '5,000', ' 05,09,012', 'VC', 'EX1', 'OP 1'),
+  linha('C3', 'PT', '42', '20/10/26 08:00', 'TL+', 'RD', '5,000', ' 05,01,011', 'VC', 'EX1', 'OP 1'),
+  // Pulmão -> rua 98 (staging de recebimento): não é retirada pra ressuprimento
+  linha('C4', 'PT', '43', '20/10/26 09:00', 'TL-', 'RE', '7,000', ' 05,09,013', 'VD', 'EX1', 'OP 1'),
+  linha('C4', 'PT', '43', '20/10/26 09:00', 'TL+', 'RE', '7,000', ' 98,01,001', 'VD', 'EX1', 'OP 1'),
 ].join('\r\n');
 const snapBaixa = ctx.construirSnapshotMovimentacoes(ctx.parsearKardex(arquivoBaixaT03), { arquivo: 't.txt' });
-eq(snapBaixa.total.pecas_ressupridas, 42, '30 baixadas e não guardadas + 12 guardadas (sem contar duas vezes)');
-eq(snapBaixa.total.pecas_baixadas_sem_picking, 30, 'parte que ainda está no corredor');
-eq(snapBaixa.por_dia.map(function (d) { return [d.dia, d.pecas]; }), [['2026-10-19', 30], ['2026-10-20', 12]], 'a baixa conta no dia em que foi feita; a guardada, no dia em que chegou no Picking');
+eq(snapBaixa.total.pecas_ressupridas, 17, 'alocação no Picking: 12 guardadas + 5 diretas (a baixa de 30 ainda no corredor não conta)');
+eq(snapBaixa.total.pecas_retiradas, 47, 'retirada do Pulmão: 30 + 12 + 5 (rua 98 fora)');
+eq(snapBaixa.total.pecas_diretas, 5, 'parte da retirada que foi direto pro Picking');
+eq(snapBaixa.por_dia_retirada.map(function (d) { return [d.dia, d.pecas]; }), [['2026-10-19', 42], ['2026-10-20', 5]], 'retirada conta no dia de quem desceu');
+eq(snapBaixa.historico_retirada.reduce(function (t, h) { return t + h.pecas - h.diretas_pecas; }, 0) + snapBaixa.total.pecas_ressupridas, 59,
+  'geral = 47 retiradas + 17 alocadas − 5 diretas (direto conta uma vez)');
 
 /* ------------------------------------------------------------------ */
 console.log('\n=== fila em andamento: rua 98 é staging de RECEBIMENTO, não fila de ressuprimento ===');
@@ -589,7 +598,7 @@ console.log('\n=== processarMovimentacoes — dim_artigo_familia NÃO tem coluna
   eq(c1.reg.snapshots[0].payload.marca, 'atual', 'carga de ano antigo mantém o snapshot atual da tela');
   eq(c1.reg.snapshots[0].payload.entradas_volume.VX[3], '2026-09-20', '… preservando as entradas por volume que já existiam');
   eq(c1.reg.snapshots[0].payload.entradas_volume.V4 && c1.reg.snapshots[0].payload.entradas_volume.V4[0], '500', '… e somando a entrada do volume que ficou na rua 500');
-  eq(c1.reg.snapshots[0].payload.carga_em_partes.pecas_ressupridas, 26, 'total do arquivo inteiro (10+7+5 + 4 baixadas pro corredor e não guardadas)');
+  eq(c1.reg.snapshots[0].payload.carga_em_partes.pecas_ressupridas, 22, 'total do arquivo inteiro (10+7+5)');
   ok(c1.reg.upserts.ressuprimento_familia_diario.length > 0 && c1.reg.upserts.ressuprimento_operador_diario.length > 0, 'grava família e operador também');
 
   // Arquivo mais recente que o snapshot: vira a tela (último lote), sem historico_* no payload.
