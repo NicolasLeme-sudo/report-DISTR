@@ -1078,19 +1078,20 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
     avisar('Carga de histórico (arquivo até ' + ateArquivo + ', anterior ao último Kardex publicado) — a tela continua com o Kardex atual; só o histórico diário e as entradas por volume foram atualizados.');
   }
 
-  avisar('Publicando o snapshot…');
-  const { error } = await supabaseClient.from('dashboard_snapshots').insert({
-    pagina: 'ressuprimento_mov',
-    payload: snapshotPublicar,
-    gerado_em: new Date().toISOString(),
-  });
-  if (error) throw error;
-
+  // Histórico ANTES do snapshot (21/10/2026): se a publicação falhar, o histórico do período já ficou gravado.
   await upsertHistoricoDiario(supabaseClient, payload.historico_diario, avisar);
   await upsertHistoricoFamiliaDiario(supabaseClient, payload.historico_diario_familia, avisar);
   await upsertHistoricoOperadorDiario(supabaseClient, payload.historico_diario_operador, avisar);
   await upsertHistoricoRetirada(supabaseClient, payload, avisar);
   await registrarUltimosMovimentos(supabaseClient, construirUltimosMovimentos(parsed.pernas), avisar);
+
+  avisar('Publicando o snapshot…');
+  const { error } = await supabaseClient.from('dashboard_snapshots').insert({
+    pagina: 'ressuprimento_mov',
+    payload: semHistoricoNoSnapshot(snapshotPublicar),
+    gerado_em: new Date().toISOString(),
+  });
+  if (error) throw error;
 
   avisar('Concluído.');
   return payload;
@@ -1194,8 +1195,7 @@ async function processarKardexGrande(supabaseClient, file, avisar, opcoes) {
     pecasTotal += payload.total.pecas_ressupridas;
     movsTotal += payload.total.movimentos_ressuprimento;
     ignoradasOutroTipo += payload.ignoradas_outro_tipo || 0;
-    delete payload.historico_diario; delete payload.historico_diario_familia; delete payload.historico_diario_operador;
-    ultimoPayload = payload;
+    ultimoPayload = semHistoricoNoSnapshot(payload);
   }
 
   const resumoCarga = { arquivo: file.name, meses: mesesOrdem, pecas_ressupridas: pecasTotal,
@@ -1249,6 +1249,16 @@ async function upsertHistoricoRetirada(supabaseClient, payload, onAviso) {
   } catch (e) {
     avisar('Aviso: não deu pra gravar a retirada do Pulmão (' + (e && e.message) + ') — rode migracao_retirada_pulmao.sql no Supabase.');
   }
+}
+
+/* As listas de histórico (dia x segmento/família/operador x turno, retirada) já vão pras tabelas próprias e a
+   tela lê de lá — no snapshot elas só pesam. Kardex de 41 dias estourou o tempo do insert (statement timeout,
+   21/10/2026): o snapshot é publicado sem elas. */
+function semHistoricoNoSnapshot(payload) {
+  const p = Object.assign({}, payload);
+  ['historico_diario', 'historico_diario_familia', 'historico_diario_operador', 'historico_retirada', 'historico_retirada_operador']
+    .forEach(function (k) { delete p[k]; });
+  return p;
 }
 
 const LOTE_HISTORICO_DIARIO = 500;
@@ -1335,6 +1345,7 @@ async function upsertHistoricoOperadorDiario(supabaseClient, linhas, onAviso) {
 window.processarMovimentacoes = processarMovimentacoes;
 window.upsertHistoricoDiario = upsertHistoricoDiario;
 window.upsertHistoricoRetirada = upsertHistoricoRetirada;
+window.semHistoricoNoSnapshot = semHistoricoNoSnapshot;
 window.processarKardexGrande = processarKardexGrande;
 window.criarLeitorKardex = criarLeitorKardex;
 window.mesclarFilaItens = mesclarFilaItens;
