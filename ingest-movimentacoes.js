@@ -730,7 +730,7 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
   let pecasEmTransito = 0, movimentosEmTransito = 0;
   // RETIRADA DO PULMÃO (21/10/2026): quem tirou do Pulmão — pro corredor de ressuprimento ou direto pro
   // Picking — no dia/turno da retirada. Separado da ALOCAÇÃO NO PICKING (quem guardou, a conta de sempre):
-  // a tela alterna entre as duas e mostra a soma (o direto Pulmão -> Picking é uma atividade só, conta uma vez).
+  // a tela alterna entre as duas e mostra a soma simples (retirada + alocação).
   const porDiaSegmentoTurnoRetirada = new Map();
   const porDiaTurnoOperadorRetirada = new Map();
   const porDiaRetirada = new Map();

@@ -208,8 +208,8 @@ eq(snapBaixa.total.pecas_ressupridas, 17, 'alocação no Picking: 12 guardadas +
 eq(snapBaixa.total.pecas_retiradas, 47, 'retirada do Pulmão: 30 + 12 + 5 (rua 98 fora)');
 eq(snapBaixa.total.pecas_diretas, 5, 'parte da retirada que foi direto pro Picking');
 eq(snapBaixa.por_dia_retirada.map(function (d) { return [d.dia, d.pecas]; }), [['2026-10-19', 42], ['2026-10-20', 5]], 'retirada conta no dia de quem desceu');
-eq(snapBaixa.historico_retirada.reduce(function (t, h) { return t + h.pecas - h.diretas_pecas; }, 0) + snapBaixa.total.pecas_ressupridas, 59,
-  'geral = 47 retiradas + 17 alocadas − 5 diretas (direto conta uma vez)');
+eq(snapBaixa.historico_retirada.reduce(function (t, h) { return t + h.pecas; }, 0) + snapBaixa.total.pecas_ressupridas, 64,
+  'geral = 47 retiradas + 17 alocadas (soma simples)');
 
 /* ------------------------------------------------------------------ */
 console.log('\n=== fila em andamento: rua 98 é staging de RECEBIMENTO, não fila de ressuprimento ===');

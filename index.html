@@ -3415,8 +3415,7 @@ async function carregarHistoricoRessuprimento() {
 
 /* Interruptor da tela Ressuprimento (21/10/2026): "Alocação no Picking" = quem guardou no Picking (a conta
    de sempre, uma peça uma vez); "Retirada do Pulmão" = quem tirou do Pulmão (pro corredor ou direto pro
-   Picking); "Geral" = soma das duas atividades — o movimento direto Pulmão -> Picking é uma atividade só e
-   conta uma vez. O resto da tela (KPIs, gráfico, tabela, composição, operadores) lê o recorte escolhido. */
+   Picking); "Geral" = soma simples das duas (retirada + alocação — pedido do usuário, 21/10/2026). O resto da tela (KPIs, gráfico, tabela, composição, operadores) lê o recorte escolhido. */
 let etapaRessup = 'alocacao';
 let histAlocacaoBruto = [], histRetiradaBruto = [], opsAlocacaoBruto = [], opsRetiradaBruto = [], retiradaDisponivel = false;
 function aplicarEtapaRessup() {
@@ -3431,7 +3430,7 @@ function aplicarEtapaRessup() {
       const x = porChave.get(k); x.pecas += sinal * (Number(pecas) || 0); x.movimentos += sinal * (Number(movs) || 0);
     };
     histAlocacaoBruto.forEach(function (h) { somar(h, 1, h.pecas, h.movimentos); });
-    histRetiradaBruto.forEach(function (h) { somar(h, 1, h.pecas, h.movimentos); somar(h, -1, h.diretas_pecas, h.diretas_movimentos); });
+    histRetiradaBruto.forEach(function (h) { somar(h, 1, h.pecas, h.movimentos); });
     historicoRessuprimento = Array.from(porChave.values()).filter(function (x) { return x.pecas > 0 || x.movimentos > 0; });
     const vistos = new Set();
     historicoOperadorRessuprimento = opsAlocacaoBruto.concat(opsRetiradaBruto).filter(function (o) {
@@ -6561,7 +6560,7 @@ function blocoMovimentacoes() {
         (etapaRessup === 'retirada'
           ? 'Conta quem <strong>tirou do Pulmão</strong> — pro corredor de ressuprimento ou direto pro Picking —, no dia e turno da retirada.'
           : etapaRessup === 'geral'
-            ? 'Soma as duas atividades: <strong>retirada do Pulmão</strong> (quem desceu) + <strong>alocação no Picking</strong> (quem guardou). O movimento direto Pulmão → Picking é uma atividade só e conta uma vez.'
+            ? 'Soma as duas atividades: <strong>retirada do Pulmão</strong> (quem desceu) + <strong>alocação no Picking</strong> (quem guardou).'
             : 'Conta quem <strong>guardou no Picking</strong> (vindo do Pulmão ou do corredor de ressuprimento) — uma peça só uma vez.') +
         ' Clique numa coluna para ver a Fila em andamento daquele dia.</p>' +
       (etapaRessup !== 'alocacao' && !histRetiradaBruto.length
