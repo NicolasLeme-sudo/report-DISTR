@@ -1286,7 +1286,7 @@ tr.total > th, tr.total > td {
       <span class="icone">🏪</span> Estoque
     </div>
     <div class="menu-item" id="menuHeatmap" onclick="mostrarSecao('heatmap')">
-      <span class="icone">🗺️</span> HeatMap Operacional
+      <span class="icone">🗺️</span> Heatmap - Planta 3D
     </div>
     <div class="menu-item" id="menuEmbarque" onclick="mostrarSecao('embarque')">
       <span class="icone">🚚</span> Embarque
@@ -1828,7 +1828,7 @@ const TITULOS = {
   start: 'Start Inicial',
   ressuprimento: 'Ressuprimento',
   estoqueop: 'Estoque',
-  heatmap: 'HeatMap Operacional - Planta 3D',
+  heatmap: 'Heatmap - Planta 3D',
   embarque: 'Embarque',
   estoque: 'Balanço de Estoque',
   distr: 'Fluxo de Processos',
@@ -4874,7 +4874,7 @@ function baixarCSVPfas(linhas, nomeArquivo) {
   URL.revokeObjectURL(a.href);
 }
 
-/* HeatMap Operacional - Planta 3D (23/10/2026): lê só o mapa de endereços e a ocupação por rua
+/* Heatmap - Planta 3D (23/10/2026): lê só o mapa de endereços e a ocupação por rua
    do último snapshot de Picking + Pulmão (o payload inteiro é bem maior) — planta3d-distr.js. */
 let dataSnapshotHeatmap = null;
 async function carregarHeatmap() {
