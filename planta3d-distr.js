@@ -650,9 +650,8 @@ window.montarPlanta3DDistr = async function (container, dados) {
   placa('3', '4', 'Olympikus'); placa('5', '6', 'Mizuno'); placa('7', '8', 'Under Armour');
 
   // caixa de faturamento (fotos + operação): na frente das ruas 07 e 08, no lugar das eclusas. Esteira de
-  // roletes larga no meio; ao lado, da direita para a esquerda: mesa com 2 monitores (um de cada lado, as
-  // conferentes uma de frente para a outra), 2 mesas viradas no mesmo sentido com 1 monitor cada e, na
-  // ponta da esteira, os pallets de caixas sendo montados. As mesas ficam de lado (comprimento para a frente).
+  // roletes larga no meio; de cada lado dela, da direita para a esquerda, uma mesa com 2 telas e uma com 1
+  // tela; na ponta da esteira, os pallets de caixas sendo montados. As mesas ficam de lado.
   const fxA = geoRua('7').xImpar - D / 2, fxB = geoRua('8').xPar + D / 2;
   const xR = fxB - .3, fz = Z_FRENTE + 11.5, LARG = 2.2;           // esteira: ~2,5× a largura anterior
   const xEst0 = xR - 5.4, xEst1 = xR;                              // esteira corre da direita para a esquerda
@@ -666,20 +665,21 @@ window.montarPlanta3DDistr = async function (container, dados) {
     pcs.push({ x, y: .91, z, w: .05, h: .38, d: .5, corNome: 'monitor', tip: t });
     pcs.push({ x: x + lado * .035, y: .95, z, w: .02, h: .3, d: .44, corNome: 'tela', tip: t });
   }
-  const zM = fz + LARG / 2 + .35 + 1;                               // mesas de lado: 1,2 m (x) × 2 m (z), encostadas na esteira
-  function mesa(xc, nome, detalhe) {
+  // 4 mesas: em cada lado da esteira, uma com 2 telas (uma de cada lado, conferentes frente a frente) à
+  // direita e uma com 1 tela à esquerda. Mesas de lado: 1,2 m (x) × 2 m (z), encostadas na esteira.
+  function mesa(xc, zM, nome, detalhe) {
     const t = () => tipInfo(nome, detalhe);
     mesas.push({ x: xc, y: .85, z: zM, w: 1.2, h: .06, d: 2, corNome: 'mesa', tip: t });
     [[-.5, -.9], [.5, -.9], [-.5, .9], [.5, .9]].forEach(([dx, dz]) => pern.push({ x: xc + dx, y: 0, z: zM + dz, w: .07, h: .85, d: .07, corNome: 'mesa' }));
     return t;
   }
-  const xM1 = xR - .6, xM2 = xM1 - 1.9, xM3 = xM2 - 1.7;
-  const t1 = mesa(xM1, 'Mesa de conferência 1', '2 monitores, um de cada lado · as conferentes ficam uma de frente para a outra');
-  monitor(xM1 + .12, zM, 1, t1); monitor(xM1 - .12, zM, -1, t1);
-  const t2 = mesa(xM2, 'Mesa de conferência 2', '1 monitor · virada no mesmo sentido da mesa 3');
-  monitor(xM2 - .3, zM, 1, t2);
-  const t3 = mesa(xM3, 'Mesa de conferência 3', '1 monitor · virada no mesmo sentido da mesa 2');
-  monitor(xM3 - .3, zM, 1, t3);
+  const xM1 = xR - .9, xM2 = xM1 - 2.2;
+  [[fz + LARG / 2 + .35 + 1, 'da frente'], [fz - LARG / 2 - .35 - 1, 'do fundo']].forEach(([zM, lado], i) => {
+    const t1 = mesa(xM1, zM, 'Mesa de conferência ' + (2 * i + 1), '2 telas, uma de cada lado · as conferentes ficam uma de frente para a outra · lado ' + lado + ' da esteira');
+    monitor(xM1 + .12, zM, 1, t1); monitor(xM1 - .12, zM, -1, t1);
+    const t2 = mesa(xM2, zM, 'Mesa de conferência ' + (2 * i + 2), '1 tela · lado ' + lado + ' da esteira');
+    monitor(xM2 - .3, zM, 1, t2);
+  });
   lote(rol, 'comum', 0); lote(pern, 'comum', 0); lote(mesas, 'comum', 0); lote(pcs, 'comum', 0);
   // pallets de caixas sendo montados, na ponta da esteira
   const cxs = [];
