@@ -79,9 +79,9 @@ const RAMPS = {
   light: [[0, '#2A8F55'], [.6, '#4DB84D'], [.72, '#BFC232'], [.82, '#E9A800'], [.92, '#E06A1B'], [1, '#B5122B']]
 };
 const INFRA = {
-  dark:  { esteira: '#10161F', estr: '#7C92AC', estrut: '#2F5F9E', longarina: '#E8830D', parede: '#5A6F88', chao: '#18233A', corredor: '#1E2B40',
+  dark:  { esteira: '#10161F', estr: '#7C92AC', estrut: '#2F5F9E', longarina: '#6E5238', montante: '#3B5478', passagem: '#2B3A50', outro: '#8592A6', parede: '#5A6F88', chao: '#18233A', corredor: '#1E2B40',
            colmeia: '#0B0D10', pallet: '#9A7350', carga: '#CDB48C', caixa: '#C9A36A', faixa: '#F6BD00', mesa: '#E6EAEF', monitor: '#0E141E', tela: '#2F7DE0', rolete: '#2A2F38', hidrante: '#C8102E', grade: '#9AA6B4', guarda: '#F6BD00', eclusa: '#33516E', piso: '#22344A', perna: '#55657A', fora: '#3A4A5E', neutro: '#6F7F96' },
-  light: { esteira: '#3A4656', estr: '#8EA3BA', estrut: '#3A6AAE', longarina: '#D9730A', parede: '#9DB0C4', chao: '#E3E9F0', corredor: '#D3DCE6',
+  light: { esteira: '#3A4656', estr: '#8EA3BA', estrut: '#3A6AAE', longarina: '#C9A786', montante: '#8EA6C8', passagem: '#C9D3DE', outro: '#9AA8BA', parede: '#9DB0C4', chao: '#E3E9F0', corredor: '#D3DCE6',
            colmeia: '#1A1C20', pallet: '#9A7350', carga: '#D9C4A0', caixa: '#B98E52', faixa: '#C9960A', mesa: '#FFFFFF', monitor: '#1B2533', tela: '#2F7DE0', rolete: '#4A5160', hidrante: '#C0392B', grade: '#8A96A4', guarda: '#D9A300', eclusa: '#C4D3E2', piso: '#D6DFE9', perna: '#8A99AA', fora: '#B4C0CE', neutro: '#8C9AAD' }
 };
 // Visão "Endereço": uma cor por estado do endereço
@@ -137,19 +137,61 @@ function ocupLado(opr, lado) {
   return c ? { pct: o / c * 100, livres: l, cap: c, ocup: o } : null;
 }
 /* Endereços → itens desenháveis + grupos do calor (rua × lado × nível × trecho de ~6 m). */
+/* Posição física de um endereço de Picking (operação, 23/10/2026):
+   - rua 11: picking de um lado só (o par); o lado ímpar é de outro setor.
+   - rua 15 do sistema = as meias, que fisicamente ocupam uma rua e meia: a rua 14 inteira (par e ímpar) e
+     a longarina ímpar da rua 15, atrás da longarina par da 14 (como a "parte de trás" da rua 01 do e-comm).
+     O lado par da rua 15 é de outro setor. Sem a numeração exata, os primeiros 2/3 dos boxes vão para a
+     rua 14 e o último terço para a rua 15.
+   Devolve { rua (física), lado, frac (0 = fundo, 1 = frente) }. */
+function posPicking(rua, box, maxB) {
+  const k = Math.ceil(box / 2), lado = box % 2 ? 'impar' : 'par';
+  if (rua === '11') return { rua: '11', lado: 'par', frac: (box - .5) / maxB, n: maxB };
+  if (rua === '15') {
+    const corte = Math.round(maxB * 2 / 3);
+    if (box <= corte) { const n = Math.ceil(corte / 2); return { rua: '14', lado, frac: (k - .5) / n, n }; }
+    const n = Math.max(1, maxB - corte); return { rua: '15', lado: 'impar', frac: (box - corte - .5) / n, n };
+  }
+  const n = Math.max(1, Math.ceil(maxB / 2));
+  return { rua, lado, frac: (k - .5) / n, n };
+}
+// Lados de longarina que existem mas não são da DISTR (viram bloco "outro setor")
+const OUTRO_SETOR = [{ rua: '11', lado: 'impar' }, { rua: '15', lado: 'par' }];
+// Ruas do estoque novo (11–15): o Pulmão vai até o nível 11 — o 12 não é desenhado (fica acima da estrutura)
+const NIVEL_MAX_PU = r => RUAS_ESQ.indexOf(r) !== -1 ? 11 : 12;
+const altRua = r => PU_BASE + (NIVEL_MAX_PU(r) - 7) * PU_PASSO + .3;
+/* Passagens de empilhadeira: pelo gabarito da operação (foraCapacidadePulmao = 'passagem' nos níveis 08
+   e 09 do mesmo box). A passagem atravessa a longarina do chão até o nível 09: nada é desenhado ali. */
+function passagens(mapa) {
+  const out = [];
+  if (typeof window.foraCapacidadePulmao !== 'function') return out;
+  Object.keys(mapa.pulmao || {}).forEach(rua => {
+    const R = mapa.pulmao[rua], max = R.max || 0, nPos = Math.max(1, Math.ceil(max / 2)), L = geoRua(rua).L;
+    for (let b = 1; b <= max; b++) {
+      if (window.foraCapacidadePulmao(rua, 8, b) === 'passagem' && window.foraCapacidadePulmao(rua, 9, b) === 'passagem') {
+        const k = Math.ceil(b / 2), lado = b % 2 ? 'impar' : 'par';
+        out.push({ rua, lado, box: b, z0: (k - 1) * L / nPos, z1: k * L / nPos });
+      }
+    }
+  });
+  return out;
+}
+/* Endereços → itens desenháveis + grupos do calor (rua física × lado × nível × trecho de ~6 m). */
 function montarItens(mapa) {
-  const itens = [], grupos = new Map(), foraNum = { pulmao: 0, picking: 0 };
+  const itens = [], grupos = new Map(), foraNum = { pulmao: 0, picking: 0, passagem: 0 };
+  const pass = passagens(mapa);
+  const naPassagem = (rua, lado, z) => pass.some(p => p.rua === rua && p.lado === lado && z > p.z0 - .05 && z < p.z1 + .05);
   function grupo(zona, rua, lado, nivel, bloco, foraCap) {
     const k = zona + '|' + rua + '|' + lado + '|' + nivel + '|' + bloco;
     let g = grupos.get(k);
-    if (!g) { g = { zona, rua, lado, nivel, foraCap, n: 0, ocup: 0, saldo: 0, sem: 0, res: 0, livres: 0, fora: 0, pecas: 0, b0: Infinity, b1: 0 }; grupos.set(k, g); }
+    if (!g) { g = { zona, rua, lado, nivel, foraCap, n: 0, ocup: 0, saldo: 0, sem: 0, res: 0, livres: 0, fora: 0, pecas: 0, b0: Infinity, b1: 0, ruaSis: new Set() }; grupos.set(k, g); }
     return g;
   }
   ['pulmao', 'picking'].forEach(zona => {
     const lista = mapa[zona] || {};
     Object.keys(lista).forEach(rua => {
       if (RUAS_DIR.indexOf(rua) === -1 && RUAS_ESQ.indexOf(rua) === -1) return;
-      const R = lista[rua], geo = geoRua(rua), foraCap = zona === 'pulmao' ? foraCapPulmao(mapa, rua) : null;
+      const R = lista[rua], foraCap = zona === 'pulmao' ? foraCapPulmao(mapa, rua) : null;
       const nPk = zona === 'picking' ? Math.max(1, ...Object.keys(R.niveis).map(Number)) : 0;
       // Box muito fora da numeração da rua (ex.: rua 06 nível 1 com box 880, quando a rua vai até ~340)
       // esticaria o nível inteiro: o comprimento usa a numeração típica da rua e o box fora dela é só contado.
@@ -157,8 +199,11 @@ function montarItens(mapa) {
       const tipico = maxNiveis[Math.floor((maxNiveis.length - 1) / 2)] || 0;
       Object.keys(R.niveis).forEach(nv => {
         const N = R.niveis[nv], lv = Number(nv), maxN = N.max || R.max || N.e.length;
-        const maxB = maxN > tipico * 1.3 ? tipico : maxN;
-        const nPos = Math.max(1, Math.ceil(maxB / 2)), passo = geo.L / nPos, q = (N.q || '').split(',');
+        if (zona === 'pulmao' && lv > NIVEL_MAX_PU(rua)) {          // nível acima da estrutura do estoque novo
+          for (let i = 0; i < N.e.length; i++) if ('12'.indexOf(N.e[i]) !== -1 && N.e[i] !== '') foraNum.pulmao++;
+          return;
+        }
+        const maxB = maxN > tipico * 1.3 ? tipico : maxN, q = (N.q || '').split(',');
         const hb = zona === 'picking' ? PK_TOPO / nPk : PU_PASSO;
         const y = zona === 'picking' ? (lv - 1) * hb : PU_BASE + (lv - 8) * PU_PASSO;
         const fmt = zona === 'picking' ? (FORMATO_PK[rua] || 'bin') : 'pallet';
@@ -167,11 +212,17 @@ function montarItens(mapa) {
         for (let i = 0; i < N.e.length; i++) {
           const st = N.e[i]; if (st === '-') continue;
           if (i + 1 > maxB) { if (st !== 'l') foraNum[zona]++; continue; }
-          const box = i + 1, lado = box % 2 ? 'impar' : 'par', k = Math.ceil(box / 2);
+          const box = i + 1;
+          const pp = zona === 'picking' ? posPicking(rua, box, maxB)
+            : { rua, lado: box % 2 ? 'impar' : 'par', frac: (Math.ceil(box / 2) - .5) / Math.max(1, Math.ceil(maxB / 2)), n: Math.max(1, Math.ceil(maxB / 2)) };
+          const geo = geoRua(pp.rua), passo = geo.L / pp.n, k = Math.round(pp.frac * pp.n + .5);
           // gaiola: os 2 endereços ficam colados (uma gaiola), com folga entre gaiolas
-          const zg = fmt === 'gaiola' ? (k - .5) * passo + (k % 2 ? .04 : -.04) * passo : (k - .5) * passo;
-          const z = zg, bloco = Math.floor(z / BLOCO);
-          const g = grupo(zona, rua, lado, lv, bloco, foraCap), pc = q[i] ? parseInt(q[i], 36) : 0;
+          const z = pp.frac * geo.L + (fmt === 'gaiola' ? (k % 2 ? .04 : -.04) * passo : 0);
+          // passagem de empilhadeira: do chão ao nível 09 a longarina é vazada
+          if ((zona === 'picking' || lv <= 9) && naPassagem(pp.rua, pp.lado, z)) { if (st !== 'l' && st !== 'x' && st !== '0') foraNum.passagem++; continue; }
+          const bloco = Math.floor(z / BLOCO);
+          const g = grupo(zona, pp.rua, pp.lado, lv, bloco, foraCap), pc = q[i] ? parseInt(q[i], 36) : 0;
+          g.ruaSis.add(rua);
           g.b0 = Math.min(g.b0, box); g.b1 = Math.max(g.b1, box); g.pecas += pc;
           if (st === 'x') g.fora++;
           else {
@@ -181,14 +232,14 @@ function montarItens(mapa) {
             else if (st === '0') { if (zona === 'picking') { g.ocup++; g.sem++; } else g.livres++; }
             else if (st === 'l') g.livres++;
           }
-          itens.push({ zona, rua, nivel: lv, box, lado, st, pc, g, fmt,
-            x: lado === 'impar' ? geo.xImpar : geo.xPar, y, z, w: D * (fmt === 'bin' ? .84 : .9), h, d: Math.max(.1, passo * dk) });
+          itens.push({ zona, rua, ruaFis: pp.rua, nivel: lv, box, lado: pp.lado, st, pc, g, fmt,
+            x: pp.lado === 'impar' ? geo.xImpar : geo.xPar, y, z, w: D * (fmt === 'bin' ? .84 : .9), h, d: Math.max(.1, passo * dk) });
         }
       });
     });
   });
   grupos.forEach(g => { g.pct = g.n ? g.ocup / g.n * 100 : 0; });
-  return { itens, grupos, foraNum };
+  return { itens, grupos, foraNum, pass };
 }
 
 /* ---------------- CSS e HTML ---------------- */
@@ -284,7 +335,9 @@ function linhaGrupo(g) {
   return fmtI(g.saldo) + ' com saldo · ' + fmtI(g.sem) + ' alocados sem saldo' + (g.res ? ' · ' + fmtI(g.res) + ' reservados' : '') + ' · ' + fmtI(g.livres) + ' livres';
 }
 function tipGrupo(g) {
-  const tit = 'Rua ' + pad(g.rua) + ' · ' + nomeZona(g.zona) + ' · nível ' + pad(g.nivel) + ' · lado ' + (g.lado === 'par' ? 'par' : 'ímpar');
+  const sis = [...(g.ruaSis || [])].filter(r => r !== g.rua);
+  const tit = 'Rua ' + pad(g.rua) + ' · ' + nomeZona(g.zona) + ' · nível ' + pad(g.nivel) + ' · lado ' + (g.lado === 'par' ? 'par' : 'ímpar')
+    + (sis.length ? ' <span style="font-weight:400;color:var(--text-muted)">(endereços da rua ' + sis.map(r => pad(r)).join('/') + ' no sistema)</span>' : '');
   const faixa = 'Boxes ' + pad(g.b0, 3) + ' a ' + pad(g.b1, 3) + (g.fora ? ' · ' + g.fora + ' fora da capacidade' : '');
   const pct = g.foraCap ? '<div class="s">' + g.foraCap + '</div>'
     : g.n ? '<div class="p" style="color:' + corCSS(g.pct) + '">' + fmtP(g.pct) + '</div>' : '';
@@ -297,7 +350,7 @@ function tipEndereco(it) {
   return '<div class="t">' + end + ' · ' + nomeZona(it.zona) + '</div>'
     + '<div class="s" style="color:var(--text);font-weight:600">' + est + (it.pc ? ' · ' + fmtI(it.pc) + ' peças' : '') + '</div>'
     + (it.fmt && it.fmt !== 'pallet' ? '<div class="s">' + NOME_FORMATO[it.fmt] + '</div>' : '')
-    + '<div class="s">Rua ' + pad(it.rua) + ' · lado ' + (it.lado === 'par' ? 'par' : 'ímpar') + ' · nível ' + pad(it.nivel)
+    + '<div class="s">' + (it.ruaFis && it.ruaFis !== it.rua ? 'Fisicamente na rua ' + pad(it.ruaFis) : 'Rua ' + pad(it.rua)) + ' · lado ' + (it.lado === 'par' ? 'par' : 'ímpar') + ' · nível ' + pad(it.nivel)
     + (g.foraCap ? '<br>' + g.foraCap : g.n ? '<br>Trecho (boxes ' + pad(g.b0, 3) + '–' + pad(g.b1, 3) + '): ' + fmtP(g.pct) + ' ocupado' : '') + '</div>';
 }
 
@@ -376,14 +429,16 @@ window.montarPlanta3DDistr = async function (container, dados) {
     msg.innerHTML = 'Ainda não há mapa de endereços.<br>Reprocesse <strong>Picking + Pulmão</strong> em Admin › Abastecimento para montar a planta.';
     return;
   }
-  const { itens, grupos, foraNum } = montarItens(mapa);
+  const { itens, grupos, foraNum, pass } = montarItens(mapa);
   const fora = { pulmao: ((mapa.fora_do_desenho || {}).pulmao || 0) + foraNum.pulmao, picking: ((mapa.fora_do_desenho || {}).picking || 0) + foraNum.picking };
   q('base').textContent = 'Posição de Picking + Pulmão' + (dados.gerado_em && window.formatarDataHora ? ' de ' + window.formatarDataHora(dados.gerado_em) : '')
     + (dados.arquivos ? ' (' + dados.arquivos + ')' : '') + '. Cada cubo é um endereço: Picking nos níveis 1 a 7, Pulmão nos níveis 8 a 12; box 001 no fundo do galpão. '
     + 'Calor = % de endereços ocupados em cada trecho de ~6 m da longarina (no Picking, endereço alocado conta como ocupado, como na tela Estoque). '
     + 'No Picking, o endereço sem SKU cadastrado não vem no arquivo: os livres são deduzidos pela numeração até o maior box de cada nível. '
     + 'A ocupação no topo é a oficial por rua (capacidade da planilha, mesma régua do card de endereços livres).'
-    + ((fora.pulmao || fora.picking) ? ' Fora do desenho (box do lado que a rua não tem ou fora da numeração da rua): ' + fmtI(fora.pulmao || 0) + ' no Pulmão e ' + fmtI(fora.picking || 0) + ' no Picking.' : '');
+    + ' Meias: os endereços da rua 15 do sistema ocupam a rua 14 inteira e a longarina ímpar da rua 15 (2/3 e 1/3 da numeração); rua 11: Picking só no lado par.'
+    + ((fora.pulmao || fora.picking) ? ' Fora do desenho (lado que a rua não tem, numeração fora do padrão ou nível 12 do estoque novo): ' + fmtI(fora.pulmao || 0) + ' no Pulmão e ' + fmtI(fora.picking || 0) + ' no Picking.' : '')
+    + (foraNum.passagem ? ' ' + fmtI(foraNum.passagem) + ' endereço(s) com saldo dentro de passagem de empilhadeira não aparecem.' : '');
 
   try { await garantirThree(); }
   catch (e) { console.error(e); msg.textContent = 'Não foi possível montar a planta 3D: ' + e.message; return; }
@@ -398,7 +453,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
   const camera = new THREE.PerspectiveCamera(30, 1, 1, 3000);
   const controls = new THREE.OrbitControls(camera, cv);
   controls.enableDamping = false;
-  controls.rotateSpeed = .45; controls.panSpeed = .6;
+  controls.rotateSpeed = .22; controls.panSpeed = .32;   // menos sensível: mexer pouco o mouse mexe pouco a imagem
   controls.maxPolarAngle = Math.PI * .49; controls.screenSpacePanning = true;
   controls.enableZoom = false;
   const est = { renderer, camera, controls, raf: 0, voo: 0, ro: null, mo: null, nivelZoom: 0 };
@@ -465,23 +520,56 @@ window.montarPlanta3DDistr = async function (container, dados) {
     const l = (nome, o, z) => nome + (z ? ' (' + NOME_ZONA[z] + ')' : '') + ': ' + (o ? '<b style="color:' + corCSS(o.pct) + '">' + fmtP(o.pct) + '</b> · ' + fmtI(o.ocup) + ' de ' + fmtI(o.cap) + ' · ' + fmtI(o.livres) + ' livres' : 'sem capacidade cadastrada');
     return '<div class="t">Rua ' + pad(r) + '</div><div class="s">' + (fc && (mapa.pulmao || {})[r] ? 'Pulmão: ' + fc : l('Pulmão', pu, zP)) + '<br>' + l('Picking', pk, zK) + '</div>';
   };
+  // lados de longarina com endereço desenhado (no físico) — rua de um lado só não ganha estrutura no outro
+  const ladosUsados = new Set(itens.map(it => (it.ruaFis || it.rua) + '|' + it.lado));
   RUAS_ESQ.concat(RUAS_DIR).forEach(r => {
-    const g = geoRua(r), lados = [];
-    const temLado = (zona, l) => { const R = (mapa[zona] || {})[r]; return R && (R.lados === 'ip' || R.lados === l); };
-    if (temLado('pulmao', 'i') || temLado('picking', 'i')) lados.push(g.xImpar);
-    if (temLado('pulmao', 'p') || temLado('picking', 'p')) lados.push(g.xPar);
-    const tip = tipRua(r);
-    lados.forEach(x => {
+    const g = geoRua(r), tip = tipRua(r), alt = altRua(r), nMax = NIVEL_MAX_PU(r);
+    const fecha = (lado, z) => pass.some(p => p.rua === r && p.lado === lado && z > p.z0 - .05 && z < p.z1 + .05);
+    [['impar', g.xImpar], ['par', g.xPar]].forEach(([lado, x]) => {
+      if (!ladosUsados.has(r + '|' + lado)) return;
       // montante em duas partes: até o topo do Picking (sempre) e o resto, que some no modo Picking
-      for (let z = 0; z <= g.L + .01; z += 2.7) [-1, 1].forEach(s => {
-        montantes.push({ x: x + s * D * .46, y: 0, z, w: .1, h: PK_TOPO + .2, d: .1, corNome: 'estrut', tip });
-        montantesPu.push({ x: x + s * D * .46, y: PK_TOPO + .2, z, w: .1, h: ALT - PK_TOPO - .2, d: .1, corNome: 'estrut', tip });
+      for (let z = 0; z <= g.L + .01; z += 2.7) [-1, 1].forEach(sd => {
+        montantes.push({ x: x + sd * D * .46, y: 0, z, w: .09, h: PK_TOPO + .2, d: .09, corNome: 'montante', tip });
+        montantesPu.push({ x: x + sd * D * .46, y: PK_TOPO + .2, z, w: .09, h: alt - PK_TOPO - .2, d: .09, corNome: 'montante', tip });
       });
-      [PU_BASE - .1].concat([1, 2, 3, 4].map(i => PU_BASE + i * PU_PASSO - .1)).forEach(y => [-1, 1].forEach(s =>
-        vigas.push({ x: x + s * D * .46, y, z: g.L / 2, w: .09, h: .12, d: g.L, corNome: 'longarina', tip })));
+      // vigas por nível; nos níveis 08 e 09 a viga é cortada onde há passagem de empilhadeira
+      for (let nv = 8; nv <= nMax; nv++) {
+        const y = PU_BASE + (nv - 8) * PU_PASSO - .1;
+        const cortes = nv <= 9 ? pass.filter(p => p.rua === r && p.lado === lado).map(p => [p.z0, p.z1]).sort((u, v) => u[0] - v[0]) : [];
+        let z0 = 0;
+        cortes.concat([[g.L, g.L]]).forEach(([c0, c1]) => {
+          if (c0 - z0 > .2) [-1, 1].forEach(sd => vigas.push({ x: x + sd * D * .46, y, z: (z0 + c0) / 2, w: .07, h: .09, d: c0 - z0, corNome: 'longarina', tip }));
+          z0 = Math.max(z0, c1);
+        });
+      }
     });
   });
   lote(montantes, 'comum', 0); lote(montantesPu, 'pulmao', 0); lote(vigas, 'pulmao', 0);
+
+  /* ---------- passagens de empilhadeira (gabarito da operação) ---------- */
+  const marcas = [];
+  const blocosPass = [];   // passagens vizinhas (mesma rua e lado) viram uma só
+  pass.slice().sort((u, v) => (u.rua + u.lado).localeCompare(v.rua + v.lado) || u.z0 - v.z0).forEach(p => {
+    const ult = blocosPass[blocosPass.length - 1];
+    if (ult && ult.rua === p.rua && ult.lado === p.lado && p.z0 <= ult.z1 + .05) { ult.z1 = p.z1; ult.boxes.push(p.box); }
+    else blocosPass.push({ rua: p.rua, lado: p.lado, z0: p.z0, z1: p.z1, boxes: [p.box] });
+  });
+  blocosPass.forEach(p => {
+    const g = geoRua(p.rua), x = p.lado === 'impar' ? g.xImpar : g.xPar;
+    const t = () => tipInfo('Passagem de empilhadeira', 'Rua ' + pad(p.rua) + ' · lado ' + (p.lado === 'par' ? 'par' : 'ímpar') + ' · boxes ' + p.boxes.map(b => pad(b, 3)).join(', ')
+      + '<br>A longarina é vazada do chão até o nível 09 (endereços fora da capacidade, pelo gabarito da operação)');
+    [[p.z0, p.z0 + .12], [p.z1 - .12, p.z1]].forEach(([a2, b2]) => marcas.push({ x, y: .02, z: (a2 + b2) / 2, w: D + .6, h: .03, d: b2 - a2, corNome: 'faixa', tip: t }));
+    marcas.push({ x, y: .015, z: (p.z0 + p.z1) / 2, w: D + .6, h: .02, d: p.z1 - p.z0 - .24, corNome: 'passagem', tip: t });
+  });
+  lote(marcas, 'comum', 0);
+
+  /* ---------- lados de longarina de outro setor (não usados pela DISTR) ---------- */
+  OUTRO_SETOR.forEach(o => {
+    const g = geoRua(o.rua), x = o.lado === 'impar' ? g.xImpar : g.xPar;
+    caixa(x - D / 2, 0, x + D / 2, g.L, 0, altRua(o.rua), 'outro', 'comum', { op: .32,
+      tip: tipInfo('Estrutura de outro setor', 'Rua ' + pad(o.rua) + ' · lado ' + (o.lado === 'par' ? 'par' : 'ímpar') + ' · não é usada pela DISTR' + (o.rua === '11' ? ' (a rua 11 é uma meia rua: o Picking e o Pulmão ficam só no lado par)' : ' (as meias ocupam só a longarina ímpar da rua 15)')) });
+    rotulo('Outro setor', x, altRua(o.rua) + .8, g.L / 2, 'comum', 'inf');
+  });
 
   /* ---------- frente do galpão ---------- */
   // colmeias (fotos): 2 na ponta de cada par de longarinas encostadas, a partir do par 01/02, numeradas
@@ -694,7 +782,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
   cv.addEventListener('wheel', e => {
     e.preventDefault();
     const pt = pontoSob(e); if (!pt) return;
-    const f = Math.exp(-Math.max(-60, Math.min(60, e.deltaY)) * .0013), k = 1 - 1 / f, dist = camera.position.distanceTo(pt);
+    const f = Math.exp(-Math.max(-60, Math.min(60, e.deltaY)) * .0008), k = 1 - 1 / f, dist = camera.position.distanceTo(pt);
     if ((k > 0 && dist * (1 - k) < 2) || (k < 0 && camera.position.distanceTo(controls.target) > 500)) return;
     camera.position.lerp(pt, k); controls.target.lerp(pt, k); controls.update();
   }, { passive: false });
