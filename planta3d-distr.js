@@ -55,6 +55,8 @@ const D = 1.1, A = 3.2, G = .3, PASSO = 2 * D + A + G;   // longarina, corredor,
 const L_LONGA = 72, L_CURTA = 36;                         // ruas 01–08 e 11–15 (metade)
 const RUAS_ESQ = ['11', '12', '13', '14', '15'], RUAS_DIR = ['1', '2', '3', '4', '5', '6', '7', '8'];
 const XL = 0, X_DIV = XL + RUAS_ESQ.length * PASSO + 4, XR = X_DIV + 4.5;   // divisória larga no lugar do estoque do e-comm
+// divisão dos módulos do galpão, logo depois da rua 08 (atrás do almoxarifado): ali acaba o galpão da DISTR
+const X_FIM = XR + (RUAS_DIR.length - 1) * PASSO + 2 * D + A + 1.4;
 const PK_TOPO = 2.3, PU_BASE = 2.5, PU_PASSO = 1.75, PU_H = 1.5, ALT = PU_BASE + 5 * PU_PASSO + .3;
 const BLOCO = 6;
 // Formato do Picking (fotos da operação): bins brancos no lado direito, caixas sob medida nos
@@ -499,7 +501,9 @@ window.montarPlanta3DDistr = async function (container, dados) {
   }
 
   /* ---------- chão, corredores e divisória ---------- */
-  caixa(XL - 3, -4, XR + RUAS_DIR.length * PASSO + 8, Z_FRENTE + 24, -.3, .3, 'chao', 'comum');
+  caixa(XL - 3, -4, X_FIM + .5, Z_FRENTE + 24, -.3, .3, 'chao', 'comum');
+  caixa(X_FIM - .2, -4, X_FIM + .5, Z_FRENTE + 24, 0, ALT + 3, 'parede', 'comum',
+    { op: .45, tip: tipInfo('Divisão de módulos do galpão', 'Logo depois da rua 08 (almoxarifado e insumos): aqui termina o galpão da DISTR.') });
   RUAS_ESQ.concat(RUAS_DIR).forEach(r => {
     const g = geoRua(r);
     caixa(g.xCorr - A / 2 + .1, 0, g.xCorr + A / 2 - .1, g.L, 0, .02, 'corredor', 'comum');
@@ -720,10 +724,11 @@ window.montarPlanta3DDistr = async function (container, dados) {
   /* ---------- rótulos ---------- */
   RUAS_ESQ.concat(RUAS_DIR).forEach(r => { const g = geoRua(r); rotulo(pad(r), g.xCorr, ALT + 1.2, -1.5, 'comum', 'big'); });
   const gD = geoRua('8');
-  rotulo('PULMÃO · níveis 8–12', gD.xPar + 5, PU_BASE + 2.5 * PU_PASSO, Z_FRENTE - 34, 'pulmao', 'big');
-  rotulo('PICKING · níveis 1–7', gD.xPar + 5, PK_TOPO / 2, Z_FRENTE - 34, 'picking', 'big');
-  rotulo('Box 001 (fundo)', gD.xPar + 3, .6, 2, 'comum');
-  rotulo('Frente →', gD.xPar + 2.5, .6, Z_FRENTE - 3, 'comum');
+  rotulo('PULMÃO · níveis 8–12', X_FIM + 1.2, PU_BASE + 2.5 * PU_PASSO, Z_FRENTE - 34, 'pulmao', 'big');
+  rotulo('PICKING · níveis 1–7', X_FIM + 1.2, PK_TOPO / 2, Z_FRENTE - 34, 'picking', 'big');
+  rotulo('Box 001 (fundo)', gD.xCorr, .6, -1, 'comum');
+  rotulo('Frente →', gD.xCorr, .6, Z_FRENTE + .5, 'comum');
+  rotulo('Divisão de módulos', X_FIM, ALT + 4.4, 20, 'comum', 'inf');
   rotulo('Divisão · estoque do E-commerce', X_DIV, ALT + 4.4, 20, 'comum', 'inf');
   rotulo('Colmeias', (geoRua('2').xPar + geoRua('3').xImpar) / 2, 2.8, Z_FRENTE + 2, 'comum', 'inf');
   rotulo('Hidrante', xH, 2.2, Z_FRENTE + .6, 'comum', 'inf');
