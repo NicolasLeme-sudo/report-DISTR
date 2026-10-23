@@ -138,10 +138,10 @@ function ocupLado(opr, lado) {
 }
 /* Endereços → itens desenháveis + grupos do calor (rua × lado × nível × trecho de ~6 m). */
 /* Posição física de um endereço de Picking (operação, 23/10/2026):
-   - rua 11: picking de um lado só (o par); o lado ímpar é de outro setor.
+   - rua 11: picking de um lado só (o par); o lado ímpar é da Reversa/Qualidade.
    - rua 15 do sistema = as meias, que fisicamente ocupam uma rua e meia: a rua 14 inteira (par e ímpar) e
      a longarina ímpar da rua 15, atrás da longarina par da 14 (como a "parte de trás" da rua 01 do e-comm).
-     O lado par da rua 15 é de outro setor. Sem a numeração exata, os primeiros 2/3 dos boxes vão para a
+     Sem a numeração exata, os primeiros 2/3 dos boxes vão para a
      rua 14 e o último terço para a rua 15.
    Devolve { rua (física), lado, frac (0 = fundo, 1 = frente) }. */
 function posPicking(rua, box, maxB) {
@@ -155,9 +155,14 @@ function posPicking(rua, box, maxB) {
   const n = Math.max(1, Math.ceil(maxB / 2));
   return { rua, lado, frac: (k - .5) / n, n };
 }
-// Lados de longarina que existem mas não são da DISTR (viram bloco "outro setor")
-const OUTRO_SETOR = [{ rua: '11', lado: 'impar' }, { rua: '15', lado: 'par' }];
+// Lado de longarina que existe mas não é da DISTR: vira bloco translúcido (estrutura não usada)
+const OUTRO_SETOR = [{ rua: '11', lado: 'impar', nome: 'Reversa/Qualidade' }];
 // Ruas do estoque novo (11–15): o Pulmão vai até o nível 11 — o 12 não é desenhado (fica acima da estrutura)
+// Rua 08 do Pulmão: almoxarifado e insumos — fora da ocupação e da capacidade; desenhada cheia, com pallets
+// de cores próprias (ilustrativo), para não se confundir com o estoque da DISTR.
+const RUA_ALMOX = '8';
+const CORES_ALMOX = { dark: ['#5B6CC9', '#8E6CC9', '#3FA7B5', '#B07ACF', '#4C8BB8', '#6F7FB0', '#2F8F9D'],
+                      light: ['#4A5BB5', '#7A58B8', '#2E95A3', '#9C66BC', '#3D79A6', '#5E6E9E', '#25808D'] };
 const NIVEL_MAX_PU = r => RUAS_ESQ.indexOf(r) !== -1 ? 11 : 12;
 const altRua = r => PU_BASE + (NIVEL_MAX_PU(r) - 7) * PU_PASSO + .3;
 /* Passagens de empilhadeira: pelo gabarito da operação (foraCapacidadePulmao = 'passagem' nos níveis 08
@@ -199,6 +204,7 @@ function montarItens(mapa) {
       const tipico = maxNiveis[Math.floor((maxNiveis.length - 1) / 2)] || 0;
       Object.keys(R.niveis).forEach(nv => {
         const N = R.niveis[nv], lv = Number(nv), maxN = N.max || R.max || N.e.length;
+        if (zona === 'pulmao' && rua === RUA_ALMOX) return;            // desenhada à parte (almoxarifado/insumos)
         if (zona === 'pulmao' && lv > NIVEL_MAX_PU(rua)) {          // nível acima da estrutura do estoque novo
           for (let i = 0; i < N.e.length; i++) if ('12'.indexOf(N.e[i]) !== -1 && N.e[i] !== '') foraNum.pulmao++;
           return;
@@ -398,7 +404,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
       h += sw(E.livre, 'Vazio / livre') + sw(E.picado, 'Picado (< ' + ((mapa && mapa.limite_picado) || 10) + ' pç)') + sw(E.ocupado, 'Ocupado')
         + sw(E.semSaldo, 'Picking alocado sem saldo') + sw(E.reservado, 'Reservado');
     }
-    h += sw(I.neutro, 'Fora da capacidade (insumos, reversa)') + sw(I.fora, 'Passagem / sem parametrização') + sw(I.colmeia, 'Colmeias');
+    h += sw(CORES_ALMOX[t][0], 'Almoxarifado / insumos (rua 08, fora da capacidade)') + sw(I.neutro, 'Fora da capacidade') + sw(I.fora, 'Passagem / sem parametrização') + sw(I.colmeia, 'Colmeias');
     lg.innerHTML = h;
     lg.querySelectorAll('[data-e]').forEach(b => {
       b.setAttribute('aria-pressed', String((b.dataset.e === '1') === ui.faixas));
@@ -458,6 +464,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
   controls.enableZoom = false;
   const est = { renderer, camera, controls, raf: 0, voo: 0, ro: null, mo: null, nivelZoom: 0 };
   P3.estado = est;
+  window.__planta3d = est;   // acesso para testes no navegador (câmera/controles)
 
   const scene = new THREE.Scene();
   scene.add(new THREE.HemisphereLight(0xffffff, 0x6b7c90, .95));
@@ -521,7 +528,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
     return '<div class="t">Rua ' + pad(r) + '</div><div class="s">' + (fc && (mapa.pulmao || {})[r] ? 'Pulmão: ' + fc : l('Pulmão', pu, zP)) + '<br>' + l('Picking', pk, zK) + '</div>';
   };
   // lados de longarina com endereço desenhado (no físico) — rua de um lado só não ganha estrutura no outro
-  const ladosUsados = new Set(itens.map(it => (it.ruaFis || it.rua) + '|' + it.lado));
+  const ladosUsados = new Set(itens.map(it => (it.ruaFis || it.rua) + '|' + it.lado).concat([RUA_ALMOX + '|impar', RUA_ALMOX + '|par']));
   RUAS_ESQ.concat(RUAS_DIR).forEach(r => {
     const g = geoRua(r), tip = tipRua(r), alt = altRua(r), nMax = NIVEL_MAX_PU(r);
     const fecha = (lado, z) => pass.some(p => p.rua === r && p.lado === lado && z > p.z0 - .05 && z < p.z1 + .05);
@@ -563,12 +570,34 @@ window.montarPlanta3DDistr = async function (container, dados) {
   });
   lote(marcas, 'comum', 0);
 
+  /* ---------- rua 08: almoxarifado e insumos (ilustrativo, fora da ocupação e da capacidade) ---------- */
+  {
+    const g = geoRua(RUA_ALMOX), nPos = 72, passo = g.L / nPos;
+    let sem = 3;
+    const sort2 = () => (sem = (sem * 9301 + 49297) % 233280) / 233280;
+    const tipA = () => tipInfo('Rua 08 · Almoxarifado e insumos', 'Material de almoxarifado e insumos · fica fora da ocupação e da capacidade do Pulmão (desenho ilustrativo: as cores só diferenciam do estoque da DISTR)');
+    for (let nv = 8; nv <= NIVEL_MAX_PU(RUA_ALMOX); nv++) {
+      const base = [], carga = [], y = PU_BASE + (nv - 8) * PU_PASSO;
+      [g.xImpar, g.xPar].forEach(x => {
+        for (let k = 1; k <= nPos; k++) {
+          if (sort2() < .08) continue;                                   // poucas posições vazias
+          const z = (k - .5) * passo, cor = Math.floor(sort2() * 7), alt = PU_H * (.6 + sort2() * .35);
+          base.push({ x, y, z, w: D * .86, h: .14, d: passo * .86, corNome: 'pallet', tip: tipA });
+          carga.push({ x, y: y + .14, z, w: D * .8, h: alt - .14, d: passo * .8, cor, tip: tipA });
+        }
+      });
+      lote(base, 'pulmao', nv);
+      lote(carga, 'pulmao', nv, it => CORES_ALMOX[tema()][it.cor]);
+    }
+    rotulo('Almoxarifado / insumos', g.xCorr, altRua(RUA_ALMOX) + .8, g.L / 2, 'pulmao', 'inf');
+  }
+
   /* ---------- lados de longarina de outro setor (não usados pela DISTR) ---------- */
   OUTRO_SETOR.forEach(o => {
     const g = geoRua(o.rua), x = o.lado === 'impar' ? g.xImpar : g.xPar;
     caixa(x - D / 2, 0, x + D / 2, g.L, 0, altRua(o.rua), 'outro', 'comum', { op: .32,
-      tip: tipInfo('Estrutura de outro setor', 'Rua ' + pad(o.rua) + ' · lado ' + (o.lado === 'par' ? 'par' : 'ímpar') + ' · não é usada pela DISTR' + (o.rua === '11' ? ' (a rua 11 é uma meia rua: o Picking e o Pulmão ficam só no lado par)' : ' (as meias ocupam só a longarina ímpar da rua 15)')) });
-    rotulo('Outro setor', x, altRua(o.rua) + .8, g.L / 2, 'comum', 'inf');
+      tip: tipInfo(o.nome, 'Rua ' + pad(o.rua) + ' · lado ' + (o.lado === 'par' ? 'par' : 'ímpar') + ' · estrutura da ' + o.nome + ', não usada pela DISTR (a rua 11 é uma meia rua: o Picking e o Pulmão ficam só no lado par)') });
+    rotulo(o.nome, x, altRua(o.rua) + .8, g.L / 2, 'comum', 'inf');
   });
 
   /* ---------- frente do galpão ---------- */
@@ -620,33 +649,46 @@ window.montarPlanta3DDistr = async function (container, dados) {
   }
   placa('3', '4', 'Olympikus'); placa('5', '6', 'Mizuno'); placa('7', '8', 'Under Armour');
 
-  // caixa de faturamento (fotos): na frente das ruas 07 e 08, no lugar das eclusas. Esteira de roletes no centro,
-  // 4 mesas em volta (2 com 1 computador, 2 com 2, um de cada lado); no fim da esteira a caixa é
-  // lacrada e vai para o pallet.
-  const LE = 8.5, fxA = geoRua('7').xImpar - D / 2, fxB = geoRua('8').xPar + D / 2;
-  const fx0 = (fxA + fxB) / 2 - (LE + 3) / 2, fz = Z_FRENTE + 12.5;   // esteira + pallets no fim, centrados na frente das ruas 07–08
-  const tipCx = tipInfo('Caixa de faturamento', '4 mesas de conferência em volta da esteira de roletes · no fim da esteira a caixa é lacrada e o pallet é montado');
-  caixa(fx0, fz - .45, fx0 + LE, fz + .45, .7, .08, 'rolete', 'comum', { tip: tipCx });
+  // caixa de faturamento (fotos + operação): na frente das ruas 07 e 08, no lugar das eclusas. Esteira de
+  // roletes larga no meio; ao lado, da direita para a esquerda: mesa com 2 monitores (um de cada lado, as
+  // conferentes uma de frente para a outra), 2 mesas viradas no mesmo sentido com 1 monitor cada e, na
+  // ponta da esteira, os pallets de caixas sendo montados. As mesas ficam de lado (comprimento para a frente).
+  const fxA = geoRua('7').xImpar - D / 2, fxB = geoRua('8').xPar + D / 2;
+  const xR = fxB - .3, fz = Z_FRENTE + 11.5, LARG = 2.2;           // esteira: ~2,5× a largura anterior
+  const xEst0 = xR - 5.4, xEst1 = xR;                              // esteira corre da direita para a esquerda
+  const tipCx = tipInfo('Caixa de faturamento', 'Esteira de roletes no meio · mesas de conferência ao lado · na ponta da esteira a caixa é lacrada e o pallet é montado');
+  caixa(xEst0, fz - LARG / 2, xEst1, fz + LARG / 2, .66, .1, 'rolete', 'comum', { tip: tipCx });
   const rol = [], pern = [], mesas = [], pcs = [];
-  for (let x = fx0 + .15; x < fx0 + LE; x += .3) rol.push({ x, y: .78, z: fz, w: .12, h: .05, d: .86, corNome: 'grade', tip: () => tipCx });
-  for (let x = fx0 + .3; x < fx0 + LE; x += 2) [fz - .38, fz + .3].forEach(z => pern.push({ x, y: 0, z, w: .08, h: .7, d: .08, corNome: 'perna' }));
-  // mesas: [x, lado (−1 = antes da esteira, +1 = depois), nº de computadores]
-  [[fx0 + 1.3, -1, 1], [fx0 + 1.3, 1, 2], [fx0 + 4.2, -1, 1], [fx0 + 4.2, 1, 2]].forEach(([x, sd, n], i) => {
-    const zc = fz + sd * 1.25, t = () => tipInfo('Mesa de conferência ' + (i + 1), n + ' computador' + (n > 1 ? 'es (um de cada lado)' : '') + ' · ao lado da esteira de roletes');
-    mesas.push({ x, y: .85, z: zc, w: 2, h: .06, d: 1, corNome: 'mesa', tip: t });
-    [[-.9, -.4], [.9, -.4], [-.9, .4], [.9, .4]].forEach(([dx, dz]) => pern.push({ x: x + dx, y: 0, z: zc + dz, w: .07, h: .85, d: .07, corNome: 'mesa' }));
-    const xs = n === 1 ? [x] : [x - .55, x + .55];
-    xs.forEach(xm => { pcs.push({ x: xm, y: .91, z: zc + sd * .25, w: .5, h: .38, d: .05, corNome: 'monitor', tip: t });
-      pcs.push({ x: xm, y: .95, z: zc + sd * .22, w: .44, h: .3, d: .02, corNome: 'tela', tip: t }); });
-  });
+  for (let x = xEst0 + .15; x < xEst1; x += .28) rol.push({ x, y: .76, z: fz, w: .11, h: .05, d: LARG - .16, corNome: 'grade', tip: () => tipCx });
+  for (let x = xEst0 + .3; x < xEst1; x += 1.6) [fz - LARG / 2 + .1, fz + LARG / 2 - .18].forEach(z => pern.push({ x, y: 0, z, w: .08, h: .66, d: .08, corNome: 'perna' }));
+  // monitor de frente para +x (lado = 1) ou −x (lado = −1): tela no plano z-y
+  function monitor(x, z, lado, t) {
+    pcs.push({ x, y: .91, z, w: .05, h: .38, d: .5, corNome: 'monitor', tip: t });
+    pcs.push({ x: x + lado * .035, y: .95, z, w: .02, h: .3, d: .44, corNome: 'tela', tip: t });
+  }
+  const zM = fz + LARG / 2 + .35 + 1;                               // mesas de lado: 1,2 m (x) × 2 m (z), encostadas na esteira
+  function mesa(xc, nome, detalhe) {
+    const t = () => tipInfo(nome, detalhe);
+    mesas.push({ x: xc, y: .85, z: zM, w: 1.2, h: .06, d: 2, corNome: 'mesa', tip: t });
+    [[-.5, -.9], [.5, -.9], [-.5, .9], [.5, .9]].forEach(([dx, dz]) => pern.push({ x: xc + dx, y: 0, z: zM + dz, w: .07, h: .85, d: .07, corNome: 'mesa' }));
+    return t;
+  }
+  const xM1 = xR - .6, xM2 = xM1 - 1.9, xM3 = xM2 - 1.7;
+  const t1 = mesa(xM1, 'Mesa de conferência 1', '2 monitores, um de cada lado · as conferentes ficam uma de frente para a outra');
+  monitor(xM1 + .12, zM, 1, t1); monitor(xM1 - .12, zM, -1, t1);
+  const t2 = mesa(xM2, 'Mesa de conferência 2', '1 monitor · virada no mesmo sentido da mesa 3');
+  monitor(xM2 - .3, zM, 1, t2);
+  const t3 = mesa(xM3, 'Mesa de conferência 3', '1 monitor · virada no mesmo sentido da mesa 2');
+  monitor(xM3 - .3, zM, 1, t3);
   lote(rol, 'comum', 0); lote(pern, 'comum', 0); lote(mesas, 'comum', 0); lote(pcs, 'comum', 0);
-  // pallets montados no fim da esteira
+  // pallets de caixas sendo montados, na ponta da esteira
   const cxs = [];
-  [[fx0 + LE + 1, fz - .7], [fx0 + LE + 1, fz + .7], [fx0 + LE + 2.4, fz]].forEach(([x, z], i) => {
+  [[xEst0 - .9, fz - .65, 3], [xEst0 - .9, fz + .65, 2], [xEst0 - 2.2, fz, 1]].forEach(([x, z, n]) => {
     cxs.push({ x, y: 0, z, w: 1.1, h: .15, d: 1.1, corNome: 'pallet', tip: () => tipCx });
-    for (let n = 0; n < 2 + (i % 2); n++) cxs.push({ x, y: .15 + n * .45, z, w: .95, h: .42, d: .95, corNome: 'caixa', tip: () => tipCx });
+    for (let i = 0; i < n; i++) cxs.push({ x, y: .15 + i * .45, z, w: .95, h: .42, d: .95, corNome: 'caixa', tip: () => tipCx });
   });
   lote(cxs, 'comum', 0);
+  const fx0 = xEst0, LE = xEst1 - xEst0;
   // eclusas: 2 colunas × 5 fileiras de pallets, na frente do galpão (posições fixas: não mudam a cada carga)
   const pal = [], car = [], faixas = [];
   let semente = 11;
@@ -685,7 +727,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
   rotulo('Divisão · estoque do E-commerce', X_DIV, ALT + 4.4, 20, 'comum', 'inf');
   rotulo('Colmeias', (geoRua('2').xPar + geoRua('3').xImpar) / 2, 2.8, Z_FRENTE + 2, 'comum', 'inf');
   rotulo('Hidrante', xH, 2.2, Z_FRENTE + .6, 'comum', 'inf');
-  rotulo('Caixa de faturamento', fx0 + LE / 2, 2.4, fz - 2.4, 'comum', 'inf');
+  rotulo('Caixa de faturamento', fx0 + LE / 2, 2.2, fz, 'comum', 'inf');
   rotulo('Eclusas', (XR + xFimE) / 2, 2.4, Z_FRENTE + 13, 'comum', 'inf');
   rotulo('RUAS 11–15', XL + RUAS_ESQ.length * PASSO / 2, ALT + 3.4, -1.5, 'comum', 'inf');
   rotulo('RUAS 01–08', XR + RUAS_DIR.length * PASSO / 2, ALT + 3.4, -1.5, 'comum', 'inf');
