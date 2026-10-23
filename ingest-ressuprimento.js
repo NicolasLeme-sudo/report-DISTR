@@ -1157,6 +1157,8 @@ function construirSnapshotRessuprimento(picking, pulmao, mapaFamilias, capacidad
     // Rua > 15 (físico ou reclassificado) fica de fora — ver dentroDaRuaFisica.
     enderecos_ociosos: mapearEnderecosOciosos(pickingComApoio, pulmaoFisicoAteRua15),
     picking_sem_parametrizacao: pickingSemParametrizacao,
+    // Planta 3D (HeatMap Operacional): estado de cada endereço físico — ver montarMapaEnderecos.
+    mapa_enderecos: montarMapaEnderecos(pickingReal, pulmaoFisico, enderecosPickingFora),
   };
 }
 
@@ -1248,6 +1250,115 @@ function mapearEnderecosOciosos(pickingReal, pulmaoFisico) {
   saida.picking.vazios.sort(ord); saida.picking.picados.sort(ord);
   saida.pulmao.vazios.sort(ord); saida.pulmao.picados.sort(ord);
   return saida;
+}
+
+/* ============================================================================
+   MAPA DE ENDEREÇOS — base da planta 3D (HeatMap Operacional, 23/10/2026)
+   ----------------------------------------------------------------------------
+   Um retrato compacto de cada endereço físico das ruas 1–8 e 11–15, pra
+   planta desenhar rua × lado × nível × box sem precisar ler a tabela de
+   saldo por endereço. Por rua e nível: o maior box e uma string com o estado
+   de cada box (posição i = box i+1) e as peças em base 36 ("" = zero).
+
+   Universo (mesma ideia do vazio inferido de mapearEnderecosOciosos):
+   - Pulmão: níveis 8 a 12 que aparecem na rua × boxes 1..maior box da rua.
+     Rua com quase só uma paridade (11: só pares) é de um lado só — box da
+     outra paridade fica fora do desenho e é só contado.
+   - Picking: o arquivo traz só endereço alocado; o resto até o maior box do
+     nível é inferido como livre (sem SKU cadastrado).
+   Estados — Pulmão: 0 vazio, 1 ocupado, 2 picado (< LIMITE_PICADO pç),
+   x fora da capacidade (passagem, não existe, coluna). Picking: l livre,
+   0 alocado sem saldo, 1 com saldo, 2 picado, r reservado (saldo negativo
+   zerado), x faixa sem parametrização sem saldo.
+   ============================================================================ */
+const RUAS_MAPA = ['1', '2', '3', '4', '5', '6', '7', '8', '11', '12', '13', '14', '15'];
+function montarMapaEnderecos(pickingReal, pulmaoFisico, enderecosPickingFora) {
+  const fora = { pulmao: 0, picking: 0 };
+  const foraPick = new Set();
+  (enderecosPickingFora || new Set()).forEach(function (k) {
+    const p = k.split('|'); foraPick.add(Number(p[0]) + '|' + Number(p[1]) + '|' + Number(p[2]));
+  });
+  function lados(boxes) {
+    let par = 0, impar = 0;
+    boxes.forEach(function (b) { if (b % 2) impar++; else par++; });
+    const t = par + impar;
+    if (!t) return 'ip';
+    if (par / t < 0.1) return 'i';
+    if (impar / t < 0.1) return 'p';
+    return 'ip';
+  }
+  function cabe(lado, box) { return lado === 'ip' || (lado === 'p' ? box % 2 === 0 : box % 2 === 1); }
+  function agrupa(lista, nivelOk) {
+    const porRua = {};
+    lista.forEach(function (r) {
+      const rua = String(Number(r.rua)), nivel = Number(r.nivel), box = Number(r.box);
+      if (RUAS_MAPA.indexOf(rua) === -1 || !(box > 0) || !nivelOk(nivel)) return;
+      const R = porRua[rua] || (porRua[rua] = { niveis: {}, boxes: [] });
+      const N = R.niveis[nivel] || (R.niveis[nivel] = new Map());
+      const e = N.get(box) || { qtd: 0, gap: 0 };
+      e.qtd += (r.qtd || 0) + (r.qtd_cativado || 0);
+      e.gap += r.qtd_gap_reservado || 0;
+      N.set(box, e);
+      R.boxes.push(box);
+    });
+    return porRua;
+  }
+  const q36 = function (v) { return v > 0 ? Math.round(v).toString(36) : ''; };
+
+  const pulm = agrupa(pulmaoFisico, function (n) { return n >= 8 && n <= 12; });
+  const outPulm = {};
+  Object.keys(pulm).forEach(function (rua) {
+    const R = pulm[rua], lado = lados(R.boxes);
+    const maxBox = R.boxes.reduce(function (m, b) { return cabe(lado, b) ? Math.max(m, b) : m; }, 0);
+    const niveis = {};
+    Object.keys(R.niveis).forEach(function (nv) {
+      const N = R.niveis[nv];
+      let e = '', q = [];
+      for (let b = 1; b <= maxBox; b++) {
+        const x = N.get(b);
+        const qtd = x ? x.qtd : 0;
+        if (!cabe(lado, b)) { e += '-'; q.push(''); continue; }
+        if (qtd > 0) e += qtd < LIMITE_PICADO ? '2' : '1';
+        else e += foraCapacidadePulmao(rua, nv, b) ? 'x' : '0';
+        q.push(q36(qtd));
+      }
+      N.forEach(function (x, b) { if (b > maxBox || !cabe(lado, b)) fora.pulmao++; });
+      niveis[nv] = { e: e, q: q.join(',') };
+    });
+    outPulm[rua] = { lados: lado, max: maxBox, niveis: niveis };
+  });
+
+  const pick = agrupa(pickingReal, function (n) { return n >= 1 && n <= 7; });
+  const outPick = {};
+  Object.keys(pick).forEach(function (rua) {
+    const R = pick[rua], lado = lados(R.boxes);
+    const niveis = {};
+    let maxRua = 0;
+    Object.keys(R.niveis).forEach(function (nv) {
+      const N = R.niveis[nv];
+      let maxBox = 0;
+      N.forEach(function (x, b) { if (cabe(lado, b)) maxBox = Math.max(maxBox, b); else fora.picking++; });
+      maxRua = Math.max(maxRua, maxBox);
+      let e = '', q = [];
+      for (let b = 1; b <= maxBox; b++) {
+        const x = N.get(b);
+        if (!cabe(lado, b)) { e += '-'; q.push(''); continue; }
+        if (!x) { e += 'l'; q.push(''); continue; }
+        if (x.qtd > 0) e += x.qtd < LIMITE_PICADO ? '2' : '1';
+        else if (foraPick.has(rua + '|' + nv + '|' + b)) e += 'x';
+        else if (x.gap > 0) e += 'r';
+        else e += '0';
+        q.push(q36(x.qtd));
+      }
+      niveis[nv] = { max: maxBox, e: e, q: q.join(',') };
+    });
+    outPick[rua] = { lados: lado, max: maxRua, niveis: niveis };
+  });
+  return {
+    versao: 1, limite_picado: LIMITE_PICADO, ruas: RUAS_MAPA,
+    zonas: RUAS_ZONA, insumos_pulmao: RUAS_PULMAO_INSUMOS,
+    pulmao: outPulm, picking: outPick, fora_do_desenho: fora,
+  };
 }
 
 /* ============================================================================
@@ -1470,6 +1581,7 @@ window.RUAS_PULMAO_INSUMOS = RUAS_PULMAO_INSUMOS;
 window.construirSnapshotRessuprimento = construirSnapshotRessuprimento;
 window.classificarPickingEPulmao = classificarPickingEPulmao;
 window.construirSaldoEnderecos = construirSaldoEnderecos;
+window.montarMapaEnderecos = montarMapaEnderecos;
 window.classificarRuaPulmao = classificarRuaPulmao;
 window.classificarBucket = classificarBucket;
 window.segmentoMacro = segmentoMacro;

@@ -706,6 +706,45 @@ secao('Picking sem parametrização (ruas 3–6, boxes 1–76), passagem e insum
   eq(txt(snap.enderecos_ociosos.pulmao.picados), '', 'rua 8 (insumos) do Pulmão não entra nas listas de endereços');
 })();
 
+/* -------------------------------------------------------------------------- */
+secao('mapa de endereços — planta 3D (23/10/2026)');
+(function () {
+  const reg = function (rua, nivel, box, qtd, extra) {
+    return Object.assign({ familia_codigo: '101', artigo_codigo: 'X' + rua + nivel + box, cor: 'PT', tamanho: '40', ean: 'E', rua: rua, nivel: nivel, box: box, qtd: qtd, qtd_cativado: 0, qtd_gap_reservado: 0 }, extra || {});
+  };
+  const pick = { registros: [
+    reg('3', '1', '078', 0), reg('3', '1', '080', 30), reg('3', '1', '081', 0, { qtd_gap_reservado: 4 }),
+    reg('3', '1', '005', 0),                                 // faixa sem parametrização, sem saldo
+    reg('7', '2', '004', 3), reg('70', '1', '001', 9),       // rua 70 fora do mapa
+  ], negativas_excluidas: 0, negativas_unidades: 0 };
+  const vol = function (rua, nivel, box, qtd) {
+    return { familia_codigo: '101', artigo_codigo: 'U' + rua + nivel + box, cor: 'PT', tamanho: '40', descricao: 'X', unidade: 'PAR', em_linha: true, rua: rua, nivel: nivel, box: box, dt_cri: null, qtd: qtd, codbar: '' };
+  };
+  const pulm = { registros: [
+    vol('2', '8', '1', 100), vol('2', '8', '1', 20), vol('2', '9', '4', 5), vol('2', '8', '66', 7),
+    vol('11', '8', '2', 40), vol('11', '9', '4', 40), vol('11', '9', '6', 40), vol('11', '10', '8', 40), vol('11', '10', '10', 40),
+    vol('11', '10', '12', 40), vol('11', '11', '14', 40), vol('11', '11', '16', 40), vol('11', '12', '18', 40), vol('11', '12', '20', 40),
+    vol('11', '10', '1', 40),                                // box ímpar perdido numa rua de um lado só
+    vol('24', '1', '1', 9),                                  // trânsito: não é Pulmão físico
+  ], colisoes_volume: 0 };
+  const m = construirSnapshotRessuprimento(pick, pulm, mapaFamilias, {}, { arquivo_picking: 'a', arquivo_pulmao: 'b' }).mapa_enderecos;
+  eq(m.pulmao['2'].lados, 'ip', 'rua 2 do Pulmão tem os dois lados (pares e ímpares)');
+  eq(m.pulmao['2'].max, 66, 'maior box da rua 2 = 66');
+  eq(m.pulmao['2'].niveis['8'].e.slice(0, 4), '1000', 'nível 8: box 1 ocupado (120 pç, 2 volumes somados), 2–4 vazios');
+  eq(m.pulmao['2'].niveis['8'].q.split(',')[0], (120).toString(36), 'peças em base 36');
+  eq(m.pulmao['2'].niveis['8'].e[65], '2', 'box 66 com 7 pç = picado (passagem com saldo continua aparecendo)');
+  eq(m.pulmao['2'].niveis['9'].e[3], '2', 'nível 9 box 4 = picado (5 pç)');
+  eq(m.pulmao['2'].niveis['9'].e[65], 'x', 'box 66 do nível 9 sem saldo = passagem (fora da capacidade)');
+  eq(m.pulmao['11'].lados, 'p', 'rua 11 (só pares) é de um lado só');
+  eq(m.pulmao['11'].niveis['10'].e[0], '-', 'box ímpar da rua 11 fica fora do desenho');
+  eq(m.fora_do_desenho.pulmao, 1, 'e é contado em fora_do_desenho');
+  ok(!m.pulmao['24'], 'rua de trânsito não entra no mapa');
+  eq(m.picking['3'].niveis['1'].e.slice(76, 81), 'l0l1r', 'Picking: 77 livre (inferido), 78 alocado sem saldo, 79 livre, 80 com saldo, 81 reservado');
+  eq(m.picking['3'].niveis['1'].e[4], 'x', 'box 5 da rua 3 sem saldo = faixa sem parametrização');
+  eq(m.picking['7'].niveis['2'].e[3], '2', 'rua 7 nível 2 box 4 = picado');
+  ok(!m.picking['70'], 'rua 70 (reclassificada / fora das ruas físicas) não entra no mapa do Picking');
+})();
+
 console.log('\n' + (falhas === 0 ? 'TODOS OS TESTES PASSARAM' : falhas + ' TESTE(S) FALHARAM'));
   process.exit(falhas === 0 ? 0 : 1);
 });

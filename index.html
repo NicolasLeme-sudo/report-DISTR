@@ -1285,6 +1285,9 @@ tr.total > th, tr.total > td {
     <div class="menu-item" id="menuEstoqueOp" onclick="mostrarSecao('estoqueop')">
       <span class="icone">🏪</span> Estoque
     </div>
+    <div class="menu-item" id="menuHeatmap" onclick="mostrarSecao('heatmap')">
+      <span class="icone">🗺️</span> HeatMap Operacional
+    </div>
     <div class="menu-item" id="menuEmbarque" onclick="mostrarSecao('embarque')">
       <span class="icone">🚚</span> Embarque
     </div>
@@ -1331,6 +1334,10 @@ tr.total > th, tr.total > td {
 
     <section class="secao" id="secao-estoqueop">
       <div id="estoqueop-conteudo"><div class="loading-msg">Carregando snapshot…</div></div>
+    </section>
+
+    <section class="secao" id="secao-heatmap">
+      <div id="heatmap-conteudo"><div class="loading-msg">Carregando planta…</div></div>
     </section>
 
     <section class="secao" id="secao-embarque">
@@ -1658,6 +1665,7 @@ tr.total > th, tr.total > td {
 <script src="ingest-colaboradores.js"></script>
 <script src="ingest-pfas.js"></script>
 <script src="embarque.js"></script>
+<script src="planta3d-distr.js"></script>
 <script src="ingest-emails-ajustes.js"></script>
 <!-- SheetJS — só usado na tela de Admin, pra ler a base de Ativos (.xlsx) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -1820,6 +1828,7 @@ const TITULOS = {
   start: 'Start Inicial',
   ressuprimento: 'Ressuprimento',
   estoqueop: 'Estoque',
+  heatmap: 'HeatMap Operacional - Planta 3D',
   embarque: 'Embarque',
   estoque: 'Balanço de Estoque',
   distr: 'Fluxo de Processos',
@@ -1847,6 +1856,7 @@ function atualizarSubtituloSecao(secao) {
   else if (secao === 'ressuprimento') iso = dataSnapshotMovimentacoes;
   else if (secao === 'start') iso = dataSnapshotPfas;
   else if (secao === 'embarque') iso = dataSnapshotEmbarque;
+  else if (secao === 'heatmap') iso = dataSnapshotHeatmap;
   el.textContent = iso ? 'Última atualização: ' + formatarDataHora(iso) : '';
 }
 window.atualizarSubtituloSecao = atualizarSubtituloSecao;
@@ -1861,6 +1871,7 @@ let ressuprimentoCarregado = false;
 let pfasCarregado = false;
 let estoqueCarregado = false;
 let embarqueCarregado = false;
+let heatmapCarregado = false;
 
 function mostrarSecao(secao) {
   // Trava de rota: esconder o item do menu não basta, porque a navegação
@@ -1875,7 +1886,7 @@ function mostrarSecao(secao) {
   ajustarTabelas5Linhas(document.getElementById('secao-' + secao));
   document.querySelectorAll('.menu-item').forEach(function (i) { i.classList.remove('ativo'); });
   const item = {
-    start: 'menuStart', ressuprimento: 'menuRessuprimento', estoqueop: 'menuEstoqueOp', embarque: 'menuEmbarque', estoque: 'menuEstoque',
+    start: 'menuStart', ressuprimento: 'menuRessuprimento', estoqueop: 'menuEstoqueOp', heatmap: 'menuHeatmap', embarque: 'menuEmbarque', estoque: 'menuEstoque',
     distr: 'menuDistrFluxo', atualizar: 'menuAtualizar',
   }[secao];
   if (item) document.getElementById(item).classList.add('ativo');
@@ -1893,6 +1904,10 @@ function mostrarSecao(secao) {
   if ((secao === 'ressuprimento' || secao === 'estoqueop') && !ressuprimentoCarregado) {
     ressuprimentoCarregado = true;
     carregarRessuprimento();
+  }
+  if (secao === 'heatmap' && !heatmapCarregado) {
+    heatmapCarregado = true;
+    carregarHeatmap();
   }
   if (secao === 'start' && !pfasCarregado) {
     pfasCarregado = true;
@@ -4857,6 +4872,29 @@ function baixarCSVPfas(linhas, nomeArquivo) {
   a.download = nomeArquivo;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+/* HeatMap Operacional - Planta 3D (23/10/2026): lê só o mapa de endereços e a ocupação por rua
+   do último snapshot de Picking + Pulmão (o payload inteiro é bem maior) — planta3d-distr.js. */
+let dataSnapshotHeatmap = null;
+async function carregarHeatmap() {
+  const alvo = document.getElementById('heatmap-conteudo');
+  const r = await supabaseClient.from('dashboard_snapshots')
+    .select('gerado_em, mapa:payload->mapa_enderecos, opr:payload->ocupacao_por_rua, ap:payload->arquivo_picking, au:payload->arquivo_pulmao')
+    .eq('pagina', 'ressuprimento').order('gerado_em', { ascending: false }).limit(1);
+  if (r.error) { alvo.innerHTML = '<div class="aviso erro">Erro ao carregar a planta: ' + escapar(r.error.message) + '</div>'; return; }
+  const row = r.data && r.data[0];
+  if (!row) {
+    alvo.innerHTML = '<div class="aviso">Nenhum snapshot de Picking + Pulmão publicado ainda. Envie os arquivos pela tela <strong>Admin › Abastecimento</strong>.</div>';
+    return;
+  }
+  dataSnapshotHeatmap = row.gerado_em;
+  atualizarSubtituloSecao('heatmap');
+  alvo.innerHTML = '<div class="card" id="heatmapPlanta"></div>';
+  window.montarPlanta3DDistr(document.getElementById('heatmapPlanta'), {
+    mapa: row.mapa, opr: row.opr, gerado_em: row.gerado_em,
+    arquivos: [row.ap, row.au].filter(Boolean).join(' + '),
+  });
 }
 
 async function carregarRessuprimento() {
@@ -7877,6 +7915,7 @@ document.getElementById('btnProcessarRessuprimento').addEventListener('click', a
     escrever('Recarregando o dashboard em segundo plano…');
     ressuprimentoCarregado = true;
     await carregarRessuprimento();
+    if (heatmapCarregado) carregarHeatmap();   // a planta 3D usa o mesmo snapshot
     // Fica na tela de Abastecimento — só avisa que deu certo, sem navegar
     // pro Ressuprimento, pra dar pra encadear o próximo arquivo direto.
     ok.textContent = '✔ Processado com sucesso — pode selecionar o próximo arquivo.';
