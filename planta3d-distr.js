@@ -13,8 +13,8 @@
    - Picking embaixo (níveis 1–7) e Pulmão em cima (níveis 8–12).
    - Frente: colmeias pretas (2 por par de longarinas encostadas, menos no
      par 04/05, que tem o hidrante), placas das marcas (Olympikus na 04,
-     Mizuno na 06, Under Armour na 08), caixa de faturamento depois da rua
-     08 (esteira de roletes com 4 mesas) e eclusas.
+     Mizuno na 06, Under Armour na 08), caixa de faturamento na frente das
+     ruas 07 e 08 (esteira de roletes com 4 mesas) e eclusas.
    - Picking: bins no lado direito, caixas sob medida nos acessórios
      (11–13) e gaiolas nas meias (14–15, 2 endereços por gaiola).
 
@@ -437,7 +437,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
   }
 
   /* ---------- chão, corredores e divisória ---------- */
-  caixa(XL - 3, -4, XR + RUAS_DIR.length * PASSO + 18, Z_FRENTE + 24, -.3, .3, 'chao', 'comum');
+  caixa(XL - 3, -4, XR + RUAS_DIR.length * PASSO + 8, Z_FRENTE + 24, -.3, .3, 'chao', 'comum');
   RUAS_ESQ.concat(RUAS_DIR).forEach(r => {
     const g = geoRua(r);
     caixa(g.xCorr - A / 2 + .1, 0, g.xCorr + A / 2 - .1, g.L, 0, .02, 'corredor', 'comum');
@@ -532,10 +532,11 @@ window.montarPlanta3DDistr = async function (container, dados) {
   }
   placa('3', '4', 'Olympikus'); placa('5', '6', 'Mizuno'); placa('7', '8', 'Under Armour');
 
-  // caixa de faturamento (fotos): depois da rua 08, encostada na parede. Esteira de roletes no centro,
+  // caixa de faturamento (fotos): na frente das ruas 07 e 08, no lugar das eclusas. Esteira de roletes no centro,
   // 4 mesas em volta (2 com 1 computador, 2 com 2, um de cada lado); no fim da esteira a caixa é
   // lacrada e vai para o pallet.
-  const fx0 = geoRua('8').xPar + 3.2, fz = Z_FRENTE - 3, LE = 8.5;
+  const LE = 8.5, fxA = geoRua('7').xImpar - D / 2, fxB = geoRua('8').xPar + D / 2;
+  const fx0 = (fxA + fxB) / 2 - (LE + 3) / 2, fz = Z_FRENTE + 12.5;   // esteira + pallets no fim, centrados na frente das ruas 07–08
   const tipCx = tipInfo('Caixa de faturamento', '4 mesas de conferência em volta da esteira de roletes · no fim da esteira a caixa é lacrada e o pallet é montado');
   caixa(fx0, fz - .45, fx0 + LE, fz + .45, .7, .08, 'rolete', 'comum', { tip: tipCx });
   const rol = [], pern = [], mesas = [], pcs = [];
@@ -580,7 +581,8 @@ window.montarPlanta3DDistr = async function (container, dados) {
     [[x0, z0, x1, z0 + e], [x0, z1 - e, x1, z1], [x0, z0, x0 + e, z1], [x1 - e, z0, x1, z1], [(x0 + x1) / 2 - e / 2, z0, (x0 + x1) / 2 + e / 2, z1]]
       .forEach(([a, b, c, d]) => faixas.push({ x: (a + c) / 2, y: .05, z: (b + d) / 2, w: c - a, h: .03, d: d - b, corNome: 'faixa', tip: tl }));
   }
-  const nE = 7, xIniE = XR + 1, passoE = (RUAS_DIR.length * PASSO - 6) / (nE - 1);
+  // eclusas só até a rua 06: a frente das ruas 07 e 08 é da caixa de faturamento
+  const xFimE = fxA - 1, nE = Math.floor((xFimE - (XR + 1) + .9) / 6.4), xIniE = XR + 1, passoE = nE > 1 ? (xFimE - 5.5 - xIniE) / (nE - 1) : 0;
   for (let i = 0; i < nE; i++) eclusa(xIniE + i * passoE, 'Eclusa ' + (i + 1));
   eclusa(XL + 4, 'Eclusa ' + (nE + 1)); eclusa(XL + 14, 'Eclusa ' + (nE + 2));
   lote(pal, 'comum', 0); lote(car, 'comum', 0); lote(faixas, 'comum', 0);
@@ -595,8 +597,8 @@ window.montarPlanta3DDistr = async function (container, dados) {
   rotulo('Divisão · estoque do E-commerce', X_DIV, ALT + 4.4, 20, 'comum', 'inf');
   rotulo('Colmeias', (geoRua('2').xPar + geoRua('3').xImpar) / 2, 2.8, Z_FRENTE + 2, 'comum', 'inf');
   rotulo('Hidrante', xH, 2.2, Z_FRENTE + .6, 'comum', 'inf');
-  rotulo('Caixa de faturamento', fx0 + LE / 2, 2.2, fz, 'comum', 'inf');
-  rotulo('Eclusas', XR + RUAS_DIR.length * PASSO / 2, 2.4, Z_FRENTE + 13, 'comum', 'inf');
+  rotulo('Caixa de faturamento', fx0 + LE / 2, 2.4, fz - 2.4, 'comum', 'inf');
+  rotulo('Eclusas', (XR + xFimE) / 2, 2.4, Z_FRENTE + 13, 'comum', 'inf');
   rotulo('RUAS 11–15', XL + RUAS_ESQ.length * PASSO / 2, ALT + 3.4, -1.5, 'comum', 'inf');
   rotulo('RUAS 01–08', XR + RUAS_DIR.length * PASSO / 2, ALT + 3.4, -1.5, 'comum', 'inf');
 
