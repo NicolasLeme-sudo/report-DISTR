@@ -72,9 +72,9 @@ const RAMPS = {
 };
 const INFRA = {
   dark:  { esteira: '#10161F', estr: '#7C92AC', estrut: '#2F5F9E', longarina: '#E8830D', parede: '#5A6F88', chao: '#18233A', corredor: '#1E2B40',
-           colmeia: '#0B0D10', pallet: '#9A7350', carga: '#CDB48C', caixa: '#C9A36A', eclusa: '#33516E', piso: '#22344A', perna: '#55657A', fora: '#3A4A5E', neutro: '#6F7F96' },
+           colmeia: '#0B0D10', pallet: '#9A7350', carga: '#CDB48C', caixa: '#C9A36A', faixa: '#F6BD00', eclusa: '#33516E', piso: '#22344A', perna: '#55657A', fora: '#3A4A5E', neutro: '#6F7F96' },
   light: { esteira: '#3A4656', estr: '#8EA3BA', estrut: '#3A6AAE', longarina: '#D9730A', parede: '#9DB0C4', chao: '#E3E9F0', corredor: '#D3DCE6',
-           colmeia: '#1A1C20', pallet: '#9A7350', carga: '#D9C4A0', caixa: '#B98E52', eclusa: '#C4D3E2', piso: '#D6DFE9', perna: '#8A99AA', fora: '#B4C0CE', neutro: '#8C9AAD' }
+           colmeia: '#1A1C20', pallet: '#9A7350', carga: '#D9C4A0', caixa: '#B98E52', faixa: '#C9960A', eclusa: '#C4D3E2', piso: '#D6DFE9', perna: '#8A99AA', fora: '#B4C0CE', neutro: '#8C9AAD' }
 };
 // Visão "Endereço": uma cor por estado do endereço
 const ESTADOS = {
@@ -148,7 +148,7 @@ function montarItens(mapa) {
         const nPos = Math.max(1, Math.ceil(maxB / 2)), passo = geo.L / nPos, q = (N.q || '').split(',');
         const hb = zona === 'picking' ? PK_TOPO / nPk : PU_PASSO;
         const y = zona === 'picking' ? (lv - 1) * hb : PU_BASE + (lv - 8) * PU_PASSO;
-        const h = zona === 'picking' ? Math.max(.25, hb * .78) : PU_H;
+        const h = zona === 'picking' ? Math.max(.2, hb * .58) : PU_H;
         for (let i = 0; i < N.e.length; i++) {
           const st = N.e[i]; if (st === '-') continue;
           const box = i + 1, lado = box % 2 ? 'impar' : 'par', k = Math.ceil(box / 2);
@@ -488,7 +488,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
   lote(cxs, 'comum', 0);
   caixa(cx0 + .2, cz0, cx0 + 4.9, cz0 + 3.6, 0, .05, 'piso', 'comum', { tip: tipCx });
   // eclusas: 2 colunas × 5 fileiras de pallets, na frente do galpão (posições fixas: não mudam a cada carga)
-  const pal = [], car = [], vagas = [];
+  const pal = [], car = [], faixas = [];
   let semente = 11;
   const sorteio = () => (semente = (semente * 9301 + 49297) % 233280) / 233280;
   function eclusa(x0, nome) {
@@ -502,13 +502,17 @@ window.montarPlanta3DDistr = async function (container, dados) {
       if (cheias.has(i)) {
         pal.push({ x, y: .05, z, w: lado, h: .2, d: lado, corNome: 'pallet', tip: t });
         car.push({ x, y: .25, z, w: lado * .88, h: 1.2, d: lado * .88, corNome: 'carga', tip: t });
-      } else vagas.push({ x, y: .05, z, w: lado, h: .02, d: lado, corNome: 'piso', tip: t });
+      }
     }
+    // layout da eclusa: retângulo marcado no chão com um risco no meio, de ponta a ponta (frente ao fundo)
+    const e = .14, tl = () => tipInfo(nome, 'Frente do galpão · ' + cheias.size + ' de ' + n + ' posições com pallet (ilustrativo)');
+    [[x0, z0, x1, z0 + e], [x0, z1 - e, x1, z1], [x0, z0, x0 + e, z1], [x1 - e, z0, x1, z1], [(x0 + x1) / 2 - e / 2, z0, (x0 + x1) / 2 + e / 2, z1]]
+      .forEach(([a, b, c, d]) => faixas.push({ x: (a + c) / 2, y: .05, z: (b + d) / 2, w: c - a, h: .03, d: d - b, corNome: 'faixa', tip: tl }));
   }
   const nE = 7, xIniE = XR + 1, passoE = (RUAS_DIR.length * PASSO - 6) / (nE - 1);
   for (let i = 0; i < nE; i++) eclusa(xIniE + i * passoE, 'Eclusa ' + (i + 1));
   eclusa(XL + 4, 'Eclusa ' + (nE + 1)); eclusa(XL + 14, 'Eclusa ' + (nE + 2));
-  lote(pal, 'comum', 0); lote(car, 'comum', 0); lote(vagas, 'comum', 0);
+  lote(pal, 'comum', 0); lote(car, 'comum', 0); lote(faixas, 'comum', 0);
 
   /* ---------- rótulos ---------- */
   RUAS_ESQ.concat(RUAS_DIR).forEach(r => { const g = geoRua(r); rotulo(pad(r), g.xCorr, ALT + 1.2, -1.5, 'comum', 'big'); });
