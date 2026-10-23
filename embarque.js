@@ -4,10 +4,12 @@
    Mesmo gráfico do Report E-commerce (Expedição × Forecast / Análise Prevista
    de Backlog), com os dados da DISTR:
 
-   - Realizado: tabela embarque_diario, alimentada pela base histórica do
-     Embarque (modelo antigo de backlog, aba "Plan1": EXPEDIÇÃO, BACKLOG,
-     SEPARAÇÃO e FATURAMENTO em peças, uma coluna por dia). Subir a base de novo
-     nunca duplica (upsert por dia).
+   - Realizado (23/10/2026, só 2 arquivos): expedição diária do NFs Embarcadas do
+     GCI (data de embarque, sem CROSSDOC, abastecido junto com os PFAs) e o
+     detalhado por marca × segmento × transportadora do arquivo de Notas
+     Embarcadas do time de Embarque. Backlog e entrada saem dos Pendentes que já
+     são abastecidos na tela PFAs. A antiga base "Plan1" (embarque_diario) não é
+     mais abastecida: o que ela já gravou fica só como histórico de até 01/10/2026.
    - Forecast: tabela embarque_forecast_mensal — peças embarcadas previstas no
      MÊS, divididas por igual entre os dias úteis (seg–sex, menos os dias de
      folga informados). Ex.: out/2026 = 731.000 peças em 22 dias úteis =
@@ -50,58 +52,6 @@
   const normaliza = function (s) {
     return String(s == null ? '' : s).trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   };
-
-  /* ============================================================================
-     LEITURA DA BASE HISTÓRICA (linhas = matriz da aba, uma linha por array)
-     ============================================================================ */
-  const SECOES_BASE = { EXPEDICAO: 'expedido', BACKLOG: 'backlog', SEPARACAO: 'separacao', FATURAMENTO: 'faturamento' };
-
-  function parsearBaseEmbarque(linhas) {
-    const avisos = [];
-    // linha das datas = a que mais tem célula de data (a de "semana" tem só números pequenos)
-    let iDatas = -1, melhor = 0;
-    (linhas || []).forEach(function (l, i) {
-      const n = (l || []).slice(1).filter(function (c) { return dataDeCelula(c) !== null; }).length;
-      if (n > melhor) { melhor = n; iDatas = i; }
-    });
-    if (iDatas < 0 || melhor < 10) throw new Error('Não achei a linha de datas da base (esperado: uma linha com os dias, um por coluna).');
-    const datas = linhas[iDatas].map(dataDeCelula);
-
-    // cada seção: rótulo na coluna A ("EXPEDIÇÃO") e a linha "Peças" logo abaixo
-    const linhaDe = {};
-    linhas.forEach(function (l, i) {
-      const campo = SECOES_BASE[normaliza(l && l[0])];
-      if (!campo || linhaDe[campo] !== undefined) return;
-      for (let k = i + 1; k <= i + 3 && k < linhas.length; k++) {
-        if (normaliza(linhas[k] && linhas[k][0]) === 'PECAS') { linhaDe[campo] = k; return; }
-      }
-    });
-    if (linhaDe.expedido === undefined) throw new Error('Não achei a seção EXPEDIÇÃO (linha "Peças") na base.');
-    Object.keys(SECOES_BASE).forEach(function (k) {
-      const campo = SECOES_BASE[k];
-      if (linhaDe[campo] === undefined) avisos.push('Seção ' + k + ' não encontrada — esse dado fica de fora.');
-    });
-
-    const registros = [];
-    for (let j = 1; j < datas.length; j++) {
-      if (!datas[j]) continue;
-      const r = { dia: datas[j], expedido: null, backlog: null, separacao: null, faturamento: null };
-      let algum = false;
-      Object.keys(linhaDe).forEach(function (campo) {
-        const v = numeroDeCelula(linhas[linhaDe[campo]][j]);
-        if (v !== null) { r[campo] = v; algum = true; }
-      });
-      if (algum) registros.push(r);
-    }
-    registros.sort(function (a, b) { return a.dia < b.dia ? -1 : 1; });
-    const comExp = registros.filter(function (r) { return r.expedido !== null; });
-    return {
-      registros: registros, avisos: avisos,
-      periodo: registros.length ? { de: registros[0].dia, ate: registros[registros.length - 1].dia } : null,
-      total_expedido: comExp.reduce(function (s, r) { return s + r.expedido; }, 0),
-      dias_com_expedicao: comExp.length,
-    };
-  }
 
   /* "731" ou "731,5" = milhares de peças (731.000 / 731.500); a partir de 100.000 já é o número de peças. */
   function lerMilPecas(txt) {
@@ -146,7 +96,7 @@
     dias.forEach(function (d, i) { out[d] = base + (i < resto ? 1 : 0); });
     return out;
   }
-  /* Perfil operacional por dia da semana (seg–sex), das últimas ~12 semanas da base do Embarque: peso de cada dia
+  /* Perfil operacional por dia da semana (seg–sex), das últimas ~12 semanas do histórico: peso de cada dia
      na saída (expedido) e na entrada (backlog − backlog anterior + expedido). Média aparada (tira o maior e o menor
      de cada dia) e normalizada (média dos 5 dias = 1). Sem histórico suficiente: null (divide por igual). */
   function perfilSemana(diario, ate) {
@@ -239,7 +189,7 @@
     dias.forEach(function (d, i) { out[d] = base[i]; });
     return out;
   }
-  /* Entrada real de um mês fechado, pela base do Embarque: entrada = backlog(fim) − backlog(início) + expedido do mês.
+  /* Entrada real de um mês fechado, pelo histórico (backlog dos Pendentes + NFs Embarcadas): entrada = backlog(fim) − backlog(início) + expedido do mês.
      Devolve a média por dia com expedição e o expedido total (para comparar com o forecast do mês seguinte). */
   function entradaDoMes(diario, mes) {
     const rows = (diario || []).filter(function (r) { return r && r.dia; }).slice().sort(function (a, b) { return a.dia < b.dia ? -1 : 1; });
@@ -988,13 +938,13 @@
       const dias = Array.from(new Set((bruto.agg || []).map(function (r) { return String(r.d).slice(0, 10); }))).sort();
       const cobre = dias.length ? 'o detalhado de notas cobre ' + rotuloDia(dias[0]) + ' a ' + rotuloDia(dias[dias.length - 1]) : 'ainda não há detalhado de notas';
       const mx = matrizRealizada(bruto.agg, modalDia, modalDia ? null : mesesJ);
-      // total expedido pela base do Embarque (sem marca × segmento) para quando o detalhado não cobre o período
+      // total expedido pelo histórico (backlog dos Pendentes + NFs Embarcadas) (sem marca × segmento) para quando o detalhado não cobre o período
       const expBase = (bruto.diario || []).reduce(function (t, r) {
         const ok = modalDia ? r.dia === modalDia : mesesJ.indexOf(String(r.dia).slice(0, 7)) !== -1;
         return t + (ok && r.expedido != null ? Number(r.expedido) || 0 : 0);
       }, 0);
       const rotJ = modalDia ? rotuloDiaCompleto(modalDia) : rotPer;
-      sub = rotJ + (mx ? ' · ' + fmtN(mx.total) + ' peças embarcadas' : expBase ? ' · ' + fmtN(expBase) + ' peças expedidas (base do Embarque)' : '');
+      sub = rotJ + (mx ? ' · ' + fmtN(mx.total) + ' peças embarcadas' : expBase ? ' · ' + fmtN(expBase) + ' peças expedidas (NFs Embarcadas)' : '');
       corpo = mx ? blocos(mx, COR_VD)
         : msg((expBase ? 'Sem detalhe de marca × segmento para ' + (modalDia ? 'este dia' : 'este período') + ': ' : 'Sem expedição neste período: ') + cobre + '. Para ver o realizado por marca × segmento, suba as notas embarcadas em Admin › Embarque.');
     }
@@ -1217,7 +1167,7 @@
         } else if (a) rot(a[0], a[1] - 12, fmtN(a[2]), 'var(--accent)');
         else if (b) rot(b[0], b[1] - 12, fmtN(b[2]), 'var(--olive)');
       }
-      // totais do topo = dia de hoje (expedido de hoje só existe quando a base do Embarque já trouxer o dia)
+      // totais do topo = dia de hoje (expedido de hoje só existe quando o NFs Embarcadas já trouxer o dia)
       const ultExp = serie.ultimo_dia_expedicao;
       tot.innerHTML = '<div class="item"><div class="lab">Expedido · hoje</div><div class="val">' + num(d.expedido[hi]) + '</div>' +
           (d.expedido[hi] == null && ultExp ? '<div style="font-size:10.5px;color:var(--text-muted);font-weight:600">base até ' + rotuloDia(ultExp) + '</div>' : '') + '</div>' +
@@ -1325,7 +1275,7 @@
      ============================================================================ */
   let dataSnapshot = null;
 
-  /* Base de Embarque (.xlsx, até 01/10/2026) + o que já é abastecido todo dia (16/10/2026):
+  /* Histórico antigo já gravado (embarque_diario, até 01/10/2026) + o que é abastecido todo dia:
      expedido do NFs Embarcadas (GCI, data de embarque, sem CROSSDOC), backlog do 1º Pendentes do dia e
      entrada pela data de importação das PFAs. Onde há dado abastecido ele vale; a base cobre o período antigo. */
   function mesclarHistoricoOperacao(diario, hist) {
@@ -1436,28 +1386,8 @@
   }
 
   /* ============================================================================
-     ADMIN — subir a base histórica e informar o forecast mensal
+     ADMIN — notas embarcadas do time e forecast mensal
      ============================================================================ */
-  async function processarBaseEmbarque(supabaseClient, arquivo, avisar) {
-    avisar = avisar || function () {};
-    if (!window.XLSX) throw new Error('Biblioteca de planilhas (XLSX) não carregou — recarregue a página.');
-    avisar('Lendo a planilha…');
-    const wb = window.XLSX.read(await arquivo.arrayBuffer(), { type: 'array' });
-    const ws = wb.Sheets['Plan1'] || wb.Sheets[wb.SheetNames[0]];
-    const linhas = window.XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
-    const parsed = parsearBaseEmbarque(linhas);
-    parsed.avisos.forEach(function (a) { avisar('⚠ ' + a); });
-    avisar(fmtN(parsed.registros.length) + ' dia(s) com dado, de ' + rotuloDia(parsed.periodo.de) + '/' + parsed.periodo.de.slice(0, 4) +
-      ' a ' + rotuloDia(parsed.periodo.ate) + '/' + parsed.periodo.ate.slice(0, 4) + ' · ' + fmtN(parsed.total_expedido) + ' peças expedidas no total.');
-    for (let i = 0; i < parsed.registros.length; i += 300) {
-      const lote = parsed.registros.slice(i, i + 300).map(function (r) { return Object.assign({}, r, { atualizado_em: new Date().toISOString() }); });
-      const { error } = await supabaseClient.from('embarque_diario').upsert(lote, { onConflict: 'dia' });
-      if (error) throw error;
-      avisar('Gravando… ' + fmtN(Math.min(i + 300, parsed.registros.length)) + ' / ' + fmtN(parsed.registros.length));
-    }
-    return parsed;
-  }
-
   async function processarNotasEmbarcadas(supabaseClient, arquivo, avisar) {
     avisar = avisar || function () {};
     if (!window.XLSX) throw new Error('Biblioteca de planilhas (XLSX) não carregou — recarregue a página.');
@@ -1552,33 +1482,9 @@
 
   let adminLigado = false;
   function ligarAdmin(supabaseClient) {
-    if (adminLigado || !document.getElementById('inputBaseEmbarque')) return;
+    if (adminLigado || !document.getElementById('inputNotasEmb')) return;
     adminLigado = true;
     const $ = function (id) { return document.getElementById(id); };
-    // ---- base histórica ----
-    let arquivo = null;
-    const estado = function () {
-      $('btnProcessarBaseEmbarque').disabled = !arquivo;
-      $('dropzoneBaseEmbarqueTexto').textContent = arquivo ? '✓ ' + arquivo.name : 'Clique para selecionar o .xlsx da base de Embarque';
-    };
-    $('dropzoneBaseEmbarque').addEventListener('click', function () { $('inputBaseEmbarque').click(); });
-    $('inputBaseEmbarque').addEventListener('change', function (e) { arquivo = (e.target.files && e.target.files[0]) || null; estado(); });
-    $('btnProcessarBaseEmbarque').addEventListener('click', async function () {
-      const log = $('logBaseEmbarque'), ok = $('okBaseEmbarque');
-      ok.style.display = 'none'; log.textContent = '';
-      const escrever = function (m) { log.textContent += m + '\n'; log.scrollTop = log.scrollHeight; };
-      $('btnProcessarBaseEmbarque').disabled = true;
-      try {
-        await processarBaseEmbarque(supabaseClient, arquivo, escrever);
-        ok.textContent = '✔ Base gravada — o gráfico do Embarque já usa esses dias (reabra a aba se ela estiver aberta).';
-        ok.style.display = '';
-        arquivo = null; $('inputBaseEmbarque').value = ''; estado();
-        if (bruto) recarregar(supabaseClient);
-      } catch (e) {
-        escrever('ERRO: ' + (e && e.message ? e.message : String(e))); console.error(e);
-        $('btnProcessarBaseEmbarque').disabled = false;
-      }
-    });
     // ---- notas embarcadas (detalhado) ----
     let arqNotas = null;
     const estadoNotas = function () {
@@ -1778,7 +1684,7 @@
         listar(); if (bruto) recarregar(supabaseClient);
       } catch (e) { log.textContent = 'ERRO: ' + (e && e.message ? e.message : String(e)); }
     });
-    estado(); listar(); prever();
+    listar(); prever();
   }
 
   // troca de setor: a janela flutuante e o seletor de meses não ficam por cima das outras telas
@@ -1787,8 +1693,8 @@
 
   const api = {
     aoSairDaTela: aoSairDaTela, aoMostrarTela: aoMostrarTela,
-    iniciar: iniciar, ligarAdmin: ligarAdmin, processarBaseEmbarque: processarBaseEmbarque, salvarForecast: salvarForecast,
-    parsearBaseEmbarque: parsearBaseEmbarque, diasUteisDoMes: diasUteisDoMes, distribuirNosDias: distribuirNosDias,
+    iniciar: iniciar, ligarAdmin: ligarAdmin, salvarForecast: salvarForecast,
+    diasUteisDoMes: diasUteisDoMes, distribuirNosDias: distribuirNosDias,
     forecastPorDia: forecastPorDia, perfilSemana: perfilSemana, pesosDoMes: pesosDoMes, distribuirPorPeso: distribuirPorPeso, entradaDoMes: entradaDoMes, entradaAutomatica: entradaAutomatica, validarProporcoes: validarProporcoes, validarCruzada: validarCruzada, matrizPrevista: matrizPrevista, nomeCurtoTransportadora: nomeCurtoTransportadora,
     parsearNotasEmbarcadas: parsearNotasEmbarcadas, aplicarFiltrosNaSerie: aplicarFiltrosNaSerie, montarMix: montarMix, processarNotasEmbarcadas: processarNotasEmbarcadas, montarSerieEmbarque: montarSerieEmbarque, mesclarHistoricoOperacao: mesclarHistoricoOperacao, lerMilPecas: lerMilPecas, repartir: repartir, dataDeCelula: dataDeCelula,
     dataSnapshot: function () { return dataSnapshot; },

@@ -7,35 +7,7 @@ function ok(c, n) { console.log((c ? '  ok  ' : '  XX  ') + n); if (!c) falhas++
 function eq(a, b, n) { const x = JSON.stringify(a) === JSON.stringify(b); if (!x) console.log('        esperado ' + JSON.stringify(b) + ', veio ' + JSON.stringify(a)); ok(x, n); }
 function secao(t) { console.log('\n=== ' + t + ' ==='); }
 
-secao('leitura da base (layout da aba Plan1)');
-const serial = function (iso) { return Math.round(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86400000) + 25569; };
-const dias = ['2026-09-03', '2026-09-04', '2026-09-05', '2026-09-06', '2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10', '2026-09-11', '2026-09-12', '2026-09-13', '2026-09-14'];
-const linhas = [
-  [null, null, null],
-  [null, 36, 36, 36, 36, 37, 37, 37, 37, 37, 37, 37, 37],            // linha de semana: não é data
-  [null].concat(dias.map(serial)),
-  ['BASE DADOS', 'qui', 'sex', 'sáb', 'dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom', 'seg'],
-  ['SEPARAÇÃO'], ['Peças', 27482, 26476, 3004, null, null, 30392, 26792, 36532, 34694, null, null, 35692],
-  ['FATURAMENTO'], ['Peças', 7422, 28493, null, null, null, 14235, 20336, 31436, 25725, null, null, 28833],
-  ['EXPEDIÇÃO'], ['Peças', 15570, 50114, null, null, null, 46845, 25733, 23239, 39162, null, null, 10239],
-  ['BACKLOG', '.'], ['Peças', 187686, 203932, null, null, null, 188798, '#N/A', 158563, 201473, null, null, 204096],
-  ['BACKLOG (IDADE)'], ['1 dia', 1, 2, 3],
-];
-const p = E.parsearBaseEmbarque(linhas);
-eq(p.registros.length, 8, 'dia sem NENHUM número (dom/feriado) não vira registro; sábado só com separação vira');
-eq(p.registros[0], { dia: '2026-09-03', expedido: 15570, backlog: 187686, separacao: 27482, faturamento: 7422 }, 'primeiro dia lido com as 4 séries');
-eq(p.periodo, { de: '2026-09-03', ate: '2026-09-14' }, 'período da base');
-eq(p.total_expedido, 15570 + 50114 + 46845 + 25733 + 23239 + 39162 + 10239, 'total expedido bate com a soma da linha EXPEDIÇÃO');
-const sab = p.registros.find(function (r) { return r.dia === '2026-09-05'; });
-eq([sab.expedido, sab.separacao], [null, 3004], 'sábado: expedição nula (não zero), separação preservada');
-eq(p.registros.find(function (r) { return r.dia === '2026-09-09'; }).backlog, null, '"#N/A" na célula vira nulo');
-eq(p.registros.find(function (r) { return r.dia === '2026-09-14'; }).expedido, 10239, 'seção BACKLOG (IDADE) não confunde com BACKLOG');
-let erro = null;
-try { E.parsearBaseEmbarque([[null], [null, 1, 2]]); } catch (e) { erro = e.message; }
-ok(/linha de datas/.test(erro || ''), 'arquivo sem linha de datas dá erro claro');
-erro = null;
-try { E.parsearBaseEmbarque(linhas.filter(function (l) { return l[0] !== 'EXPEDIÇÃO'; })); } catch (e) { erro = e.message; }
-ok(/EXPEDIÇÃO/.test(erro || ''), 'sem a seção EXPEDIÇÃO dá erro claro');
+secao('datas de célula');
 eq(E.dataDeCelula(46279), '2026-09-14', 'serial do Excel vira data (46279 = 14/09/2026)');
 eq(E.dataDeCelula('14/09/2026'), '2026-09-14', '"dd/mm/aaaa" vira ISO');
 eq(E.dataDeCelula(37), null, 'número pequeno (semana) não é data');
