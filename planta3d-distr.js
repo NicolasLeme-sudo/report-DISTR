@@ -31,7 +31,7 @@
 const URL_THREE = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
 const URL_ORBIT = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js';
 
-const P3 = { estado: null, ui: { zona: 'geral', nivel: 0, topo: false, faixas: false, visao: 'calor', cam: null } };
+const P3 = { estado: null, ui: { zona: 'geral', nivel: 0, topo: false, faixas: false, visao: 'endereco', cam: null } };
 
 /* ---------------- utilidades ---------------- */
 const fmtI = v => Math.round(v).toLocaleString('pt-BR');
