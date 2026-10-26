@@ -1525,9 +1525,10 @@ tr.total > th, tr.total > td {
 
       <div class="card" style="margin-top:12px">
         <p style="font-size:12px;color:var(--text-muted)">
-          A tela <strong>Embarque</strong> é abastecida por <strong>2 arquivos</strong>: o <strong>NFs Embarcadas</strong> do GCI
-          (enviado em <strong>PFAs</strong>, junto com o Pendentes) dá a expedição diária pela data de embarque, sem CROSSDOC;
-          e o arquivo de <strong>Notas Embarcadas</strong> do time de Embarque, abaixo, dá o detalhe por marca, segmento e transportadora.
+          A tela <strong>Embarque</strong> é abastecida pelo arquivo de <strong>Notas Embarcadas</strong> do time de Embarque (abaixo):
+          ele dá a expedição de cada dia (data "Embarque OT 1P.") e o detalhe por marca, segmento e transportadora.
+          Nos dias que esse arquivo ainda não cobre, a expedição usa o <strong>NFs Embarcadas</strong> do GCI (enviado em <strong>PFAs</strong>),
+          que é só aproximado: a data dele é a da última modificação da nota, não a do embarque.
           O backlog e a entrada vêm do Pendentes que já é abastecido na tela PFAs, sem arquivo extra.
         </p>
       </div>

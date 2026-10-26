@@ -1310,6 +1310,24 @@
     return Object.keys(porDia).sort().map(function (d) { return porDia[d]; });
   }
 
+  /* Expedição diária pelo arquivo do time de Embarque (26/10/2026): a data "Embarque OT 1P." é o dia em que a
+     nota saiu. A DATMOD do NFs Embarcadas do GCI é a última modificação da nota e não bate dia a dia (22/10:
+     GCI 14.839 × time 21.633). No período que o arquivo do time cobre, ele vale; dia útil sem nota nesse período
+     = 0. Fora dele (antes/depois), segue o que já havia (GCI / base antiga). agg = embarque_notas_agregado. */
+  function aplicarExpedidoTime(diario, agg) {
+    const porDiaTime = {};
+    (Array.isArray(agg) ? agg : []).forEach(function (r) { const d = String(r.d).slice(0, 10); porDiaTime[d] = (porDiaTime[d] || 0) + (Number(r.p) || 0); });
+    const dias = Object.keys(porDiaTime).sort();
+    if (!dias.length) return diario;
+    const porDia = {};
+    (diario || []).forEach(function (r) { porDia[r.dia] = Object.assign({}, r); });
+    for (let d = dias[0]; d <= dias[dias.length - 1]; d = somaDias(d, 1)) {
+      const r = porDia[d] || (porDia[d] = { dia: d, expedido: null, backlog: null });
+      r.expedido = porDiaTime[d] || 0; r.fonte_expedido = 'embarque_time';
+    }
+    return Object.keys(porDia).sort().map(function (d) { return porDia[d]; });
+  }
+
   async function carregarDados(supabaseClient) {
     const hoje = hojeLocalISO();
     const de = somaDias(hoje, -400), ate = somaDias(hoje, 31);   // ~13 meses: entrada automática e perfil operacional (dia da semana e momento do mês)
@@ -1325,7 +1343,8 @@
     res.slice(0, 4).forEach(function (r) { if (r.error) throw r.error; });
     if (res[4].error) console.warn('Backlog em tela indisponível (rode migracao_embarque.sql):', res[4].error.message);
     if (res[6].error) console.warn('Histórico pelo NFs Embarcadas/Pendentes indisponível (rode migracao_embarque.sql):', res[6].error.message);
-    const diario = mesclarHistoricoOperacao(res[0].data || [], res[6].error ? [] : res[6].data);
+    const diario = aplicarExpedidoTime(mesclarHistoricoOperacao(res[0].data || [], res[6].error ? [] : res[6].data),
+      res[5].error || !Array.isArray(res[5].data) ? [] : res[5].data);
     const ult = function (r, campo) { return r.data && r.data[0] ? { dia: r.data[0].dia, valor: r.data[0][campo] } : null; };
     const forecasts = res[3].data || [];
     let maisRecente = '';
@@ -1714,7 +1733,7 @@
     iniciar: iniciar, ligarAdmin: ligarAdmin, salvarForecast: salvarForecast,
     diasUteisDoMes: diasUteisDoMes, distribuirNosDias: distribuirNosDias,
     forecastPorDia: forecastPorDia, perfilSemana: perfilSemana, pesosDoMes: pesosDoMes, distribuirPorPeso: distribuirPorPeso, entradaDoMes: entradaDoMes, entradaAutomatica: entradaAutomatica, validarProporcoes: validarProporcoes, validarCruzada: validarCruzada, matrizPrevista: matrizPrevista, nomeCurtoTransportadora: nomeCurtoTransportadora,
-    parsearNotasEmbarcadas: parsearNotasEmbarcadas, aplicarFiltrosNaSerie: aplicarFiltrosNaSerie, montarMix: montarMix, processarNotasEmbarcadas: processarNotasEmbarcadas, montarSerieEmbarque: montarSerieEmbarque, mesclarHistoricoOperacao: mesclarHistoricoOperacao, lerMilPecas: lerMilPecas, repartir: repartir, dataDeCelula: dataDeCelula,
+    parsearNotasEmbarcadas: parsearNotasEmbarcadas, aplicarFiltrosNaSerie: aplicarFiltrosNaSerie, montarMix: montarMix, processarNotasEmbarcadas: processarNotasEmbarcadas, montarSerieEmbarque: montarSerieEmbarque, mesclarHistoricoOperacao: mesclarHistoricoOperacao, aplicarExpedidoTime: aplicarExpedidoTime, lerMilPecas: lerMilPecas, repartir: repartir, dataDeCelula: dataDeCelula,
     dataSnapshot: function () { return dataSnapshot; },
   };
   if (typeof window !== 'undefined') window.Embarque = api;

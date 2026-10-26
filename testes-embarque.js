@@ -108,6 +108,10 @@ ok(notas.registros.every(function (r) { return !JSON.stringify(r).includes('CLIE
 ok(notas.avisos.some(function (a) { return /999/.test(a); }), 'família fora do cadastro gera aviso');
 let e3 = null; try { E.parsearNotasEmbarcadas([['a', 'b']], {}); } catch (e) { e3 = e.message; }
 ok(/Nota Fiscal/.test(e3 || ''), 'planilha sem o cabeçalho esperado dá erro claro');
+const expT = E.aplicarExpedidoTime([{ dia: '2026-10-21', expedido: 23555, fonte_expedido: 'nfs_embarcadas' }, { dia: '2026-10-22', expedido: 14839, fonte_expedido: 'nfs_embarcadas' }, { dia: '2026-10-26', expedido: 9000, backlog: 5 }],
+  [{ d: '2026-10-22', p: 21000 }, { d: '2026-10-22', p: 633 }, { d: '2026-10-24', p: 0 }, { d: '2026-10-23', p: 16765 }]);
+eq(expT.filter(function (r) { return r.dia >= '2026-10-22' && r.dia <= '2026-10-24'; }).map(function (r) { return r.dia.slice(8) + ':' + r.expedido; }), ['22:21633', '23:16765', '24:0'], 'expedição do dia = soma do arquivo do time no período que ele cobre');
+eq([expT.find(function (r) { return r.dia === '2026-10-21'; }).expedido, expT.find(function (r) { return r.dia === '2026-10-26'; }).expedido], [23555, 9000], 'fora do período do arquivo do time continua a fonte anterior');
 // formato diário do Embarque (26/10/2026): sem número de NF
 const otDiario = E.parsearNotasEmbarcadas([
   ['Embarque OT 1P.', 'Família', 'Peças', 'Vol.', 'Transportadora'],
