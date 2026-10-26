@@ -140,7 +140,8 @@ function ocupLado(opr, lado) {
 }
 /* Endereços → itens desenháveis + grupos do calor (rua × lado × nível × trecho de ~6 m). */
 /* Posição física de um endereço de Picking — mapeamento da operação (26/10/2026):
-   - rua 11: todos os endereços (pares e ímpares) na longarina da direita (par); a esquerda é da Reversa/Qualidade.
+   - rua 11: todos os endereços (pares e ímpares) na longarina da direita (par), menos o primeiro quadrante perto
+     das eclusas, que não é usado; a esquerda é da Reversa/Qualidade.
    - rua 12: malas e acessórios (endereços da rua 12) só na longarina da esquerda (ímpar).
    - meias (endereços da rua 15 do sistema) fazem um zigue-zague em gaiolas, da menor para a maior:
        001–032  rua 14, longarina ímpar, do fundo para a frente;
@@ -156,7 +157,8 @@ const ZIGUE_MEIAS = [
 ];
 function posPicking(rua, box, maxB) {
   const k = Math.ceil(box / 2), lado = box % 2 ? 'impar' : 'par';
-  if (rua === '11') return { rua: '11', lado: 'par', frac: (box - .5) / maxB, n: maxB };
+  // rua 11: o primeiro quadrante (vão de ~2,7 m) perto das eclusas não é usado no Picking (operação, 26/10/2026)
+  if (rua === '11') return { rua: '11', lado: 'par', frac: (box - .5) / maxB * (L_CURTA - 2.7) / L_CURTA, n: maxB * L_CURTA / (L_CURTA - 2.7) };
   if (rua === '12') return { rua: '12', lado: 'impar', frac: (box - .5) / maxB, n: maxB };
   if (rua === '15') {
     const t = ZIGUE_MEIAS.find(z => box >= z.de && box <= z.ate);
