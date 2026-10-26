@@ -2464,18 +2464,9 @@ function renderizarEstoque(p) {
     blocoConf = '<div class="aviso erro">⚠ Conferência com o sistema NÃO bateu. ' +
       'Lido: ' + fmtInt(c.qtd_parseada) + ' un · Relatório: ' + fmtInt(c.qtd_sistema) + ' un · ' +
       'Diferença: ' + fmtInt(c.diff_qtd) + ' un. Investigar o parse antes de apresentar este número.</div>';
-  } else {
-    // ok === null: este layout não imprime total do sistema. Dizer isso é
-    // diferente de dizer "conferiu" — o número não foi validado contra nada
-    // externo, e a tela não pode sugerir que foi.
-    blocoConf = '<div class="aviso">Somatório das linhas e itens contabilizados: <strong>' +
-      fmtInt(c.qtd_parseada) + ' un</strong> · ' + fmtMoeda(c.valor_parseado) + '.</div>';
   }
-  if (p.crossdocking && p.crossdocking.linhas) {
-    blocoConf += '<div class="aviso">Crossdocking desconsiderado: calçado Olympikus no AC190 (' +
-      fmtInt(p.crossdocking.linhas) + ' SKUs · ' + fmtInt(p.crossdocking.qtd) + ' pares · ' +
-      fmtMoeda(p.crossdocking.valor) + ') não é estoque da distribuidora e ficou fora do balanço.</div>';
-  }
+  // Avisos amarelos de somatório (layout sem total do sistema) e de crossdocking desconsiderado saíram da
+  // tela a pedido do usuário (26/10/2026); o crossdocking continua fora do balanço.
   if ((p.familias_nao_mapeadas || []).length) {
     blocoConf += '<div class="aviso">Famílias sem marca cadastrada em <code>dim_familias</code>: ' +
       escapar(p.familias_nao_mapeadas.join(', ')) +
