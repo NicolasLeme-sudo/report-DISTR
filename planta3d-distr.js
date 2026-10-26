@@ -811,7 +811,8 @@ window.montarPlanta3DDistr = async function (container, dados) {
   lote(pal, 'comum', 0); lote(car, 'comum', 0); lote(faixas, 'comum', 0);
 
   /* ---------- rótulos ---------- */
-  RUAS_ESQ.concat(RUAS_DIR).forEach(r => { const g = geoRua(r); rotulo(pad(r), g.xCorr, ALT + 1.2, -1.5, 'comum', 'big'); });
+  // rua 15: só existe no sistema (foi remanejada para o estoque novo) — sem rótulo na planta
+  RUAS_ESQ.concat(RUAS_DIR).filter(r => r !== '15').forEach(r => { const g = geoRua(r); rotulo(pad(r), g.xCorr, ALT + 1.2, -1.5, 'comum', 'big'); });
   const gD = geoRua('8');
   rotulo('PULMÃO · níveis 8–12', X_FIM + 1.2, PU_BASE + 2.5 * PU_PASSO, Z_FRENTE - 34, 'pulmao', 'big');
   rotulo('PICKING · níveis 1–7', X_FIM + 1.2, PK_TOPO / 2, Z_FRENTE - 34, 'picking', 'big');
