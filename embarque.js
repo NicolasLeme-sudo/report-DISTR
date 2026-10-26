@@ -422,15 +422,23 @@
   function segmentoParaFiltro(seg) { const x = String(seg || '').toUpperCase(); return SEG_FILTRO[x] || x; }
   function marcaDoTexto(t) { return /olymp/i.test(t) ? 'OLYMPIKUS' : /mizuno/i.test(t) ? 'MIZUNO' : /under/i.test(t) ? 'UNDER ARMOUR' : null; }
 
-  /* Planilha "Notas Embarcadas" (Embarcador, Destinatário, Nota Fiscal, Emissão, Embarque, Valor NF, Vol., Peças,
-     Família, Marca, Cód.Transp., Transportadora). `familias` = { '068': { marca, categoria, segmento } } de dim_familias.
-     O nome do destinatário NÃO é guardado. */
+  /* Planilha "Notas Embarcadas" do time de Embarque. Dois formatos:
+     - completo: Embarcador, Destinatário, Nota Fiscal, Emissão, Embarque, Valor NF, Vol., Peças, Família, Marca,
+       Cód.Transp., Transportadora — a NF é a chave;
+     - diário (Embarque_out, 26/10/2026): Embarque OT 1P., Família, Peças, Vol., Transportadora — uma linha por nota,
+       SEM o número da NF. A chave vira "OT|data|sequência do dia" e o arquivo substitui os dias que ele traz
+       (ver processarNotasEmbarcadas). A linha de total no fim (sem data) é ignorada.
+     `familias` = { '068': { marca, categoria, segmento } } de dim_familias. O nome do destinatário NÃO é guardado. */
   function parsearNotasEmbarcadas(linhas, familias) {
     familias = familias || {};
     const avisos = [];
     let iCab = -1;
-    (linhas || []).forEach(function (l, i) { if (iCab < 0 && (l || []).some(function (c) { return semAcento(c) === 'NOTA FISCAL'; })) iCab = i; });
-    if (iCab < 0) throw new Error('Não achei o cabeçalho da planilha de notas embarcadas (coluna "Nota Fiscal").');
+    const ehCab = function (l) {
+      const n = (l || []).map(semAcento);
+      return n.indexOf('NOTA FISCAL') !== -1 || (n.some(function (c) { return c.indexOf('EMBARQUE') === 0; }) && n.indexOf('PECAS') !== -1 && n.indexOf('FAMILIA') !== -1);
+    };
+    (linhas || []).forEach(function (l, i) { if (iCab < 0 && ehCab(l)) iCab = i; });
+    if (iCab < 0) throw new Error('Não achei o cabeçalho da planilha de notas embarcadas (colunas "Nota Fiscal" ou "Embarque", "Família" e "Peças").');
     const col = {};
     linhas[iCab].forEach(function (c, j) {
       const n = semAcento(c);
@@ -438,16 +446,19 @@
       else if (n === 'VALOR NF') col.valor = j; else if (n === 'VOL.' || n === 'VOL') col.vol = j; else if (n === 'PECAS') col.pecas = j;
       else if (n === 'FAMILIA') col.familia = j; else if (n === 'MARCA') col.marca = j; else if (n === 'TRANSPORTADORA') col.transp = j;
     });
-    ['nf', 'embarque', 'pecas', 'familia'].forEach(function (k) { if (col[k] === undefined) throw new Error('Coluna obrigatória ausente na planilha: ' + k); });
-    const registros = [], semFamilia = new Set(), vistos = new Set();
+    ['embarque', 'pecas', 'familia'].forEach(function (k) { if (col[k] === undefined) throw new Error('Coluna obrigatória ausente na planilha: ' + k); });
+    const semNf = col.nf === undefined;
+    const registros = [], semFamilia = new Set(), vistos = new Set(), seqDia = {};
     let duplicadas = 0, semData = 0;
     for (let i = iCab + 1; i < linhas.length; i++) {
       const l = linhas[i] || [];
-      const nf = String(l[col.nf] == null ? '' : l[col.nf]).trim();
       const pecas = numeroDeCelula(l[col.pecas]);
-      if (!nf || pecas === null) continue;
       const embarque = dataDeCelula(l[col.embarque]);
+      if (semNf && !embarque && (l[col.familia] == null || l[col.familia] === '')) continue;   // linha de total no fim
+      let nf = semNf ? '' : String(l[col.nf] == null ? '' : l[col.nf]).trim();
+      if ((!semNf && !nf) || pecas === null) continue;
       if (!embarque) { semData++; continue; }
+      if (semNf) { seqDia[embarque] = (seqDia[embarque] || 0) + 1; nf = 'OT|' + embarque + '|' + seqDia[embarque]; }
       if (vistos.has(nf)) { duplicadas++; continue; }
       vistos.add(nf);
       const cod = String(l[col.familia] == null ? '' : l[col.familia]).trim().padStart(3, '0');
@@ -468,7 +479,7 @@
     if (semData) avisos.push(semData + ' linha(s) sem data de embarque ignorada(s).');
     registros.sort(function (a, b) { return a.embarque < b.embarque ? -1 : a.embarque > b.embarque ? 1 : 0; });
     return {
-      registros: registros, avisos: avisos,
+      registros: registros, avisos: avisos, sem_nf: semNf,
       periodo: registros.length ? { de: registros[0].embarque, ate: registros[registros.length - 1].embarque } : null,
       total_pecas: registros.reduce(function (t, r) { return t + r.pecas; }, 0),
     };
@@ -1404,6 +1415,13 @@
     avisar(fmtN(parsed.registros.length) + ' nota(s), embarque de ' + rotuloDia(parsed.periodo.de) + '/' + parsed.periodo.de.slice(0, 4) + ' a ' +
       rotuloDia(parsed.periodo.ate) + '/' + parsed.periodo.ate.slice(0, 4) + ' · ' + fmtN(parsed.total_pecas) + ' peças.');
     const agora = new Date().toISOString();
+    // Arquivo diário sem NF: não há chave para casar nota a nota, então ele SUBSTITUI os dias que traz — apaga o
+    // que estava gravado nesse período (de qualquer formato) e grava de novo. Reenviar nunca duplica.
+    if (parsed.sem_nf) {
+      avisar('Arquivo sem número de NF: substituindo o período ' + rotuloDia(parsed.periodo.de) + ' a ' + rotuloDia(parsed.periodo.ate) + '…');
+      const del = await supabaseClient.from('embarque_notas').delete().gte('embarque', parsed.periodo.de).lte('embarque', parsed.periodo.ate);
+      if (del.error) throw del.error;
+    }
     for (let i = 0; i < parsed.registros.length; i += 500) {
       const lote = parsed.registros.slice(i, i + 500).map(function (r) { return Object.assign({}, r, { atualizado_em: agora }); });
       const { error } = await supabaseClient.from('embarque_notas').upsert(lote, { onConflict: 'nf' });

@@ -108,6 +108,19 @@ ok(notas.registros.every(function (r) { return !JSON.stringify(r).includes('CLIE
 ok(notas.avisos.some(function (a) { return /999/.test(a); }), 'família fora do cadastro gera aviso');
 let e3 = null; try { E.parsearNotasEmbarcadas([['a', 'b']], {}); } catch (e) { e3 = e.message; }
 ok(/Nota Fiscal/.test(e3 || ''), 'planilha sem o cabeçalho esperado dá erro claro');
+// formato diário do Embarque (26/10/2026): sem número de NF
+const otDiario = E.parsearNotasEmbarcadas([
+  ['Embarque OT 1P.', 'Família', 'Peças', 'Vol.', 'Transportadora'],
+  ['01/10/2026', 103, 53, 2, 'PATRUS TRANSPORTES URGENTES LTDA'],
+  ['01/10/2026', 103, 53, 2, 'PATRUS TRANSPORTES URGENTES LTDA'],
+  ['02/10/2026', 68, 12, 1, 'DISPLAN ENCOMENDAS URGENTES LTDA'],
+  [null, null, 118, 5, null],
+], FAMS);
+ok(otDiario.sem_nf, 'arquivo sem a coluna Nota Fiscal é reconhecido');
+eq(otDiario.registros.map(function (r) { return r.nf; }), ['OT|2026-10-01|1', 'OT|2026-10-01|2', 'OT|2026-10-02|1'], 'chave = OT|data|sequência do dia (duas notas iguais no mesmo dia continuam duas)');
+eq([otDiario.total_pecas, otDiario.periodo.de, otDiario.periodo.ate], [118, '2026-10-01', '2026-10-02'], 'linha de total no fim é ignorada; período do arquivo');
+eq([otDiario.registros[0].familia, otDiario.registros[0].marca, otDiario.registros[2].segmento], ['103', 'MIZUNO', 'MEIA'], 'família numérica vira código com 3 dígitos e ganha marca/segmento do cadastro');
+eq(otDiario.avisos.length, 0, 'sem avisos para o arquivo diário limpo');
 
 secao('filtros e mix');
 const agg = [
