@@ -754,10 +754,12 @@ window.montarPlanta3DDistr = async function (container, dados) {
   const pal = [], car = [], faixas = [];
   let semente = 11;
   const sorteio = () => (semente = (semente * 9301 + 49297) % 233280) / 233280;
-  function eclusa(x0, nome) {
-    const z0 = Z_FRENTE + 8, x1 = x0 + 5.5, z1 = z0 + 10, n = 10, cheias = new Set();
+  function eclusa(x0, nome, op) {
+    op = op || {};
+    const z0 = op.z0 != null ? op.z0 : Z_FRENTE + 8, x1 = x0 + (op.larg || 5.5), z1 = z0 + (op.comp || 10), n = 10, cheias = new Set();
+    const onde = op.onde || 'Frente do galpão';
     while (cheias.size < 3 + Math.floor(sorteio() * 5)) cheias.add(Math.floor(sorteio() * n));
-    caixa(x0, z0, x1, z1, 0, .05, 'eclusa', 'comum', { tip: tipInfo(nome, 'Frente do galpão · ' + cheias.size + ' de ' + n + ' posições com pallet (ilustrativo)') });
+    caixa(x0, z0, x1, z1, 0, .05, 'eclusa', 'comum', { tip: tipInfo(nome, onde + ' · ' + cheias.size + ' de ' + n + ' posições com pallet (ilustrativo)') });
     const px = (x1 - x0) / 2, pz = (z1 - z0) / 5, lado = Math.min(px, pz) * .78;
     for (let c = 0; c < 2; c++) for (let l = 0; l < 5; l++) {
       const i = l * 2 + c, x = x0 + (c + .5) * px, z = z0 + (l + .5) * pz;
@@ -768,14 +770,23 @@ window.montarPlanta3DDistr = async function (container, dados) {
       }
     }
     // layout da eclusa: retângulo marcado no chão com um risco no meio, de ponta a ponta (frente ao fundo)
-    const e = .14, tl = () => tipInfo(nome, 'Frente do galpão · ' + cheias.size + ' de ' + n + ' posições com pallet (ilustrativo)');
+    const e = .14, tl = () => tipInfo(nome, onde + ' · ' + cheias.size + ' de ' + n + ' posições com pallet (ilustrativo)');
     [[x0, z0, x1, z0 + e], [x0, z1 - e, x1, z1], [x0, z0, x0 + e, z1], [x1 - e, z0, x1, z1], [(x0 + x1) / 2 - e / 2, z0, (x0 + x1) / 2 + e / 2, z1]]
       .forEach(([a, b, c, d]) => faixas.push({ x: (a + c) / 2, y: .05, z: (b + d) / 2, w: c - a, h: .03, d: d - b, corNome: 'faixa', tip: tl }));
   }
   // eclusas só até a rua 06: a frente das ruas 07 e 08 é da caixa de faturamento
   const xFimE = fxA - 1, nE = Math.floor((xFimE - (XR + 1) + .9) / 6.4), xIniE = XR + 1, passoE = nE > 1 ? (xFimE - 5.5 - xIniE) / (nE - 1) : 0;
   for (let i = 0; i < nE; i++) eclusa(xIniE + i * passoE, 'Eclusa ' + (i + 1));
-  eclusa(XL + 4, 'Eclusa ' + (nE + 1)); eclusa(XL + 14, 'Eclusa ' + (nE + 2));
+  // frente do estoque novo (ruas 11–15): as 2 que já existiam + 3 novas, lado a lado
+  for (let i = 0; i < 5; i++) eclusa(XL - 2 + i * 6.2, 'Eclusa ' + (nE + 1 + i));
+  // eclusas do recebimento (desenho da operação, 26/10/2026): 2 fileiras na frente das ruas 11–15, uma embaixo
+  // de cada par de longarinas encostadas (11/12, 12/13, 13/14, 14/15), entre o estoque e a frente do galpão
+  let nRec = 0;
+  [['11', '12'], ['12', '13'], ['13', '14'], ['14', '15']].forEach(([ra, rb]) => {
+    const xc = (geoRua(ra).xPar + geoRua(rb).xImpar) / 2, larg = 4.4;
+    [L_CURTA + 3, L_CURTA + 17].forEach(z0 => eclusa(xc - larg / 2, 'Eclusa do recebimento ' + (++nRec),
+      { z0, larg, comp: 12, onde: 'Recebimento · frente das ruas ' + pad(ra) + ' e ' + pad(rb) }));
+  });
   lote(pal, 'comum', 0); lote(car, 'comum', 0); lote(faixas, 'comum', 0);
 
   /* ---------- rótulos ---------- */
@@ -791,6 +802,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
   rotulo('Hidrante', xH, 2.2, Z_FRENTE + .6, 'comum', 'inf');
   rotulo('Caixa de faturamento', fx0 + LE / 2, 2.2, fz, 'comum', 'inf');
   rotulo('Eclusas', (XR + xFimE) / 2, 2.4, Z_FRENTE + 13, 'comum', 'inf');
+  rotulo('Eclusas do recebimento', (geoRua('12').xPar + geoRua('14').xImpar) / 2, 2.4, L_CURTA + 16, 'comum', 'inf');
   rotulo('RUAS 11–15', XL + RUAS_ESQ.length * PASSO / 2, ALT + 3.4, -1.5, 'comum', 'inf');
   rotulo('RUAS 01–08', XR + RUAS_DIR.length * PASSO / 2, ALT + 3.4, -1.5, 'comum', 'inf');
 
