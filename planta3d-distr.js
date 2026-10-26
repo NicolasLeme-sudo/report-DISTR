@@ -634,22 +634,106 @@ window.montarPlanta3DDistr = async function (container, dados) {
   caixa(xH - .08, Z_FRENTE + .55, xH + .08, Z_FRENTE + .71, 1.3, ALT + 1.5, 'hidrante', 'comum', { tip: tipH });
 
   // placas das marcas: banner azul na ponta do par de longarinas onde a marca começa
+  // Placas das marcas, como no CD: faixa azul com o ícone da marca em cima e o nome na vertical. As logos
+  // (img/marcas) são pintadas de branco na hora (a da Mizuno vem azul) e separadas em ícone + nome pelo vão
+  // transparente entre eles; a da Under Armour junta o ícone e o nome, que vêm em arquivos separados.
+  const LOGOS = {
+    Olympikus: { arq: 'img/marcas/olympikus.png' },
+    Mizuno: { arq: 'img/marcas/mizuno.png', componente: true },   // o pássaro encosta no M: separa pela forma, não pelo vão
+    'Under Armour': { icone: 'img/marcas/under-armour-icone.webp', nome: 'img/marcas/under-armour-nome.webp' }
+  };
+  const carregaImg = src => new Promise((ok, erro) => { const im = new Image(); im.onload = () => ok(im); im.onerror = erro; im.src = src; });
+  // imagem → canvas branco recortado no que tem desenho (alfa > 20)
+  function branca(im) {
+    const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight;
+    const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+    g.globalCompositeOperation = 'source-in'; g.fillStyle = '#FFFFFF'; g.fillRect(0, 0, c.width, c.height);
+    return recorta(c, 0, c.width);
+  }
+  function recorta(c, x0, x1) {
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let a = Infinity, b = -1, t = Infinity, u = -1;
+    for (let y = 0; y < c.height; y++) for (let x = x0; x < x1; x++) if (d[(y * c.width + x) * 4 + 3] > 20) { a = Math.min(a, x); b = Math.max(b, x); t = Math.min(t, y); u = Math.max(u, y); }
+    if (b < 0) return null;
+    const o = document.createElement('canvas'); o.width = b - a + 1; o.height = u - t + 1;
+    o.getContext('2d').drawImage(c, a, t, o.width, o.height, 0, 0, o.width, o.height);
+    return o;
+  }
+  // logo horizontal (ícone + nome) → [ícone, nome], cortando no maior vão transparente entre 10% e 60% da largura
+  function separa(c) {
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data, vazia = [];
+    for (let x = 0; x < c.width; x++) { let v = true; for (let y = 0; y < c.height && v; y++) if (d[(y * c.width + x) * 4 + 3] > 20) v = false; vazia.push(v); }
+    let melhor = null, ini = -1;
+    for (let x = Math.floor(c.width * .1); x <= Math.floor(c.width * .6); x++) {
+      if (vazia[x] && ini < 0) ini = x;
+      if ((!vazia[x] || x === Math.floor(c.width * .6)) && ini >= 0) { if (!melhor || x - ini > melhor[1] - melhor[0]) melhor = [ini, x]; ini = -1; }
+    }
+    if (!melhor) return [null, c];
+    return [recorta(c, 0, melhor[0]), recorta(c, melhor[1], c.width)];
+  }
+  // separa a forma contínua que começa na ponta esquerda (o ícone) do resto (o nome)
+  function separaForma(c) {
+    const W = c.width, H = c.height, g = c.getContext('2d'), img = g.getImageData(0, 0, W, H), d = img.data;
+    const cheio = i => d[i * 4 + 3] > 20, marca = new Uint8Array(W * H);
+    let ini = -1;
+    for (let x = 0; x < W && ini < 0; x++) for (let y = 0; y < H; y++) if (cheio(y * W + x)) { ini = y * W + x; break; }
+    if (ini < 0) return [null, c];
+    const fila = [ini]; marca[ini] = 1;
+    while (fila.length) {
+      const i = fila.pop(), x = i % W, y = (i - x) / W;
+      [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([dx, dy]) => {
+        const nx = x + dx, ny = y + dy, j = ny * W + nx;
+        if (nx >= 0 && nx < W && ny >= 0 && ny < H && !marca[j] && cheio(j)) { marca[j] = 1; fila.push(j); }
+      });
+    }
+    const parte = dentro => {
+      const o = document.createElement('canvas'); o.width = W; o.height = H;
+      const og = o.getContext('2d'), oi = og.createImageData(W, H);
+      for (let i = 0; i < W * H; i++) if (cheio(i) && !!marca[i] === dentro) for (let k = 0; k < 4; k++) oi.data[i * 4 + k] = d[i * 4 + k];
+      og.putImageData(oi, 0, 0);
+      return recorta(o, 0, W);
+    };
+    return [parte(true), parte(false)];
+  }
+  function desenhaFaixa(cvs, marca, icone, nome) {
+    const W = cvs.width, H = cvs.height, g = cvs.getContext('2d'), pd = W * .12;
+    g.clearRect(0, 0, W, H);
+    g.fillStyle = '#26406B'; g.fillRect(0, 0, W, H);
+    g.strokeStyle = '#F2F4F7'; g.lineWidth = W * .025; g.strokeRect(g.lineWidth / 2, g.lineWidth / 2, W - g.lineWidth, H - g.lineWidth);
+    let y = pd * 1.4;
+    if (icone) {                                   // ícone em pé, no alto da faixa
+      const k = Math.min((W - 2 * pd) / icone.width, (H * .16) / icone.height);
+      g.drawImage(icone, (W - icone.width * k) / 2, y, icone.width * k, icone.height * k);
+      y += icone.height * k + pd;
+    }
+    if (nome) {                                    // nome na vertical, lido de cima para baixo
+      const livre = H - y - pd * 1.4, k = Math.min(livre / nome.width, (W * .62) / nome.height);
+      g.save(); g.translate(W / 2, y + livre / 2); g.rotate(Math.PI / 2);
+      g.drawImage(nome, -nome.width * k / 2, -nome.height * k / 2, nome.width * k, nome.height * k); g.restore();
+    } else {
+      g.save(); g.translate(W / 2, y + (H - y) / 2); g.rotate(Math.PI / 2);
+      g.fillStyle = '#F2F4F7'; g.font = '800 ' + Math.round(W * (marca.length > 9 ? .36 : .44)) + 'px "Segoe UI", Arial, sans-serif';
+      g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(marca.toUpperCase(), 0, 4); g.restore();
+    }
+  }
   function placa(ra, rb, marca) {
     const xc = (geoRua(ra).xPar + geoRua(rb).xImpar) / 2, w = 2.1, y0 = PU_BASE + .2, hP = ALT - y0 - .2;
-    const cvs = document.createElement('canvas'); cvs.width = 256; cvs.height = 1024;
-    const c2 = cvs.getContext('2d');
-    c2.fillStyle = '#26406B'; c2.fillRect(0, 0, 256, 1024);
-    c2.strokeStyle = '#F2F4F7'; c2.lineWidth = 6; c2.strokeRect(3, 3, 250, 1018);
-    c2.save(); c2.translate(128, 512); c2.rotate(Math.PI / 2);
-    c2.fillStyle = '#F2F4F7'; c2.font = '800 ' + (marca.length > 9 ? 92 : 112) + 'px "Segoe UI", Arial, sans-serif';
-    c2.textAlign = 'center'; c2.textBaseline = 'middle'; c2.fillText(marca.toUpperCase(), 0, 4); c2.restore();
+    const cvs = document.createElement('canvas'); cvs.width = 512; cvs.height = Math.round(512 * hP / w);
+    desenhaFaixa(cvs, marca, null, null);          // nome em texto até as logos carregarem
     const tex = new THREE.CanvasTexture(cvs);
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 1;
     const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, transparent: false });
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w, hP), mat);
     m.position.set(xc, y0 + hP / 2, Z_FRENTE + .12);
     m.userData.tip = tipInfo('Placa ' + marca, 'Ponta das longarinas das ruas ' + pad(ra) + ' e ' + pad(rb) + ' · início das ruas ' + marca);
     m.userData.baseOp = 1;
     reg(m, 'pulmao', 0, null, true);
+    const L = LOGOS[marca];
+    if (!L) return;
+    const pronto = L.arq ? carregaImg(L.arq).then(im => (L.componente ? separaForma : separa)(branca(im)))
+      : Promise.all([carregaImg(L.icone), carregaImg(L.nome)]).then(([a, b]) => [branca(a), branca(b)]);
+    pronto.then(([icone, nome]) => { desenhaFaixa(cvs, marca, icone, nome); tex.needsUpdate = true; })
+      .catch(e => console.warn('Logo da placa ' + marca + ' não carregou:', e));
   }
   placa('3', '4', 'Olympikus'); placa('5', '6', 'Mizuno'); placa('7', '8', 'Under Armour');
 
