@@ -756,12 +756,12 @@ window.montarPlanta3DDistr = async function (container, dados) {
   const sorteio = () => (semente = (semente * 9301 + 49297) % 233280) / 233280;
   function eclusa(x0, nome, op) {
     op = op || {};
-    const z0 = op.z0 != null ? op.z0 : Z_FRENTE + 8, x1 = x0 + (op.larg || 5.5), z1 = z0 + (op.comp || 10), n = 10, cheias = new Set();
+    const z0 = op.z0 != null ? op.z0 : Z_FRENTE + 8, x1 = x0 + (op.larg || 5.5), z1 = z0 + (op.comp || 10), NL = op.linhas || 5, n = 2 * NL, cheias = new Set();
     const onde = op.onde || 'Frente do galpão';
-    while (cheias.size < 3 + Math.floor(sorteio() * 5)) cheias.add(Math.floor(sorteio() * n));
+    while (cheias.size < Math.round(n * (.3 + sorteio() * .4))) cheias.add(Math.floor(sorteio() * n));
     caixa(x0, z0, x1, z1, 0, .05, 'eclusa', 'comum', { tip: tipInfo(nome, onde + ' · ' + cheias.size + ' de ' + n + ' posições com pallet (ilustrativo)') });
-    const px = (x1 - x0) / 2, pz = (z1 - z0) / 5, lado = Math.min(px, pz) * .78;
-    for (let c = 0; c < 2; c++) for (let l = 0; l < 5; l++) {
+    const px = (x1 - x0) / 2, pz = (z1 - z0) / NL, lado = Math.min(px, pz) * .78;
+    for (let c = 0; c < 2; c++) for (let l = 0; l < NL; l++) {
       const i = l * 2 + c, x = x0 + (c + .5) * px, z = z0 + (l + .5) * pz;
       const t = () => tipInfo(nome, 'Posição ' + (i + 1) + ' de ' + n + (cheias.has(i) ? ' · com pallet' : ' · vazia'));
       if (cheias.has(i)) {
@@ -784,8 +784,10 @@ window.montarPlanta3DDistr = async function (container, dados) {
   let nRec = 0;
   [['11', '12'], ['12', '13'], ['13', '14'], ['14', '15']].forEach(([ra, rb]) => {
     const xc = (geoRua(ra).xPar + geoRua(rb).xImpar) / 2, larg = 4.4;
-    [L_CURTA + 3, L_CURTA + 17].forEach(z0 => eclusa(xc - larg / 2, 'Eclusa do recebimento ' + (++nRec),
-      { z0, larg, comp: 12, onde: 'Recebimento · frente das ruas ' + pad(ra) + ' e ' + pad(rb) }));
+    // compridas: do fim das ruas até o fim do estoque do E-commerce (ponta da divisória), em 2 fileiras
+    const zIni = L_CURTA + 2.5, zFim = Z_FRENTE + 4, vao = 2, comp = (zFim - zIni - vao) / 2;
+    [zIni, zIni + comp + vao].forEach(z0 => eclusa(xc - larg / 2, 'Eclusa do recebimento ' + (++nRec),
+      { z0, larg, comp, linhas: 9, onde: 'Recebimento · frente das ruas ' + pad(ra) + ' e ' + pad(rb) }));
   });
   lote(pal, 'comum', 0); lote(car, 'comum', 0); lote(faixas, 'comum', 0);
 
@@ -802,7 +804,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
   rotulo('Hidrante', xH, 2.2, Z_FRENTE + .6, 'comum', 'inf');
   rotulo('Caixa de faturamento', fx0 + LE / 2, 2.2, fz, 'comum', 'inf');
   rotulo('Eclusas', (XR + xFimE) / 2, 2.4, Z_FRENTE + 13, 'comum', 'inf');
-  rotulo('Eclusas do recebimento', (geoRua('12').xPar + geoRua('14').xImpar) / 2, 2.4, L_CURTA + 16, 'comum', 'inf');
+  rotulo('Eclusas do recebimento', (geoRua('12').xPar + geoRua('14').xImpar) / 2, 2.4, (L_CURTA + Z_FRENTE + 6.5) / 2, 'comum', 'inf');
   rotulo('RUAS 11–15', XL + RUAS_ESQ.length * PASSO / 2, ALT + 3.4, -1.5, 'comum', 'inf');
   rotulo('RUAS 01–08', XR + RUAS_DIR.length * PASSO / 2, ALT + 3.4, -1.5, 'comum', 'inf');
 
