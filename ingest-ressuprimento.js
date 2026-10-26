@@ -143,6 +143,9 @@ const BUCKETS_ZONA = ['meia', 'vestuario', 'acessorio', 'calcado'];
 const ENDERECOS_FORA_CAPACIDADE_PULMAO = {
   nao_existe: [
     '5-4-1..144',
+    // Coluna estrutural branca do galpão (26/10/2026): o box 36 da rua 4, todos os níveis. A planilha (707)
+    // já desconta essas 5 posições, então sai só da contagem de ocupados/vazios.
+    '4-8-36', '4-9-36', '4-10-36', '4-11-36', '4-12-36',
   ],
   passagem: [
     // Regra validada no chão (01/10/2026): ruas 2 a 7, boxes 65 a 68, níveis 08 e

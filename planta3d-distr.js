@@ -82,9 +82,9 @@ const RAMPS = {
 };
 const INFRA = {
   dark:  { esteira: '#10161F', estr: '#7C92AC', estrut: '#2F5F9E', longarina: '#6E5238', montante: '#3B5478', passagem: '#2B3A50', outro: '#8592A6', parede: '#5A6F88', chao: '#18233A', corredor: '#1E2B40',
-           colmeia: '#0B0D10', pallet: '#9A7350', carga: '#CDB48C', caixa: '#C9A36A', faixa: '#F6BD00', mesa: '#E6EAEF', monitor: '#0E141E', tela: '#2F7DE0', rolete: '#2A2F38', hidrante: '#C8102E', grade: '#9AA6B4', guarda: '#F6BD00', eclusa: '#33516E', piso: '#22344A', perna: '#55657A', fora: '#3A4A5E', neutro: '#6F7F96' },
+           colmeia: '#0B0D10', pallet: '#9A7350', carga: '#CDB48C', caixa: '#C9A36A', faixa: '#F6BD00', mesa: '#E6EAEF', monitor: '#0E141E', tela: '#2F7DE0', rolete: '#2A2F38', hidrante: '#C8102E', coluna: '#E8ECF1', grade: '#9AA6B4', guarda: '#F6BD00', eclusa: '#33516E', piso: '#22344A', perna: '#55657A', fora: '#3A4A5E', neutro: '#6F7F96' },
   light: { esteira: '#3A4656', estr: '#8EA3BA', estrut: '#3A6AAE', longarina: '#C9A786', montante: '#8EA6C8', passagem: '#C9D3DE', outro: '#9AA8BA', parede: '#9DB0C4', chao: '#E3E9F0', corredor: '#D3DCE6',
-           colmeia: '#1A1C20', pallet: '#9A7350', carga: '#D9C4A0', caixa: '#B98E52', faixa: '#C9960A', mesa: '#FFFFFF', monitor: '#1B2533', tela: '#2F7DE0', rolete: '#4A5160', hidrante: '#C0392B', grade: '#8A96A4', guarda: '#D9A300', eclusa: '#C4D3E2', piso: '#D6DFE9', perna: '#8A99AA', fora: '#B4C0CE', neutro: '#8C9AAD' }
+           colmeia: '#1A1C20', pallet: '#9A7350', carga: '#D9C4A0', caixa: '#B98E52', faixa: '#C9960A', mesa: '#FFFFFF', monitor: '#1B2533', tela: '#2F7DE0', rolete: '#4A5160', hidrante: '#C0392B', coluna: '#FFFFFF', grade: '#8A96A4', guarda: '#D9A300', eclusa: '#C4D3E2', piso: '#D6DFE9', perna: '#8A99AA', fora: '#B4C0CE', neutro: '#8C9AAD' }
 };
 // Visão "Endereço": uma cor por estado do endereço
 const ESTADOS = {
@@ -639,6 +639,13 @@ window.montarPlanta3DDistr = async function (container, dados) {
       guardas.push({ x: (p + r2) / 2, y: .35, z: (q2 + t) / 2, w: r2 - p, h: .08, d: t - q2, corNome: 'guarda' }));
   });
   lote(esc, 'comum', 0); lote(tampas, 'comum', 0); lote(guardas, 'comum', 0);
+  // colunas estruturais brancas do galpão que atravessam o estoque (fotos/operação, 26/10/2026)
+  [{ rua: '4', box: 36 }, { rua: '13', box: 35 }].forEach(c => {
+    const g = geoRua(c.rua), R = (mapa.pulmao || {})[c.rua], max = (R && R.max) || (g.L === L_LONGA ? 144 : 68);
+    const nPos = Math.ceil(max / 2), z = (Math.ceil(c.box / 2) - .5) * g.L / nPos, x = c.box % 2 ? g.xImpar : g.xPar;
+    caixa(x - .3, z - .3, x + .3, z + .3, 0, ALT + 3, 'coluna', 'comum',
+      { tip: tipInfo('Coluna estrutural', 'Rua ' + pad(c.rua) + ' · box ' + pad(c.box, 3) + ' · coluna do galpão que atravessa o estoque — essas posições não guardam pallet') });
+  });
   // hidrante entre as ruas 04 e 05 (no lugar das colmeias)
   const xH = (geoRua('4').xPar + geoRua('5').xImpar) / 2, tipH = tipInfo('Hidrante', 'Entre as ruas 04 e 05 · por isso esse par de longarinas não tem colmeia');
   caixa(xH - .5, Z_FRENTE + .4, xH + .5, Z_FRENTE + .9, 0, 1.3, 'hidrante', 'comum', { tip: tipH });
