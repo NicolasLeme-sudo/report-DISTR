@@ -777,17 +777,15 @@ window.montarPlanta3DDistr = async function (container, dados) {
   // eclusas só até a rua 06: a frente das ruas 07 e 08 é da caixa de faturamento
   const xFimE = fxA - 1, nE = Math.floor((xFimE - (XR + 1) + .9) / 6.4), xIniE = XR + 1, passoE = nE > 1 ? (xFimE - 5.5 - xIniE) / (nE - 1) : 0;
   for (let i = 0; i < nE; i++) eclusa(xIniE + i * passoE, 'Eclusa ' + (i + 1));
-  // frente do estoque novo (ruas 11–15): as 2 que já existiam + 3 novas, lado a lado
-  for (let i = 0; i < 5; i++) eclusa(XL - 2 + i * 6.2, 'Eclusa ' + (nE + 1 + i));
-  // eclusas do recebimento (desenho da operação, 26/10/2026): 2 fileiras na frente das ruas 11–15, uma embaixo
+  // eclusas do recebimento (desenho da operação, 26/10/2026): 3 fileiras na frente das ruas 11–15, uma embaixo
   // de cada par de longarinas encostadas (11/12, 12/13, 13/14, 14/15), entre o estoque e a frente do galpão
   let nRec = 0;
   [['11', '12'], ['12', '13'], ['13', '14'], ['14', '15']].forEach(([ra, rb]) => {
     const xc = (geoRua(ra).xPar + geoRua(rb).xImpar) / 2, larg = 4.4;
-    // compridas: do fim das ruas até o fim do estoque do E-commerce (ponta da divisória), em 2 fileiras
-    const zIni = L_CURTA + 2.5, zFim = Z_FRENTE + 4, vao = 2, comp = (zFim - zIni - vao) / 2;
-    [zIni, zIni + comp + vao].forEach(z0 => eclusa(xc - larg / 2, 'Eclusa do recebimento ' + (++nRec),
-      { z0, larg, comp, linhas: 9, onde: 'Recebimento · frente das ruas ' + pad(ra) + ' e ' + pad(rb) }));
+    // compridas, 3 fileiras iguais: do fim das ruas até a linha das eclusas da frente do galpão
+    const zIni = L_CURTA + 2.5, zFim = Z_FRENTE + 18, vao = 2, comp = (zFim - zIni - 2 * vao) / 3;
+    [0, 1, 2].forEach(i => eclusa(xc - larg / 2, 'Eclusa do recebimento ' + (++nRec),
+      { z0: zIni + i * (comp + vao), larg, comp, linhas: 8, onde: 'Recebimento · frente das ruas ' + pad(ra) + ' e ' + pad(rb) }));
   });
   lote(pal, 'comum', 0); lote(car, 'comum', 0); lote(faixas, 'comum', 0);
 
@@ -804,7 +802,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
   rotulo('Hidrante', xH, 2.2, Z_FRENTE + .6, 'comum', 'inf');
   rotulo('Caixa de faturamento', fx0 + LE / 2, 2.2, fz, 'comum', 'inf');
   rotulo('Eclusas', (XR + xFimE) / 2, 2.4, Z_FRENTE + 13, 'comum', 'inf');
-  rotulo('Eclusas do recebimento', (geoRua('12').xPar + geoRua('14').xImpar) / 2, 2.4, (L_CURTA + Z_FRENTE + 6.5) / 2, 'comum', 'inf');
+  rotulo('Eclusas do recebimento', (geoRua('12').xPar + geoRua('14').xImpar) / 2, 2.4, (L_CURTA + Z_FRENTE + 20.5) / 2, 'comum', 'inf');
   rotulo('RUAS 11–15', XL + RUAS_ESQ.length * PASSO / 2, ALT + 3.4, -1.5, 'comum', 'inf');
   rotulo('RUAS 01–08', XR + RUAS_DIR.length * PASSO / 2, ALT + 3.4, -1.5, 'comum', 'inf');
 
