@@ -527,6 +527,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
     { op: .45, tip: tipInfo('Divisão de módulos do galpão', 'Logo depois da rua 08 (almoxarifado e insumos): aqui termina o galpão da DISTR.') });
   RUAS_ESQ.concat(RUAS_DIR).forEach(r => {
     const g = geoRua(r);
+    if (r === '15') return;   // rua 15 não existe mais no físico: sem corredor desenhado
     caixa(g.xCorr - A / 2 + .1, 0, g.xCorr + A / 2 - .1, g.L, 0, .02, 'corredor', 'comum');
   });
   caixa(X_DIV - 1.1, -4, X_DIV + 1.1, Z_FRENTE + 4, 0, ALT + 3, 'parede', 'comum',
@@ -815,6 +816,9 @@ window.montarPlanta3DDistr = async function (container, dados) {
     const zIni = L_CURTA + 2.5, zFim = Z_FRENTE + 18, vao = 2, comp = (zFim - zIni - 2 * vao) / 3;
     [0, 1, 2].forEach(i => eclusa(xc - larg / 2, 'Eclusa do recebimento ' + (++nRec),
       { z0: zIni + i * (comp + vao), larg, comp, linhas: 8, ocupacao: [.85, 1], onde: 'Recebimento · frente das ruas ' + pad(ra) + ' e ' + pad(rb) }));
+    // onde era a rua 15 (sem estrutura): mais 2 eclusas iguais, na mesma coluna da eclusa mais à direita
+    if (rb === '15') [1, 2].forEach(i => eclusa(xc - larg / 2, 'Eclusa do recebimento ' + (++nRec),
+      { z0: zIni - i * (comp + vao), larg, comp, linhas: 8, ocupacao: [.85, 1], onde: 'Recebimento · área onde era a rua 15' }));
   });
   lote(pal, 'comum', 0); lote(car, 'comum', 0); lote(faixas, 'comum', 0);
 
