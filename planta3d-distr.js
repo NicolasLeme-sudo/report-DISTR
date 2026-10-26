@@ -139,20 +139,29 @@ function ocupLado(opr, lado) {
   return c ? { pct: o / c * 100, livres: l, cap: c, ocup: o } : null;
 }
 /* Endereços → itens desenháveis + grupos do calor (rua × lado × nível × trecho de ~6 m). */
-/* Posição física de um endereço de Picking (operação, 23/10/2026):
-   - rua 11: picking de um lado só (o par); o lado ímpar é da Reversa/Qualidade.
-   - rua 15 do sistema = as meias, que fisicamente ocupam uma rua e meia: a rua 14 inteira (par e ímpar) e
-     a longarina ímpar da rua 15, atrás da longarina par da 14 (como a "parte de trás" da rua 01 do e-comm).
-     Sem a numeração exata, os primeiros 2/3 dos boxes vão para a
-     rua 14 e o último terço para a rua 15.
-   Devolve { rua (física), lado, frac (0 = fundo, 1 = frente) }. */
+/* Posição física de um endereço de Picking — mapeamento da operação (26/10/2026):
+   - rua 11: todos os endereços (pares e ímpares) na longarina da direita (par); a esquerda é da Reversa/Qualidade.
+   - rua 12: malas e acessórios (endereços da rua 12) só na longarina da esquerda (ímpar).
+   - meias (endereços da rua 15 do sistema) fazem um zigue-zague em gaiolas, da menor para a maior:
+       001–032  rua 14, longarina ímpar, do fundo para a frente;
+       033–100  rua 13, longarina da direita (par), da frente para o fundo (103 no fundo, 033 na frente);
+       101–168  rua 13, longarina da esquerda (ímpar), do fundo para a frente;
+       169 em diante  rua 12, longarina da direita (par), da frente para o fundo.
+   Devolve { rua (física), lado, frac (0 = fundo, 1 = frente), n (posições no trecho) }. */
+const ZIGUE_MEIAS = [
+  { de: 1, ate: 32, rua: '14', lado: 'impar', sentido: 'fundo' },     // 001 no fundo
+  { de: 33, ate: 100, rua: '13', lado: 'par', sentido: 'frente' },    // 033 na frente
+  { de: 101, ate: 168, rua: '13', lado: 'impar', sentido: 'fundo' },  // 101 no fundo
+  { de: 169, ate: Infinity, rua: '12', lado: 'par', sentido: 'frente' } // 169 na frente
+];
 function posPicking(rua, box, maxB) {
   const k = Math.ceil(box / 2), lado = box % 2 ? 'impar' : 'par';
   if (rua === '11') return { rua: '11', lado: 'par', frac: (box - .5) / maxB, n: maxB };
+  if (rua === '12') return { rua: '12', lado: 'impar', frac: (box - .5) / maxB, n: maxB };
   if (rua === '15') {
-    const corte = Math.round(maxB * 2 / 3);
-    if (box <= corte) { const n = Math.ceil(corte / 2); return { rua: '14', lado, frac: (k - .5) / n, n }; }
-    const n = Math.max(1, maxB - corte); return { rua: '15', lado: 'impar', frac: (box - corte - .5) / n, n };
+    const t = ZIGUE_MEIAS.find(z => box >= z.de && box <= z.ate);
+    const fim = Math.min(t.ate, Math.max(maxB, t.de)), n = fim - t.de + 1, i = box - t.de + .5;
+    return { rua: t.rua, lado: t.lado, frac: t.sentido === 'fundo' ? i / n : 1 - i / n, n };
   }
   const n = Math.max(1, Math.ceil(maxB / 2));
   return { rua, lado, frac: (k - .5) / n, n };
@@ -444,7 +453,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
     + 'Calor = % de endereços ocupados em cada trecho de ~6 m da longarina (no Picking, endereço alocado conta como ocupado, como na tela Estoque). '
     + 'No Picking, o endereço sem SKU cadastrado não vem no arquivo: os livres são deduzidos pela numeração até o maior box de cada nível. '
     + 'A ocupação no topo é a oficial por rua (capacidade da planilha, mesma régua do card de endereços livres).'
-    + ' Meias: os endereços da rua 15 do sistema ocupam a rua 14 inteira e a longarina ímpar da rua 15 (2/3 e 1/3 da numeração); rua 11: Picking só no lado par.'
+    + ' Ruas 11 a 15 no físico: rua 11 com o Picking todo na longarina da direita; rua 12 com malas/acessórios na esquerda; meias (rua 15 do sistema) em zigue-zague — 001–032 na rua 14, 033–100 e 101–168 nos dois lados da rua 13 e 169 em diante na direita da rua 12.'
     + ((fora.pulmao || fora.picking) ? ' Fora do desenho (lado que a rua não tem, numeração fora do padrão ou nível 12 do estoque novo): ' + fmtI(fora.pulmao || 0) + ' no Pulmão e ' + fmtI(fora.picking || 0) + ' no Picking.' : '')
     + (foraNum.passagem ? ' ' + fmtI(foraNum.passagem) + ' endereço(s) com saldo dentro de passagem de empilhadeira não aparecem.' : '');
 
