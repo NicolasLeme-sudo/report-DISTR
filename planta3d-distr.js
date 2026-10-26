@@ -238,7 +238,15 @@ function montarItens(mapa) {
             : { rua, lado: box % 2 ? 'impar' : 'par', frac: (Math.ceil(box / 2) - .5) / Math.max(1, Math.ceil(maxB / 2)), n: Math.max(1, Math.ceil(maxB / 2)) };
           const geo = geoRua(pp.rua), passo = geo.L / pp.n, k = Math.round(pp.frac * pp.n + .5);
           // gaiola: os 2 endereços ficam colados (uma gaiola), com folga entre gaiolas
-          const z = pp.frac * geo.L + (fmt === 'gaiola' ? (k % 2 ? .04 : -.04) * passo : 0);
+          let z = pp.frac * geo.L + (fmt === 'gaiola' ? (k % 2 ? .04 : -.04) * passo : 0), yy = y, hh = h, dd = Math.max(.1, passo * dk);
+          // rua 11: o sistema põe tudo no nível 1, mas no físico cada quadrante (~2,7 m) tem a mesma quantidade de
+          // endereços do vestuário — 7 níveis × 6 por nível. Os endereços enchem quadrante a quadrante, do fundo
+          // para a frente, nível a nível (de baixo para cima).
+          if (zona === 'picking' && rua === '11') {
+            const POR_NV = 6, NV = 7, QUAD = 2.7, j = box - 1, qd = Math.floor(j / (POR_NV * NV)), r = j % (POR_NV * NV);
+            const hb7 = PK_TOPO / NV;
+            z = qd * QUAD + ((r % POR_NV) + .5) * QUAD / POR_NV; yy = Math.floor(r / POR_NV) * hb7; hh = hb7 * .8; dd = QUAD / POR_NV * .86;
+          }
           // passagem de empilhadeira: do chão ao nível 09 a longarina é vazada
           if ((zona === 'picking' || lv <= 9) && naPassagem(pp.rua, pp.lado, z)) { if (st !== 'l' && st !== 'x' && st !== '0') foraNum.passagem++; continue; }
           const bloco = Math.floor(z / BLOCO);
@@ -254,7 +262,7 @@ function montarItens(mapa) {
             else if (st === 'l') g.livres++;
           }
           itens.push({ zona, rua, ruaFis: pp.rua, nivel: lv, box, lado: pp.lado, st, pc, g, fmt,
-            x: pp.lado === 'impar' ? geo.xImpar : geo.xPar, y, z, w: D * (fmt === 'bin' ? .84 : .9), h, d: Math.max(.1, passo * dk) });
+            x: pp.lado === 'impar' ? geo.xImpar : geo.xPar, y: yy, z, w: D * (fmt === 'bin' ? .84 : .9), h: hh, d: dd });
         }
       });
     });
