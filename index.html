@@ -5270,24 +5270,8 @@ function renderizarEstoqueOperacao(p) {
     avisos += '<div class="aviso">Famílias sem marca cadastrada em <code>dim_familias</code>: ' +
       escapar(p.familias_nao_mapeadas.join(', ')) + '.</div>';
   }
-  const gap = p.gap_estoque_reservado_picking;
-  if (gap && gap.registros) {
-    avisos += '<div class="aviso" style="border-color:var(--amber);color:var(--text)">' +
-      '<strong>GAP conhecido:</strong> ' + fmtInt(gap.registros) + ' endereços do Picking tinham saldo ' +
-      'negativo (' + fmtInt(gap.unidades) + ' un.) — reserva de separação/pendência de remanejamento OU ' +
-      'faturamento do fechamento cuja cativação sumiu. Sem como distinguir os dois casos ainda, ' +
-      'essas unidades <strong>não entram</strong> em nenhum número desta tela até isso ser resolvido.</div>';
-  }
-
-  // Faixa de Picking sem parametrização (ruas 3–6, boxes 1–76): os SEM saldo já saíram da
-  // relação/ocupação/capacidade; os COM saldo continuam contando e ficam avisados aqui.
-  const semParam = p.picking_sem_parametrizacao;
-  if (semParam && (semParam.fora > 0 || (semParam.com_saldo && semParam.com_saldo.enderecos > 0))) {
-    avisos += '<div class="aviso">' +
-      '<strong>Picking, ruas 3 a 6, boxes 1 a 76:</strong> ' + fmtInt(semParam.fora) + ' endereço(s) sem saldo e sem parametrização ficam fora da relação, ' +
-      'da ocupação e da capacidade; ' + fmtInt((semParam.com_saldo || {}).enderecos || 0) + ' endereço(s) com saldo (' +
-      fmtInt((semParam.com_saldo || {}).pecas || 0) + ' pç) contam normalmente.</div>';
-  }
+  // Avisos de GAP do Picking (saldo negativo) e da faixa sem parametrização (ruas 3–6, boxes 1–76) saíram
+  // da tela a pedido do usuário (26/10/2026); as regras continuam valendo nos números.
 
   /* ---------- filtro Picking/Pulmão/Todos — "Todos" primeiro e é o padrão
      (06/09/2026): antes vinha por último e o padrão era "Picking", escondendo
