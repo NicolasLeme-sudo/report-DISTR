@@ -758,7 +758,8 @@ window.montarPlanta3DDistr = async function (container, dados) {
     op = op || {};
     const z0 = op.z0 != null ? op.z0 : Z_FRENTE + 8, x1 = x0 + (op.larg || 5.5), z1 = z0 + (op.comp || 10), NL = op.linhas || 5, n = 2 * NL, cheias = new Set();
     const onde = op.onde || 'Frente do galpão';
-    while (cheias.size < Math.round(n * (.3 + sorteio() * .4))) cheias.add(Math.floor(sorteio() * n));
+    const oc = op.ocupacao || [.3, .7];          // faixa de ocupação ilustrativa (mín., máx.)
+    while (cheias.size < Math.round(n * (oc[0] + sorteio() * (oc[1] - oc[0])))) cheias.add(Math.floor(sorteio() * n));
     caixa(x0, z0, x1, z1, 0, .05, 'eclusa', 'comum', { tip: tipInfo(nome, onde + ' · ' + cheias.size + ' de ' + n + ' posições com pallet (ilustrativo)') });
     const px = (x1 - x0) / 2, pz = (z1 - z0) / NL, lado = Math.min(px, pz) * .78;
     for (let c = 0; c < 2; c++) for (let l = 0; l < NL; l++) {
@@ -785,7 +786,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
     // compridas, 3 fileiras iguais: do fim das ruas até a linha das eclusas da frente do galpão
     const zIni = L_CURTA + 2.5, zFim = Z_FRENTE + 18, vao = 2, comp = (zFim - zIni - 2 * vao) / 3;
     [0, 1, 2].forEach(i => eclusa(xc - larg / 2, 'Eclusa do recebimento ' + (++nRec),
-      { z0: zIni + i * (comp + vao), larg, comp, linhas: 8, onde: 'Recebimento · frente das ruas ' + pad(ra) + ' e ' + pad(rb) }));
+      { z0: zIni + i * (comp + vao), larg, comp, linhas: 8, ocupacao: [.85, 1], onde: 'Recebimento · frente das ruas ' + pad(ra) + ' e ' + pad(rb) }));
   });
   lote(pal, 'comum', 0); lote(car, 'comum', 0); lote(faixas, 'comum', 0);
 
