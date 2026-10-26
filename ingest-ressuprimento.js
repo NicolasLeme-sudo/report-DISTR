@@ -218,7 +218,7 @@ const CAPACIDADE_RUA_PLANILHA = {
              // a 14 do sistema (quase vazia) não tem capacidade própria.
              '11': 1190, '12': 204, '13': 204, '14': 0, '15': 408 },
   pulmao: { '1': 712, '2': 712, '3': 712, '4': 707, '5': 712, '6': 712, '7': 712,
-            '11': 136, '12': 272, '13': 272, '14': 272 },
+            '11': 136, '12': 272, '13': 272, '14': 120 },   // 14: só o lado ímpar (operação, 26/10/2026)
 };
 // Capacidade usada na tela = a da planilha (ela já desconta a passagem) menos
 // a limitação física validada depois.

@@ -423,7 +423,7 @@ eq(foraCapacidadePulmao(6, 10, 143), null, 'endereço não marcado continua vale
 eq(RUAS_ZONA.pulmao.meia.join(), '1', 'Pulmão meia: zona só com a rua 1');
 eq(somaRuas('pulmao', ['2', '6', '7']), 2136, 'Pulmão vestuário 2, 6, 7 = 2.136');
 eq(somaRuas('pulmao', ['3', '4', '5']), 2131, 'Pulmão calçado 3–5 = 2.131');
-eq(somaRuas('pulmao', ['11', '12', '13', '14']), 952, 'Pulmão acessório 11–14 = 952');
+eq(somaRuas('pulmao', ['11', '12', '13', '14']), 800, 'Pulmão acessório 11–14 = 800 (rua 14 só lado ímpar: 120)');
 eq(payloadSkuZero.ocupacao_por_rua.picking['7'], 2, 'ocupado por rua conta endereço alocado (2 na rua 7)');
 
 secao('saldo negativo no Picking conta como estoque ocupado (25/09/2026)');
