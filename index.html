@@ -3701,9 +3701,11 @@ function aplicarEtapaPersona(p) {
   }
   (p.pendentes || []).forEach(function (r) {
     if (r.situacao_arquivo === undefined) r.situacao_arquivo = r.situacao;
+    // Cliente que personaliza vence o "Lido na esteira": o material vai pra
+    // personalização mesmo com todos os volumes lidos (27/10/2026).
     r.situacao = r.situacao_arquivo !== 'Leitura expedicao' ? r.situacao_arquivo
-      : r.conferencia === 'completa' ? ETAPA_LIDA
       : ehClientePersona(r.cliente_nome) ? ETAPA_PERSONA
+      : r.conferencia === 'completa' ? ETAPA_LIDA
       : r.situacao_arquivo;
   });
   const extras = (p.etapas || []).filter(function (e) { return ORDEM_ETAPA_TELA.indexOf(e) === -1; });
