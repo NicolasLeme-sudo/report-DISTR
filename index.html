@@ -1641,7 +1641,7 @@ tr.total > th, tr.total > td {
       <div class="card">
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
           PFA em <strong>Leitura expedição</strong> de cliente desta lista aparece no Start Inicial como
-          <strong>04 - Material em Personalização</strong> — vale na hora, sem reprocessar as PFAs. Planilha
+          <strong>04 - Material em Personalização</strong> — ao salvar, o Start Inicial é atualizado na hora, sem reprocessar as PFAs. Planilha
           <strong>.xlsx</strong> com as colunas <strong>DESCRIÇÃO CLIENTE</strong> e <strong>PERSONALIZAVEL</strong>
           (S/N). O nome pode ser a razão social inteira ou só um trecho (ex.: FLAMBOYAN): casa com todo cliente
           cujo nome contém esse texto. O upload <strong>substitui a lista inteira</strong> — para incluir um
@@ -7774,8 +7774,16 @@ document.getElementById('btnProcessarPersona').addEventListener('click', async f
     }));
     if (ins.error) throw new Error(ins.error.message + ' — a lista pode ter ficado vazia; envie a planilha de novo.');
     clientesPersona = clientes;
-    if (dadosPfas) aplicarEtapaPersona(dadosPfas);
-    ok.textContent = '✔ Lista salva — o Start Inicial já usa a nova lista.';
+    // Refresh na hora: reclassifica as PFAs já carregadas e redesenha o
+    // Start Inicial com a lista nova, sem reprocessar os arquivos.
+    let resumoPersona = '';
+    if (!dadosPfas) { await carregarPfas(); pfasCarregado = true; }
+    else { aplicarEtapaPersona(dadosPfas); renderizarPfas(); }
+    if (dadosPfas) {
+      const nPersona = (dadosPfas.pendentes || []).filter(function (r) { return r.situacao === ETAPA_PERSONA; }).length;
+      resumoPersona = ' ' + fmtInt(nPersona) + ' PFA(s) agora em "04 - Material em Personalização".';
+    }
+    ok.textContent = '✔ Lista salva e Start Inicial atualizado.' + resumoPersona;
     ok.style.display = '';
     arquivoPersonaSelecionado = null;
     document.getElementById('inputPersona').value = '';
