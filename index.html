@@ -7142,6 +7142,7 @@ document.getElementById('btnProcessarPfas').addEventListener('click', async func
     escrever('Recarregando o Start Inicial em segundo plano…');
     pfasCarregado = true;
     await carregarPfas();
+    embarqueCarregado = false;   // Embarque usa o Pendentes/NFs Embarcadas: recarrega (e a data) na próxima visita
     ok.textContent = '✔ Processado com sucesso — pode selecionar o próximo arquivo.';
     ok.style.display = '';
     arquivoPfaPendSelecionado = null;
