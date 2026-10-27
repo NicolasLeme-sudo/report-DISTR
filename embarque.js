@@ -1339,6 +1339,9 @@
       supabaseClient.rpc('embarque_backlog_em_tela'),
       supabaseClient.rpc('embarque_notas_agregado', { p_de: somaDias(hoje, -400) }),
       supabaseClient.rpc('embarque_historico_operacao', { p_de: somaDias(hoje, -400) }),
+      // "Última atualização": o último arquivo de Notas Embarcadas (Embarque_out) e o último Pendentes/NFs Embarcadas
+      supabaseClient.from('embarque_notas').select('atualizado_em').order('atualizado_em', { ascending: false }).limit(1),
+      supabaseClient.from('dashboard_snapshots').select('gerado_em').eq('pagina', 'pfas').order('gerado_em', { ascending: false }).limit(1),
     ]);
     res.slice(0, 4).forEach(function (r) { if (r.error) throw r.error; });
     if (res[4].error) console.warn('Backlog em tela indisponível (rode migracao_embarque.sql):', res[4].error.message);
@@ -1349,6 +1352,10 @@
     const forecasts = res[3].data || [];
     let maisRecente = '';
     diario.concat(forecasts).forEach(function (r) { if (r.atualizado_em && r.atualizado_em > maisRecente) maisRecente = r.atualizado_em; });
+    [res[7], res[8]].forEach(function (r) {
+      const v = r && !r.error && r.data && r.data[0] && (r.data[0].atualizado_em || r.data[0].gerado_em);
+      if (v && v > maisRecente) maisRecente = v;
+    });
     dataSnapshot = maisRecente || null;
     if (res[5].error) console.warn('Detalhado de notas indisponível (rode migracao_embarque.sql):', res[5].error.message);
     return { hoje: hoje, agg: res[5].error || !Array.isArray(res[5].data) ? [] : res[5].data, emTela: res[4].error ? null : res[4].data, diario: diario, forecasts: forecasts, ultimos: { expedido: ult(res[1], 'expedido'), backlog: ult(res[2], 'backlog') } };
