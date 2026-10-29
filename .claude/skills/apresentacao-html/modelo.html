@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{TITULO}}</title>
+<link rel="icon" href="{{FAVICON}}">
+<style>
+:root{--navy:#031F44;--ink:#0B1626;--card:#16263C;--card2:#1D3048;--line:#2C4260;--fg:#F4F7FB;--muted:#93A5B8;--gold:#F6BD00;--red:#E03A4E;--steel:#4F6784;--sky:#A8D8F8}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#050C17;color:var(--fg);font-family:'Segoe UI',Tahoma,system-ui,sans-serif;overflow:hidden}
+#viewport{position:fixed;inset:0;overflow:hidden}
+#stage{width:1920px;height:1080px;position:absolute;left:50%;top:50%;transform-origin:center;overflow:hidden;border-radius:6px;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+.slide{position:absolute;inset:0;padding:110px 128px 150px;display:flex;flex-direction:column;gap:32px;opacity:0;visibility:hidden;transform:translateX(40px);transition:opacity .5s ease,transform .5s ease,visibility .5s;background:radial-gradient(1200px 700px at 85% -10%,#12325C 0%,transparent 60%),linear-gradient(180deg,#0E1C30,#0A1422)}
+.slide.on{opacity:1;visibility:visible;transform:none}
+.slide.prev{transform:translateX(-40px)}
+.eyebrow{font-size:22px;font-weight:700;letter-spacing:5px;text-transform:uppercase;color:var(--gold);display:flex;align-items:center;gap:16px}
+.eyebrow::before{content:"";width:44px;height:3px;background:var(--gold);border-radius:2px}
+h1{font-size:96px;line-height:1.05;font-weight:700;letter-spacing:-1px;max-width:1450px}
+h2{font-size:58px;line-height:1.12;font-weight:700;letter-spacing:-.5px;max-width:1600px;text-wrap:balance}
+h2 em{font-style:normal;color:var(--gold)}
+.foot{position:absolute;left:128px;right:128px;bottom:56px;display:flex;justify-content:space-between;align-items:center;font-size:20px;color:var(--muted);border-top:1px solid var(--line);padding-top:20px}
+.foot img{height:34px;opacity:.9} .foot img.vm{height:44px;opacity:1}
+.cards{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:28px}
+.card{background:linear-gradient(160deg,var(--card2),var(--card));border:1px solid var(--line);border-radius:18px;padding:40px 40px;min-width:0;display:flex;flex-direction:column;gap:14px;position:relative;overflow:hidden}
+.card .k{font-size:24px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;font-weight:600}
+.card .v{font-size:92px;font-weight:300;line-height:1;font-variant-numeric:tabular-nums}
+.card .d{font-size:26px;color:var(--muted);line-height:1.4}
+.card.red .v{color:var(--red)} .card.red::after,.card.gold::after,.card.green::after{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--red)}
+.card.gold::after{background:var(--gold)} .card.green .v{color:#4CC38A} .card.green::after{background:#4CC38A}
+.lead{font-size:30px;line-height:1.5;color:#D5DEE8;max-width:1500px} .lead b{color:var(--fg)}
+/* capa */
+.capa{justify-content:center;background:radial-gradient(1000px 800px at 90% 110%,#173E70 0%,transparent 60%),linear-gradient(135deg,#031F44,#0A1422)}
+.capa .logo{position:absolute;top:90px;left:128px;height:80px}
+.capa .sub{font-size:36px;color:var(--muted);max-width:1300px;line-height:1.4}
+.capa .rule{width:220px;height:4px;background:var(--gold);border-radius:2px}
+.capa .tag{position:absolute;left:128px;bottom:96px;font-size:24px;color:var(--muted)}
+.capa .big{position:absolute;right:110px;bottom:60px;font-size:420px;font-weight:800;color:rgba(255,255,255,.035);line-height:1;letter-spacing:-10px}
+/* charts */
+.chart{width:100%;height:auto;overflow:visible}
+.chart .grid{stroke:var(--line);stroke-width:1} .chart .ax{fill:var(--muted);font-size:20px}
+.chart .bar{transform-box:fill-box;transform-origin:bottom;transform:scaleY(0);transition:transform .7s cubic-bezier(.2,.8,.2,1) var(--d)}
+.on .chart .bar{transform:scaleY(1)}
+.chart .ok{fill:var(--steel)} .chart .over{fill:var(--red)} .chart .hoje{fill:var(--gold)} .chart .ent{fill:var(--sky)}
+.chart .val{fill:var(--fg);font-size:24px;font-weight:600;text-anchor:middle} .chart .val.pk{fill:var(--red);font-weight:800;font-size:28px} .chart .val.hj{fill:var(--gold)}
+.chart .mes{fill:var(--muted);font-size:22px;text-anchor:middle} .chart .mes.hj{fill:var(--gold);font-weight:700}
+.chart .cap{stroke:var(--gold);stroke-width:3;stroke-dasharray:14 10} .chart .capt{fill:var(--gold);font-size:22px;font-weight:700;text-anchor:end}
+.chart .sm{font-size:20px}
+.legend{display:flex;gap:32px;font-size:22px;color:var(--muted)} .legend i{display:inline-block;width:18px;height:18px;border-radius:4px;margin-right:10px;vertical-align:-2px}
+.two{display:grid;grid-template-columns:1.1fr 1fr;gap:56px;align-items:start}
+table{border-collapse:collapse;width:100%;font-size:30px;font-variant-numeric:tabular-nums}
+th{font-size:20px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;font-weight:600;text-align:right;padding:0 18px 16px;border-bottom:2px solid var(--line)}
+td{padding:22px 18px;text-align:right;border-bottom:1px solid var(--line)} th:first-child,td:first-child{text-align:left}
+td.hl{font-weight:700;color:var(--gold)}
+.stack{display:flex;flex-direction:column;gap:20px}
+.pill{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px 32px;display:flex;justify-content:space-between;align-items:baseline}
+.pill span{font-size:24px;color:var(--muted)} .pill b{font-size:52px;font-weight:300} .pill.r b{color:var(--red)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+.lev{background:linear-gradient(160deg,var(--card2),var(--card));border:1px solid var(--line);border-radius:18px;padding:36px 40px;display:flex;gap:28px}
+.lev .n{font-size:64px;font-weight:200;color:var(--gold);line-height:.9;min-width:56px}
+.lev h3{font-size:34px;margin-bottom:10px} .lev p{font-size:26px;line-height:1.45;color:#D5DEE8} .lev p b{color:var(--fg)}
+.prem{display:grid;grid-template-columns:1fr 1fr;gap:40px 64px}
+.prem div{border-left:3px solid var(--gold);padding-left:28px}
+.prem h3{font-size:30px;color:var(--gold);margin-bottom:10px} .prem p{font-size:26px;line-height:1.45;color:#D5DEE8}
+/* UI */
+#ui{position:fixed;right:20px;top:16px;display:flex;gap:8px;align-items:center;z-index:5;opacity:.35;transition:opacity .3s}
+#ui:hover,body.mouse #ui{opacity:1}
+#ui button{width:46px;height:46px;border-radius:12px;border:1px solid #2C4260;background:rgba(14,28,48,.9);color:#F4F7FB;font-size:20px;cursor:pointer;display:grid;place-items:center}
+#ui button:hover{background:#1D3048;border-color:var(--gold)} #ui button:focus-visible{outline:2px solid var(--gold)}
+#count{font-size:15px;color:var(--muted);min-width:58px;text-align:center;font-variant-numeric:tabular-nums}
+#bar{position:fixed;left:0;top:0;height:4px;background:var(--gold);transition:width .4s;z-index:5}
+@media (prefers-reduced-motion:reduce){.slide,.chart .bar{transition:none}}
+</style></head><body>
+<div id="bar"></div>
+<div id="viewport"><div id="stage">
+
+<section class="slide capa">
+  <img class="logo" src="{{LOGO}}" alt="Vulcabras">
+  <div class="eyebrow">Logística · Distribuidora</div>
+  <h1>Capacidade do Pulmão até setembro/27</h1>
+  <div class="rule"></div>
+  <p class="sub">Estoque atual, recebimento das ordens de compra e embarque médio: quando faltam posições e quanto.</p>
+  <div class="tag">Apresentação à Diretoria · outubro de 2026</div>
+  <div class="big">97%</div>
+</section>
+
+<section class="slide">
+  <div class="eyebrow">A resposta</div>
+  <h2>O Pulmão entra em overcapacity em <em>outubro/26</em> e só volta a caber em <em>maio/27</em></h2>
+  <div class="cards" style="margin-top:24px">
+    <div class="card gold"><div class="k">Hoje</div><div class="v">97%</div><div class="d">5.619 de 5.769 posições ocupadas · ~150 livres</div></div>
+    <div class="card red"><div class="k">Estouro · out/26</div><div class="v">+334</div><div class="d">posições a mais do que cabe já no fim de outubro</div></div>
+    <div class="card red"><div class="k">Pico · jan/27</div><div class="v">+1.404</div><div class="d">7.173 posições necessárias · 124% da capacidade</div></div>
+    <div class="card green"><div class="k">Volta a caber</div><div class="v">mai/27</div><div class="d">depois de 7 meses acima da capacidade</div></div>
+  </div>
+  <div class="foot"><span>Capacidade: 5.769 posições de pallet · estoque de 26/10/2026 · saída média de 562 mil peças/mês</span><img class="vm" src="{{V}}" alt="Vulcabras"></div>
+</section>
+
+<section class="slide">
+  <div class="eyebrow">Projeção mês a mês</div>
+  <h2>Posições de pallet necessárias no fim de cada mês</h2>
+  <div class="legend"><span><i style="background:var(--gold)"></i>Hoje</span><span><i style="background:var(--steel)"></i>Dentro da capacidade</span><span><i style="background:var(--red)"></i>Acima da capacidade</span></div>
+  <svg class="chart" viewBox="0 0 1600 560" aria-label="Posições necessárias por mês">
+<line x1="0" x2="1600" y1="392.5" y2="392.5" class="grid"/><text x="0" y="384.5" class="ax">2.000</text>
+<line x1="0" x2="1600" y1="275.0" y2="275.0" class="grid"/><text x="0" y="267.0" class="ax">4.000</text>
+<line x1="0" x2="1600" y1="157.5" y2="157.5" class="grid"/><text x="0" y="149.5" class="ax">6.000</text>
+<line x1="0" x2="1600" y1="40.0" y2="40.0" class="grid"/><text x="0" y="32.0" class="ax">8.000</text>
+<rect class="bar hoje" style="--d:0ms" x="27.1" y="179.9" width="68.9" height="330.1" rx="6"/>
+<text x="61.5" y="165.9" class="val hj">5.619</text>
+<text x="61.5" y="548" class="mes hj">Hoje</text>
+<rect class="bar ok" style="--d:60ms" x="150.2" y="171.1" width="68.9" height="338.9" rx="6"/>
+<rect class="bar over" style="--d:60ms" x="150.2" y="151.4" width="68.9" height="25.6" rx="6"/>
+<text x="184.6" y="137.4" class="val">6.103</text>
+<text x="184.6" y="548" class="mes">out/26</text>
+<rect class="bar ok" style="--d:120ms" x="273.2" y="171.1" width="68.9" height="338.9" rx="6"/>
+<rect class="bar over" style="--d:120ms" x="273.2" y="141.8" width="68.9" height="35.3" rx="6"/>
+<text x="307.7" y="127.8" class="val">6.267</text>
+<text x="307.7" y="548" class="mes">nov</text>
+<rect class="bar ok" style="--d:180ms" x="396.3" y="171.1" width="68.9" height="338.9" rx="6"/>
+<rect class="bar over" style="--d:180ms" x="396.3" y="150.8" width="68.9" height="26.3" rx="6"/>
+<text x="430.8" y="136.8" class="val">6.114</text>
+<text x="430.8" y="548" class="mes">dez</text>
+<rect class="bar ok" style="--d:240ms" x="519.4" y="171.1" width="68.9" height="338.9" rx="6"/>
+<rect class="bar over" style="--d:240ms" x="519.4" y="88.6" width="68.9" height="88.5" rx="6"/>
+<text x="553.8" y="74.6" class="val pk">7.173</text>
+<text x="553.8" y="548" class="mes">jan/27</text>
+<rect class="bar ok" style="--d:300ms" x="642.5" y="171.1" width="68.9" height="338.9" rx="6"/>
+<rect class="bar over" style="--d:300ms" x="642.5" y="95.2" width="68.9" height="81.8" rx="6"/>
+<text x="676.9" y="81.2" class="val">7.060</text>
+<text x="676.9" y="548" class="mes">fev</text>
+<rect class="bar ok" style="--d:360ms" x="765.5" y="171.1" width="68.9" height="338.9" rx="6"/>
+<rect class="bar over" style="--d:360ms" x="765.5" y="124.6" width="68.9" height="52.5" rx="6"/>
+<text x="800.0" y="110.6" class="val">6.560</text>
+<text x="800.0" y="548" class="mes">mar</text>
+<rect class="bar ok" style="--d:420ms" x="888.6" y="171.1" width="68.9" height="338.9" rx="6"/>
+<rect class="bar over" style="--d:420ms" x="888.6" y="154.7" width="68.9" height="22.3" rx="6"/>
+<text x="923.1" y="140.7" class="val">6.047</text>
+<text x="923.1" y="548" class="mes">abr</text>
+<rect class="bar ok" style="--d:480ms" x="1011.7" y="216.8" width="68.9" height="293.2" rx="6"/>
+<text x="1046.2" y="202.8" class="val">4.991</text>
+<text x="1046.2" y="548" class="mes">mai</text>
+<rect class="bar ok" style="--d:540ms" x="1134.8" y="282.5" width="68.9" height="227.5" rx="6"/>
+<text x="1169.2" y="268.5" class="val">3.873</text>
+<text x="1169.2" y="548" class="mes">jun</text>
+<rect class="bar ok" style="--d:600ms" x="1257.8" y="329.5" width="68.9" height="180.5" rx="6"/>
+<text x="1292.3" y="315.5" class="val">3.073</text>
+<text x="1292.3" y="548" class="mes">jul</text>
+<rect class="bar ok" style="--d:660ms" x="1380.9" y="397.4" width="68.9" height="112.6" rx="6"/>
+<text x="1415.4" y="383.4" class="val">1.917</text>
+<text x="1415.4" y="548" class="mes">ago</text>
+<rect class="bar ok" style="--d:720ms" x="1504.0" y="455.8" width="68.9" height="54.2" rx="6"/>
+<text x="1538.5" y="441.8" class="val">923</text>
+<text x="1538.5" y="548" class="mes">set/27</text>
+<line x1="0" x2="1600" y1="171.1" y2="171.1" class="cap"/><text x="1600" y="159.1" class="capt">Capacidade 5.769</text></svg>
+  <div class="foot"><span>Entrada: saldo das ordens de compra (Suprimentos, 22/10) · Saída: embarque médio fev–out/26</span><img class="vm" src="{{V}}" alt="Vulcabras"></div>
+</section>
+
+<section class="slide">
+  <div class="eyebrow">Por que estoura</div>
+  <h2>Sai mais peça do que entra, mas a entrada <em>ocupa mais posições</em></h2>
+  <div class="two">
+    <div class="stack">
+      <div class="pill"><span>Saída média · peças/mês</span><b>562 mil</b></div>
+      <div class="pill"><span>Entrada média out–abr · peças/mês</span><b>396 mil</b></div>
+      <div class="pill r"><span>Entrada em jan/27 · peças</span><b>649 mil</b></div>
+      <p class="lead" style="font-size:26px">A saída é puxada por <b>meia</b>, que ocupa pouco espaço. A entrada é puxada por <b>vestuário e acessório</b>, com a coleção 27W Olympikus concentrada em janeiro.</p>
+    </div>
+    <div class="stack">
+      <div class="legend"><span><i style="background:var(--sky)"></i>Posições que entram</span><span><i style="background:var(--red)"></i>Mais do que a saída libera</span></div>
+      <svg class="chart" viewBox="0 0 1000 380" aria-label="Posições que entram por mês comparadas às que a saída libera">
+<rect class="bar ent" style="--d:0ms" x="16.7" y="240.4" width="50.0" height="99.6" rx="4"/>
+<text x="41.7" y="366" class="mes sm">out</text>
+<rect class="bar over" style="--d:50ms" x="100.0" y="164.0" width="50.0" height="176.0" rx="4"/>
+<text x="125.0" y="366" class="mes sm">nov</text>
+<rect class="bar ent" style="--d:100ms" x="183.3" y="206.1" width="50.0" height="133.9" rx="4"/>
+<text x="208.3" y="366" class="mes sm">dez</text>
+<rect class="bar over" style="--d:150ms" x="266.7" y="44.7" width="50.0" height="295.3" rx="4"/>
+<text x="291.7" y="366" class="mes sm">jan</text>
+<rect class="bar ent" style="--d:200ms" x="350.0" y="200.9" width="50.0" height="139.1" rx="4"/>
+<text x="375.0" y="366" class="mes sm">fev</text>
+<rect class="bar ent" style="--d:250ms" x="433.3" y="252.5" width="50.0" height="87.5" rx="4"/>
+<text x="458.3" y="366" class="mes sm">mar</text>
+<rect class="bar ent" style="--d:300ms" x="516.7" y="254.3" width="50.0" height="85.7" rx="4"/>
+<text x="541.7" y="366" class="mes sm">abr</text>
+<rect class="bar ent" style="--d:350ms" x="600.0" y="326.7" width="50.0" height="13.3" rx="4"/>
+<text x="625.0" y="366" class="mes sm">mai</text>
+<rect class="bar ent" style="--d:400ms" x="683.3" y="334.8" width="50.0" height="5.2" rx="4"/>
+<text x="708.3" y="366" class="mes sm">jun</text>
+<rect class="bar ent" style="--d:450ms" x="766.7" y="292.5" width="50.0" height="47.5" rx="4"/>
+<text x="791.7" y="366" class="mes sm">jul</text>
+<rect class="bar ent" style="--d:500ms" x="850.0" y="340.0" width="50.0" height="0.0" rx="4"/>
+<text x="875.0" y="366" class="mes sm">ago</text>
+<rect class="bar ent" style="--d:550ms" x="933.3" y="318.3" width="50.0" height="21.7" rx="4"/>
+<text x="958.3" y="366" class="mes sm">set</text>
+<line x1="0" x2="1000" y1="185.9" y2="185.9" class="cap"/><text x="1000" y="175.9" class="capt sm">Saída libera ~1.156/mês</text>
+<text x="291.7" y="34.7" class="val pk sm">2.215</text></svg>
+    </div>
+  </div>
+  <div class="foot"><span>Fonte: Saldo a receber de ordens de compra (Suprimentos, 22/10/2026) · embarque fev–out/2026</span><img class="vm" src="{{V}}" alt="Vulcabras"></div>
+</section>
+
+<section class="slide">
+  <div class="eyebrow">Peças por posição</div>
+  <h2>O limite é a posição de pallet, e cada segmento ocupa um espaço diferente</h2>
+  <div class="two">
+    <table>
+      <tr><th>Segmento</th><th>Peças hoje</th><th>Posições</th><th>Peças/posição</th></tr>
+      <tr><td>Meia</td><td>491.366</td><td>634</td><td class="hl">775</td></tr>
+      <tr><td>Vestuário</td><td>1.006.072</td><td>2.098</td><td class="hl">480</td></tr>
+      <tr><td>Acessório</td><td>192.248</td><td>799</td><td class="hl">241</td></tr>
+      <tr><td>Calçado</td><td>234.602</td><td>2.088</td><td class="hl">112</td></tr>
+    </table>
+    <div class="stack">
+      <div class="pill"><span>100 mil peças de meia</span><b>~130 pos.</b></div>
+      <div class="pill"><span>100 mil peças de vestuário</span><b>~210 pos.</b></div>
+      <div class="pill r"><span>100 mil peças de acessório</span><b>~415 pos.</b></div>
+    </div>
+  </div>
+  <div class="foot"><span>Peças por posição = peças do segmento no Pulmão ÷ posições que ele ocupa · estoque de 26/10/2026</span><img class="vm" src="{{V}}" alt="Vulcabras"></div>
+</section>
+
+<section class="slide">
+  <div class="eyebrow">Alavancas</div>
+  <h2>O que reduz o excesso de outubro a abril</h2>
+  <div class="grid2">
+    <div class="lev"><div class="n">1</div><div><h3>Escalonar a 27W Olympikus</h3><p>245 mil peças de acessório em jan/27 ocupam <b>~1.000 posições</b>. Dividir a entrega ou enviar direto ao cliente tira a maior parte do pico.</p></div></div>
+    <div class="lev"><div class="n">2</div><div><h3>Consolidar pallets de vestuário</h3><p>A média hoje é 480 peças por pallet. Subir para 600 libera <b>~420 posições</b> já.</p></div></div>
+    <div class="lev"><div class="n">3</div><div><h3>Áreas de transbordo</h3><p>Eclusas e armazenagem no chão para segurar parte das <b>300 a 1.400 posições</b> a mais entre outubro e abril.</p></div></div>
+    <div class="lev"><div class="n">4</div><div><h3>Expedição</h3><p>Cada 10% a mais de embarque libera <b>~115 posições por mês</b>. Até janeiro, reduz o pico em ~370.</p></div></div>
+  </div>
+  <div class="foot"><span>Estimativas sobre a projeção base · Picking mantém o volume atual</span><img class="vm" src="{{V}}" alt="Vulcabras"></div>
+</section>
+
+<section class="slide">
+  <div class="eyebrow">Premissas</div>
+  <h2>De onde vem cada número</h2>
+  <div class="prem">
+    <div><h3>Capacidade</h3><p>5.769 posições de pallet no Pulmão, níveis 8 a 12, sem passagens de empilhadeira. Ocupadas em 26/10: 5.619.</p></div>
+    <div><h3>Entrada</h3><p>Saldo a receber das ordens de compra (Suprimentos, 22/10): 2,96 mi de peças até set/27, sendo 2,77 mi de outubro a abril.</p></div>
+    <div><h3>Saída</h3><p>562.323 peças/mês: média de embarque de fevereiro a outubro/26, com todos os segmentos.</p></div>
+    <div><h3>Fora da conta</h3><p>Compras novas além do saldo atual e entrada de calçado nacional. As duas aumentam a necessidade de posições a partir de maio.</p></div>
+  </div>
+  <div class="foot"><span>Peças por posição: média real de hoje por segmento · Picking considerado estável</span><img class="vm" src="{{V}}" alt="Vulcabras"></div>
+</section>
+
+</div></div>
+<div id="ui">
+  <button id="bPrev" title="Slide anterior (←)" aria-label="Slide anterior">‹</button>
+  <span id="count"></span>
+  <button id="bNext" title="Próximo slide (→)" aria-label="Próximo slide">›</button>
+  <button id="bFull" title="Tela cheia (F)" aria-label="Tela cheia">⛶</button>
+</div>
+<script>
+const S=[...document.querySelectorAll('.slide')], st=document.getElementById('stage');
+let i=0;
+function fit(){const k=Math.min(innerWidth/1920,innerHeight/1080);st.style.transform='translate(-50%,-50%) scale('+k+')';}
+function show(n){i=Math.max(0,Math.min(S.length-1,n));S.forEach((s,j)=>{s.classList.toggle('on',j===i);s.classList.toggle('prev',j<i);});
+ document.getElementById('count').textContent=(i+1)+' / '+S.length;document.getElementById('bar').style.width=((i+1)/S.length*100)+'%';
+ try{history.replaceState(null,'','#'+(i+1));}catch(e){}}
+function full(){const d=document,el=d.documentElement;
+ if(!(d.fullscreenElement||d.webkitFullscreenElement)){const r=(el.requestFullscreen||el.webkitRequestFullscreen);if(r){const p=r.call(el);if(p&&p.catch)p.catch(()=>{});}}
+ else (d.exitFullscreen||d.webkitExitFullscreen).call(d);}
+document.getElementById('bPrev').onclick=()=>show(i-1);
+document.getElementById('bNext').onclick=()=>show(i+1);
+document.getElementById('bFull').onclick=full;
+addEventListener('keydown',e=>{if(['ArrowRight','PageDown',' ','Enter'].includes(e.key)){e.preventDefault();show(i+1);}
+ else if(['ArrowLeft','PageUp','Backspace'].includes(e.key)){e.preventDefault();show(i-1);}
+ else if(e.key==='f'||e.key==='F')full(); else if(e.key==='Home')show(0); else if(e.key==='End')show(S.length-1);});
+let tx=null;addEventListener('touchstart',e=>tx=e.touches[0].clientX);addEventListener('touchend',e=>{if(tx===null)return;const dx=e.changedTouches[0].clientX-tx;if(Math.abs(dx)>50)show(i+(dx<0?1:-1));tx=null;});
+let tm;addEventListener('mousemove',()=>{document.body.classList.add('mouse');clearTimeout(tm);tm=setTimeout(()=>document.body.classList.remove('mouse'),2000);});
+addEventListener('resize',fit);fit();show((parseInt(location.hash.slice(1))||1)-1);
+</script>
+</body></html>
