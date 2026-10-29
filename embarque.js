@@ -455,7 +455,8 @@
       const pecas = numeroDeCelula(l[col.pecas]);
       const embarque = dataDeCelula(l[col.embarque]);
       if (semNf && !embarque && (l[col.familia] == null || l[col.familia] === '')) continue;   // linha de total no fim
-      let nf = semNf ? '' : String(l[col.nf] == null ? '' : l[col.nf]).trim();
+      // NF só de dígitos sem zeros à esquerda: "000000113" e "113" são a mesma nota (bases diferentes gravam diferente)
+      let nf = semNf ? '' : String(l[col.nf] == null ? '' : l[col.nf]).trim().replace(/^0+(?=\d)/, '');
       if ((!semNf && !nf) || pecas === null) continue;
       if (!embarque) { semData++; continue; }
       if (semNf) { seqDia[embarque] = (seqDia[embarque] || 0) + 1; nf = 'OT|' + embarque + '|' + seqDia[embarque]; }
@@ -1178,10 +1179,14 @@
         } else if (a) rot(a[0], a[1] - 12, fmtN(a[2]), 'var(--accent)');
         else if (b) rot(b[0], b[1] - 12, fmtN(b[2]), 'var(--olive)');
       }
-      // totais do topo = dia de hoje (expedido de hoje só existe quando o NFs Embarcadas já trouxer o dia)
+      // Expedido = acumulado dos dias que o gráfico mostra (início da janela até hoje); forecast segue o do dia
       const ultExp = serie.ultimo_dia_expedicao;
-      tot.innerHTML = '<div class="item"><div class="lab">Expedido · hoje</div><div class="val">' + num(d.expedido[hi]) + '</div>' +
-          (d.expedido[hi] == null && ultExp ? '<div style="font-size:10.5px;color:var(--text-muted);font-weight:600">base até ' + rotuloDia(ultExp) + '</div>' : '') + '</div>' +
+      let acum = 0, temExp = false;
+      for (let i = 0; i <= hi; i++) if (d.expedido[i] != null) { acum += d.expedido[i]; temExp = true; }
+      const sub = 'style="font-size:10.5px;color:var(--text-muted);font-weight:600"';
+      tot.innerHTML = '<div class="item"><div class="lab">Expedido · ' + d.dias[0] + ' a ' + d.dias[hi] + '</div><div class="val">' +
+          (temExp ? fmtN(acum) : '—') + '</div>' +
+          '<div ' + sub + '>hoje: ' + num(d.expedido[hi]) + (d.expedido[hi] == null && ultExp ? ' · base até ' + rotuloDia(ultExp) : '') + '</div></div>' +
         '<div class="item"><div class="lab">Forecast · hoje</div><div class="val">' + num(d.forecast[hi]) + '</div></div>';
       leg.innerHTML = '<span><i style="background:var(--olive)"></i>Expedido (peças)</span><span><i style="background:var(--accent)"></i>Forecast</span>';
       nota.textContent = '';
@@ -1441,13 +1446,11 @@
     avisar(fmtN(parsed.registros.length) + ' nota(s), embarque de ' + rotuloDia(parsed.periodo.de) + '/' + parsed.periodo.de.slice(0, 4) + ' a ' +
       rotuloDia(parsed.periodo.ate) + '/' + parsed.periodo.ate.slice(0, 4) + ' · ' + fmtN(parsed.total_pecas) + ' peças.');
     const agora = new Date().toISOString();
-    // Arquivo diário sem NF: não há chave para casar nota a nota, então ele SUBSTITUI os dias que traz — apaga o
-    // que estava gravado nesse período (de qualquer formato) e grava de novo. Reenviar nunca duplica.
-    if (parsed.sem_nf) {
-      avisar('Arquivo sem número de NF: substituindo o período ' + rotuloDia(parsed.periodo.de) + ' a ' + rotuloDia(parsed.periodo.ate) + '…');
-      const del = await supabaseClient.from('embarque_notas').delete().gte('embarque', parsed.periodo.de).lte('embarque', parsed.periodo.ate);
-      if (del.error) throw del.error;
-    }
+    // O arquivo SUBSTITUI os dias que traz: apaga o que estava gravado nesse período (de qualquer formato — diário
+    // sem NF, base com NF, NF com ou sem zeros) e grava de novo. Reenviar ou misturar formatos nunca duplica.
+    avisar('Substituindo o período ' + rotuloDia(parsed.periodo.de) + ' a ' + rotuloDia(parsed.periodo.ate) + '…');
+    const del = await supabaseClient.from('embarque_notas').delete().gte('embarque', parsed.periodo.de).lte('embarque', parsed.periodo.ate);
+    if (del.error) throw del.error;
     for (let i = 0; i < parsed.registros.length; i += 500) {
       const lote = parsed.registros.slice(i, i + 500).map(function (r) { return Object.assign({}, r, { atualizado_em: agora }); });
       const { error } = await supabaseClient.from('embarque_notas').upsert(lote, { onConflict: 'nf' });
