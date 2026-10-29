@@ -254,9 +254,12 @@
     const f = (forecasts || []).filter(function (x) { return x.mes === dia.slice(0, 7); })[0];
     return f && Array.isArray(f[campo]) ? f[campo] : [];
   }
-  function montarSerieEmbarque(diario, forecasts, hojeISO, ultimos, emTela) {
+  function montarSerieEmbarque(diario, forecasts, hojeISO, ultimos, emTela, inicio) {
+    // de D-30 (ou antes, a partir de `inicio`, para o filtro Período alcançar meses passados) até D+30
     const dias = [];
-    for (let i = -30; i <= 30; i++) dias.push(somaDias(hojeISO, i));
+    let d0 = somaDias(hojeISO, -30);
+    if (inicio && inicio < d0) d0 = inicio;
+    for (let d = d0; d <= somaDias(hojeISO, 30); d = somaDias(d, 1)) dias.push(d);
     const porDia = {};
     (diario || []).forEach(function (r) { porDia[r.dia] = r; });
     ultimos = ultimos || {};
@@ -383,7 +386,7 @@
         if (backlogPassado[d] !== undefined) return backlogPassado[d];
         return backlogPrev[d] === undefined ? null : backlogPrev[d];
       }),
-      hoje_idx: 30,
+      hoje_idx: dias.indexOf(hojeISO),
       ultimo_dia_expedicao: ultExp ? ultExp.dia : null,
       ultimo_dia_backlog: ultBk ? ultBk.dia : null,
       tem_entrada_prevista: Object.keys(fc.entrada).length > 0,
@@ -678,7 +681,8 @@
 
   let arrastou = false, modoFc = 'pecas', visao = 'forecast', janela = 15, serie = null, bruto = null, serieBase = null;
   const filtros = { marca: [], seg: [], transp: [] };
-  let periodoMix = { modo: 'tudo', meses: [], ano: null, aberto: false, rascunho: [] };
+  // padrão: o mês atual (sem dado dele ainda, periodoAtual cai no último mês com dado)
+  let periodoMix = { modo: 'sel', meses: [hojeLocalISO().slice(0, 7)], ano: null, aberto: false, rascunho: [] };
 
   function injetarCss() {
     if (document.getElementById('embCss')) return;
@@ -1012,7 +1016,7 @@
     }
     return { meses: meses, anos: anos, sel: periodoMix.modo === 'sel' ? periodoMix.meses.slice().sort() : 'tudo' };
   }
-  function atualizarPeriodo() { desenharFiltros(); desenharMix(); if (document.getElementById('embFcModal')) preencherForecast(); }
+  function atualizarPeriodo() { desenharFiltros(); desenhar(); desenharMix(); if (document.getElementById('embFcModal')) preencherForecast(); }
   function popoverMeses(meses, anos) {
     const rasc = periodoMix.rascunho;
     return '<div class="emb-pop"><div class="ano">' +
@@ -1114,10 +1118,21 @@
     if (!serie) { nota.textContent = 'Carregando…'; return; }
 
     const nAll = serie.dias.length, hiAll = serie.hoje_idx;
-    const ia = Math.max(0, hiAll - janela), ib = Math.min(nAll - 1, hiAll + janela);
+    // Período selecionado no filtro (meses): o gráfico mostra esses meses inteiros; "Todo o período": ±15/30 dias de hoje
+    let ia = Math.max(0, hiAll - janela), ib = Math.min(nAll - 1, hiAll + janela);
+    const perSel = periodoAtual().sel;
+    const porPeriodo = perSel !== 'tudo' && perSel.length > 0;
+    if (porPeriodo) {
+      const de = perSel[0] + '-01', ate = perSel[perSel.length - 1] + '-31';
+      const iso = serie.dias_iso;
+      let a = iso.findIndex(function (x) { return x >= de; }), b = -1;
+      for (let k = iso.length - 1; k >= 0; k--) if (iso[k] <= ate) { b = k; break; }
+      if (a !== -1 && b >= a) { ia = a; ib = b; }
+    }
+    const jan = document.getElementById('embJanela'); if (jan) jan.style.display = porPeriodo ? 'none' : '';
     const d = {};
     Object.keys(serie).forEach(function (k) { d[k] = Array.isArray(serie[k]) && serie[k].length === nAll ? serie[k].slice(ia, ib + 1) : serie[k]; });
-    const n = d.dias.length, hi = hiAll - ia;
+    const n = d.dias.length, hi = hiAll - ia, hojeNaTela = hi >= 0 && hi < n;
 
     const w0 = sc.clientWidth || 1000, h = 320, pL = 34, pR = 34, pT = 62, pB = 54, FS = 12;
     const vis = Math.max(2, Math.min(15, n));
@@ -1144,12 +1159,12 @@
     const mxL = Math.max(1, ...[d.entrada, d.saida, d.saida_efetiva, d.entrada_efetiva || []].flat().filter(function (v) { return v != null; })) * 1.15;
     const yL = function (v) { return (h - pB) - (v / mxL) * (h - pT - pB) * 0.85; };
 
-    if (hi < n - 1) {
+    if (hojeNaTela && hi < n - 1) {
       el('rect', { x: xF(hi), y: pT - 40, width: W - xF(hi) - 4, height: h - pB - pT + 40, fill: 'var(--accent-soft)', opacity: 0.55, rx: 6 });
       el('text', { x: xF(hi) + 34, y: pT - 30, 'font-size': 11, 'font-weight': 700, fill: 'var(--text-muted)' }, 'PREVISTO — somente forecast');
     }
     el('line', { x1: pL, x2: W - pR, y1: h - pB, y2: h - pB, stroke: 'var(--border)', 'stroke-width': 1 });
-    el('line', { x1: xF(hi), x2: xF(hi), y1: pT - 34, y2: h - pB, stroke: 'var(--amber)', 'stroke-width': 1.5, 'stroke-dasharray': '4 3' });
+    if (hojeNaTela) el('line', { x1: xF(hi), x2: xF(hi), y1: pT - 34, y2: h - pB, stroke: 'var(--amber)', 'stroke-width': 1.5, 'stroke-dasharray': '4 3' });
 
     const rotulos = [];
     const rot = function (x, y, txt, cor) { rotulos.push(function () { labelComFundo(svg, x, Math.min(y, h - pB - 8), txt, { fontSize: FS, cor: cor }); }); };
@@ -1181,13 +1196,17 @@
       }
       // Expedido = acumulado dos dias que o gráfico mostra (início da janela até hoje); forecast segue o do dia
       const ultExp = serie.ultimo_dia_expedicao;
-      let acum = 0, temExp = false;
-      for (let i = 0; i <= hi; i++) if (d.expedido[i] != null) { acum += d.expedido[i]; temExp = true; }
+      // período inteiro no passado: soma até o fim dele, e o forecast vira o total do período
+      const fimAcum = hojeNaTela ? hi : Math.min(hi, n - 1);
+      let acum = 0, temExp = false, fcPer = 0, temFc = false;
+      for (let i = 0; i <= fimAcum; i++) if (d.expedido[i] != null) { acum += d.expedido[i]; temExp = true; }
+      for (let i = 0; i < n; i++) if (d.forecast[i] != null) { fcPer += d.forecast[i]; temFc = true; }
       const sub = 'style="font-size:10.5px;color:var(--text-muted);font-weight:600"';
-      tot.innerHTML = '<div class="item"><div class="lab">Expedido · ' + d.dias[0] + ' a ' + d.dias[hi] + '</div><div class="val">' +
+      tot.innerHTML = '<div class="item"><div class="lab">Expedido · ' + d.dias[0] + ' a ' + d.dias[Math.max(0, fimAcum)] + '</div><div class="val">' +
           (temExp ? fmtN(acum) : '—') + '</div>' +
-          '<div ' + sub + '>hoje: ' + num(d.expedido[hi]) + (d.expedido[hi] == null && ultExp ? ' · base até ' + rotuloDia(ultExp) : '') + '</div></div>' +
-        '<div class="item"><div class="lab">Forecast · hoje</div><div class="val">' + num(d.forecast[hi]) + '</div></div>';
+          (hojeNaTela ? '<div ' + sub + '>hoje: ' + num(d.expedido[hi]) + (d.expedido[hi] == null && ultExp ? ' · base até ' + rotuloDia(ultExp) : '') + '</div>' : '') + '</div>' +
+        (hojeNaTela ? '<div class="item"><div class="lab">Forecast · hoje</div><div class="val">' + num(d.forecast[hi]) + '</div></div>'
+          : '<div class="item"><div class="lab">Forecast · período</div><div class="val">' + (temFc ? fmtN(fcPer) : '—') + '</div></div>');
       leg.innerHTML = '<span><i style="background:var(--olive)"></i>Expedido (peças)</span><span><i style="background:var(--accent)"></i>Forecast</span>';
       nota.textContent = '';
     } else {
@@ -1226,7 +1245,7 @@
       nota.textContent = '';
     }
     rotulos.forEach(function (f) { f(); });
-    labelComFundo(svg, xF(hi), pT - 40, 'HOJE', { fontSize: FS, cor: '#111', fundo: 'var(--amber)' });
+    if (hojeNaTela) labelComFundo(svg, xF(hi), pT - 40, 'HOJE', { fontSize: FS, cor: '#111', fundo: 'var(--amber)' });
     d.dias.forEach(function (lab, i) {
       el('text', { x: xF(i), y: h - 28, 'text-anchor': 'middle', 'font-size': 12, fill: i === hi ? 'var(--amber)' : 'var(--text-label)', 'font-weight': i === hi ? 700 : 500 }, lab);
       el('text', { x: xF(i), y: h - 12, 'text-anchor': 'middle', 'font-size': 11, fill: 'var(--text-muted)', 'font-weight': 400 }, d.dias_semana[i]);
@@ -1414,7 +1433,9 @@
   async function recarregar(supabaseClient) {
     try {
       bruto = await carregarDados(supabaseClient);
-      serieBase = montarSerieEmbarque(bruto.diario, bruto.forecasts, bruto.hoje, bruto.ultimos, bruto.emTela);
+      const diasAgg = (bruto.agg || []).map(function (r) { return String(r.d).slice(0, 10); }).sort();
+      const inicioSerie = diasAgg.length ? diasAgg[0].slice(0, 8) + '01' : null;
+      serieBase = montarSerieEmbarque(bruto.diario, bruto.forecasts, bruto.hoje, bruto.ultimos, bruto.emTela, inicioSerie);
       serie = aplicarFiltrosNaSerie(serieBase, { filtros: filtros, agg: bruto.agg, forecasts: bruto.forecasts, emTela: bruto.emTela });
       desenharFiltros(); desenhar(); desenharMix();
       if (document.getElementById('embFcModal')) preencherForecast();
