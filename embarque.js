@@ -254,12 +254,14 @@
     const f = (forecasts || []).filter(function (x) { return x.mes === dia.slice(0, 7); })[0];
     return f && Array.isArray(f[campo]) ? f[campo] : [];
   }
-  function montarSerieEmbarque(diario, forecasts, hojeISO, ultimos, emTela, inicio) {
+  function montarSerieEmbarque(diario, forecasts, hojeISO, ultimos, emTela, inicio, fim) {
     // de D-30 (ou antes, a partir de `inicio`, para o filtro Período alcançar meses passados) até D+30
     const dias = [];
     let d0 = somaDias(hojeISO, -30);
     if (inicio && inicio < d0) d0 = inicio;
-    for (let d = d0; d <= somaDias(hojeISO, 30); d = somaDias(d, 1)) dias.push(d);
+    let d1 = somaDias(hojeISO, 30);
+    if (fim && fim > d1) d1 = fim;   // até o fim do último mês que dá para escolher no filtro Período
+    for (let d = d0; d <= d1; d = somaDias(d, 1)) dias.push(d);
     const porDia = {};
     (diario || []).forEach(function (r) { porDia[r.dia] = r; });
     ultimos = ultimos || {};
@@ -1007,11 +1009,21 @@
     barra.addEventListener('pointercancel', function () { mov = false; });
   }
   // período geral do relatório (Todo o período / meses escolhidos): vale para o Mix e para a janela do forecast
+  // meses clicáveis: os que têm embarque, os que têm forecast e os 2 próximos (para ver o forecast à frente)
+  function mesesFuturos() {
+    const h = hojeLocalISO(), l = [];
+    let a = Number(h.slice(0, 4)), m = Number(h.slice(5, 7));
+    for (let k = 0; k < 2; k++) { m++; if (m > 12) { m = 1; a++; } l.push(a + '-' + pad2(m)); }
+    return l;
+  }
   function periodoAtual() {
     const agg = bruto ? bruto.agg : [];
-    const meses = Array.from(new Set(agg.map(function (r) { return String(r.d).slice(0, 7); }))).sort();
+    const meses = Array.from(new Set(agg.map(function (r) { return String(r.d).slice(0, 7); })
+      .concat((bruto && bruto.forecasts || []).map(function (f) { return String(f.mes).slice(0, 7); }))
+      .concat(bruto ? mesesFuturos() : []))).sort();
     const anos = Array.from(new Set(meses.map(function (x) { return x.slice(0, 4); }))).sort();
-    if (meses.length && (!periodoMix.ano || anos.indexOf(periodoMix.ano) === -1)) periodoMix.ano = anos[anos.length - 1];
+    const anoHoje = hojeLocalISO().slice(0, 4);
+    if (meses.length && (!periodoMix.ano || anos.indexOf(periodoMix.ano) === -1)) periodoMix.ano = anos.indexOf(anoHoje) !== -1 ? anoHoje : anos[anos.length - 1];
     if (periodoMix.modo === 'sel') {
       periodoMix.meses = periodoMix.meses.filter(function (x) { return meses.indexOf(x) !== -1; });
       if (!periodoMix.meses.length) periodoMix.meses = meses.length ? [meses[meses.length - 1]] : [];
@@ -1437,7 +1449,9 @@
       bruto = await carregarDados(supabaseClient);
       const diasAgg = (bruto.agg || []).map(function (r) { return String(r.d).slice(0, 10); }).sort();
       const inicioSerie = diasAgg.length ? diasAgg[0].slice(0, 8) + '01' : null;
-      serieBase = montarSerieEmbarque(bruto.diario, bruto.forecasts, bruto.hoje, bruto.ultimos, bruto.emTela, inicioSerie);
+      const ultMes = mesesFuturos().concat((bruto.forecasts || []).map(function (f) { return String(f.mes).slice(0, 7); })).sort().pop();
+      const fimSerie = ultMes ? (function () { const p = ultMes.split('-').map(Number); return ultMes + '-' + pad2(new Date(Date.UTC(p[0], p[1], 0)).getUTCDate()); })() : null;
+      serieBase = montarSerieEmbarque(bruto.diario, bruto.forecasts, bruto.hoje, bruto.ultimos, bruto.emTela, inicioSerie, fimSerie);
       serie = aplicarFiltrosNaSerie(serieBase, { filtros: filtros, agg: bruto.agg, forecasts: bruto.forecasts, emTela: bruto.emTela });
       desenharFiltros(); desenhar(); desenharMix();
       if (document.getElementById('embFcModal')) preencherForecast();
