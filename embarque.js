@@ -777,9 +777,11 @@
       '</div>' + (periodoMix.aberto ? popoverMeses(per.meses, per.anos) : '') + '</div></div>' +
       '<div class="filtros"><span class="rot-filtro">Marca</span>' + chips('marca', op.marca, 'Todas') +
         '<span class="emb-sep"></span><span class="rot-filtro" style="width:auto">Segmento</span>' + chips('seg', op.seg, 'Todos') + '</div>' +
-      grupo('Transportadora', 'transp', op.transp, 'Todas') +
-      '<div class="emb-rodape" style="justify-content:space-between;align-items:center"><span>' + (filtroAtivo(filtros) ? '<span class="chip" style="color:var(--red)" data-limpar="1">✕ Limpar filtros</span>' : '') + '</span>' +
-        '<span class="chip emb-fcbtn" data-fcabrir="1" style="margin:0">Clique para visualizar o forecast</span></div>';
+      // Transportadora + (Limpar filtros) + botão do forecast na MESMA linha, botões encostados à direita
+      '<div class="filtros"><span class="rot-filtro">Transportadora</span>' + chips('transp', op.transp, 'Todas') +
+        '<span style="margin-left:auto;display:inline-flex;gap:8px;align-items:center">' +
+          (filtroAtivo(filtros) ? '<span class="chip" style="color:var(--red)" data-limpar="1">✕ Limpar filtros</span>' : '') +
+          '<span class="chip emb-fcbtn" data-fcabrir="1" style="margin:0">Clique para visualizar o forecast</span></span></div>';
     const bt = alvo.querySelector('[data-fcabrir]'); if (bt) bt.addEventListener('click', abrirForecast);
     alvo.querySelectorAll('#embMixPeriodo .seg-btn').forEach(function (b) {
       b.addEventListener('click', function (e) {
