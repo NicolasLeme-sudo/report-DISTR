@@ -1206,7 +1206,7 @@
       const sub = 'style="font-size:10.5px;color:var(--text-muted);font-weight:600"';
       tot.innerHTML = '<div class="item"><div class="lab">Expedido · ' + d.dias[0] + ' a ' + d.dias[Math.max(0, fimAcum)] + '</div><div class="val">' +
           (temExp ? fmtN(acum) : '—') + '</div>' +
-          (hojeNaTela ? '<div ' + sub + '>hoje: ' + num(d.expedido[hi]) + (d.expedido[hi] == null && ultExp ? ' · base até ' + rotuloDia(ultExp) : '') + '</div>' : '') + '</div>' +
+          (hojeNaTela && d.expedido[hi] == null && ultExp ? '<div ' + sub + '>base até ' + rotuloDia(ultExp) + '</div>' : '') + '</div>' +
         (hojeNaTela ? '<div class="item"><div class="lab">Forecast · hoje</div><div class="val">' + num(d.forecast[hi]) + '</div></div>'
           : '<div class="item"><div class="lab">Forecast · período</div><div class="val">' + (temFc ? fmtN(fcPer) : '—') + '</div></div>');
       leg.innerHTML = '<span><i style="background:var(--olive)"></i>Expedido (peças)</span><span><i style="background:var(--accent)"></i>Forecast</span>';
