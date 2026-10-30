@@ -1211,7 +1211,11 @@
       // Expedido = acumulado dos dias que o gráfico mostra (início da janela até hoje); forecast segue o do dia
       const ultExp = serie.ultimo_dia_expedicao;
       // período inteiro no passado: soma até o fim dele, e o forecast vira o total do período
-      const fimAcum = hojeNaTela ? hi : Math.min(hi, n - 1);
+      // soma só até o último dia da planilha do time (a mesma base do card Marca × Segmento, embaixo); dia mais novo
+      // que vem só das NFs Embarcadas aparece no gráfico, mas fica fora do acumulado para os dois cards baterem
+      const ultTime = (bruto && bruto.agg || []).reduce(function (mx, r) { const x = String(r.d).slice(0, 10); return x > mx ? x : mx; }, '');
+      let fimAcum = hojeNaTela ? hi : Math.min(hi, n - 1);
+      if (ultTime) while (fimAcum >= 0 && d.dias_iso[fimAcum] > ultTime) fimAcum--;
       let acum = 0, temExp = false, fcPer = 0, temFc = false;
       for (let i = 0; i <= fimAcum; i++) if (d.expedido[i] != null) { acum += d.expedido[i]; temExp = true; }
       for (let i = 0; i < n; i++) if (d.forecast[i] != null) { fcPer += d.forecast[i]; temFc = true; }
