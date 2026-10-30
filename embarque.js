@@ -1355,7 +1355,8 @@
   /* Expedição diária pelo arquivo do time de Embarque (26/10/2026): a data "Embarque OT 1P." é o dia em que a
      nota saiu. A DATMOD do NFs Embarcadas do GCI é a última modificação da nota e não bate dia a dia (22/10:
      GCI 14.839 × time 21.633). No período que o arquivo do time cobre, ele vale; dia útil sem nota nesse período
-     = 0. Fora dele (antes/depois), segue o que já havia (GCI / base antiga). agg = embarque_notas_agregado. */
+     = 0. Antes dele segue a base antiga; DEPOIS do último dia do arquivo do time não há expedido (30/10/2026: a
+     expedição vem só do relatório do Embarque, o GCI não entra como prévia). agg = embarque_notas_agregado. */
   function aplicarExpedidoTime(diario, agg) {
     const porDiaTime = {};
     (Array.isArray(agg) ? agg : []).forEach(function (r) { const d = String(r.d).slice(0, 10); porDiaTime[d] = (porDiaTime[d] || 0) + (Number(r.p) || 0); });
@@ -1367,6 +1368,8 @@
       const r = porDia[d] || (porDia[d] = { dia: d, expedido: null, backlog: null });
       r.expedido = porDiaTime[d] || 0; r.fonte_expedido = 'embarque_time';
     }
+    const ult = dias[dias.length - 1];
+    Object.keys(porDia).forEach(function (d) { if (d > ult) { porDia[d].expedido = null; porDia[d].fonte_expedido = null; } });
     return Object.keys(porDia).sort().map(function (d) { return porDia[d]; });
   }
 
