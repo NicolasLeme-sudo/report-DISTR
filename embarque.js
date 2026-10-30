@@ -1116,7 +1116,9 @@
     if (!t) { t = document.createElement('div'); t.id = 'embTip'; t.className = 'exp-tip'; document.body.appendChild(t); }
     t.innerHTML = html; t.classList.toggle('largo', !!largo); t.style.display = 'block';
     const w = t.offsetWidth, hh = t.offsetHeight;
-    t.style.left = Math.max(8, Math.min(e.clientX + 16, window.innerWidth - w - 8)) + 'px';
+    // perto da borda direita o tooltip vira para a ESQUERDA do cursor (não cobre o dia apontado nem os últimos dias)
+    const direita = e.clientX + 16 + w <= window.innerWidth - 8;
+    t.style.left = Math.max(8, direita ? e.clientX + 16 : e.clientX - w - 16) + 'px';
     t.style.top = Math.max(8, Math.min(e.clientY - hh / 2, window.innerHeight - hh - 8)) + 'px';
   }
 
