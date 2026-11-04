@@ -7373,7 +7373,12 @@ async function revalidarEmailsAjustes(forcarSnapshot) {
       .order('gerado_em', { ascending: false }).limit(1);
     snap = r.data && r.data[0] ? r.data[0].payload : null;
   }
+  // Instrução escolhida na tela vale só depois da consolidação: volta cada linha ao que veio do e-mail.
+  listas.forEach(function (lista) { lista.forEach(function (l) {
+    if (l._statusOriginal !== undefined) { l.tipo = null; l.status = l._statusOriginal; }
+  }); });
   const consolidadas = window.consolidarLinhasEmails(listas);
+  aplicarInstrucaoNaTela(consolidadas);
   // NF de PFA que já saiu do Pendentes (expedida) vem do histórico de
   // Pendentes no banco — sem isso dava "PFA sem NF no sistema".
   let historicoNf = [];
@@ -7387,8 +7392,31 @@ async function revalidarEmailsAjustes(forcarSnapshot) {
   linhasEmailsAjustes = window.validarLinhasEmail(consolidadas, snap, historicoNf);
   renderizarEmailsAjustes(falhas, !snap);
 }
+/* Instrução escolhida na tela (04/11/2026): quando o comercial manda EMBARCAR/DEVOLVER
+   como imagem (print da planilha), a linha "Sem instrução" ganha um seletor. A escolha
+   vale para a NF inteira e pode ser desfeita (volta para "Sem instrução"). */
+const instrucaoNaTela = {}; // nf -> 'BO_POS_NF' | 'AD_DEVOLUCAO'
+function aplicarInstrucaoNaTela(L) {
+  L.forEach(function (l) {
+    if (!l.nf || (l.tipo && l._statusOriginal === undefined)) return; // já tem instrução do e-mail
+    if (l._statusOriginal === undefined) l._statusOriginal = l.status;
+    const t = instrucaoNaTela[l.nf] || null;
+    l.tipo = t;
+    l.status = t ? (t === 'BO_POS_NF' ? 'Embarcar' : 'Devolver') + ' — escolhido na tela (instrução fora do texto do e-mail)' : l._statusOriginal;
+  });
+}
+async function escolherInstrucaoNf(nf, tipo) {
+  if (tipo) instrucaoNaTela[nf] = tipo; else delete instrucaoNaTela[nf];
+  const rolagem = document.querySelector('#resultadoEmailsAjustes .tabela-rolavel');
+  const topo = rolagem ? rolagem.scrollTop : 0, janela = window.scrollY;
+  await revalidarEmailsAjustes();
+  const nova = document.querySelector('#resultadoEmailsAjustes .tabela-rolavel');
+  if (nova) nova.scrollTop = topo;
+  window.scrollTo(0, janela);
+}
 function limparEmailsAjustes() {
   mensagemGravarEmails = null;
+  Object.keys(instrucaoNaTela).forEach(function (nf) { delete instrucaoNaTela[nf]; });
   Object.keys(listasEmailPorCategoria).forEach(function (c) { delete listasEmailPorCategoria[c]; });
   document.querySelectorAll('.dz-email-cont').forEach(function (el) { el.textContent = ''; });
   linhasEmailsAjustes = [];
@@ -7405,7 +7433,13 @@ function renderizarEmailsAjustes(falhas, semSnapshot) {
   const linhasHtml = L.map(function (l) {
     const cor = l.alertas.length ? 'var(--red)' : !l.tipo ? 'var(--amber)' : l.ja_lancado ? 'var(--text-muted)' : 'var(--olive)';
     return '<tr>' +
-      '<td class="centro" style="color:' + cor + ';font-weight:600">' + escapar(l.tipo ? (ROT_TIPO_AJUSTE[l.tipo] || l.tipo) : 'Sem instrução') + '</td>' +
+      '<td class="centro" style="color:' + cor + ';font-weight:600">' + (l._statusOriginal !== undefined
+        ? '<select onchange="escolherInstrucaoNf(this.dataset.nf, this.value)" data-nf="' + escapar(l.nf) + '" title="Vale para todas as linhas da NF ' + escapar(l.nf) + '"' +
+            ' style="font:inherit;font-size:12px;color:inherit;background:var(--bg-card, transparent);border:1px solid currentColor;border-radius:6px;padding:2px 4px">' +
+            '<option value=""' + (l.tipo ? '' : ' selected') + '>Sem instrução</option>' +
+            '<option value="BO_POS_NF"' + (l.tipo === 'BO_POS_NF' ? ' selected' : '') + '>Embarcar</option>' +
+            '<option value="AD_DEVOLUCAO"' + (l.tipo === 'AD_DEVOLUCAO' ? ' selected' : '') + '>Devolver</option></select>'
+        : escapar(l.tipo ? (ROT_TIPO_AJUSTE[l.tipo] || l.tipo) : 'Sem instrução')) + '</td>' +
       '<td class="centro">' + escapar(l.nf || '—') + '</td><th class="centro">' + escapar(l.pfa) + '</th>' +
       '<td class="centro">' + escapar(l.artigo) + '</td><td class="centro">' + escapar(l.cor + ' ' + l.tam) + '</td>' +
       '<td>' + fmtInt(l.qtde_total_pedido || 0) + '</td><td>' + fmtInt(l.qtde_faltante || 0) + '</td>' +
