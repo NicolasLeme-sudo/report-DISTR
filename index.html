@@ -134,6 +134,7 @@ html { overflow-x: hidden; }
 .login-box {
   width: 320px; background: var(--bg-card); border: 1px solid var(--border);
   border-radius: 14px; padding: 36px 32px; text-align: center; box-shadow: var(--shadow);
+  line-height: normal; /* mesmo tamanho de cartão dos outros sites */
 }
 .login-logo { width: 52px; height: 52px; object-fit: contain; margin-bottom: 14px; }
 .login-box h1 { font-size: 18px; margin: 0 0 2px; color: var(--text); }
@@ -152,6 +153,7 @@ html { overflow-x: hidden; }
 .btn:hover { filter: brightness(1.1); }
 .btn:disabled { opacity: .5; cursor: default; }
 .erro { color: var(--red); font-size: 12px; margin-top: 10px; min-height: 16px; }
+.login-box .erro { min-height: 14px; }
 
 /* ============================================================
    3) LAYOUT: SIDEBAR + TOPBAR + CONTEÚDO
@@ -163,8 +165,8 @@ html { overflow-x: hidden; }
    (.sidebar-brand/.menu-item/.icone/.badge-*), de propósito: as duas bases
    ficam copiáveis uma da outra sem precisar traduzir nada. */
 .sidebar {
-  position: fixed; left: 0; top: 0; bottom: 0; width: 260px;
-  background: var(--bg-sidebar); border-right: 1px solid var(--border);
+  position: fixed; left: 0; top: 0; bottom: 0; width: 220px;
+  background: var(--bg-sidebar); border-right: 1px solid rgba(255,255,255,.06);
   display: flex; flex-direction: column; padding: 0; overflow-y: auto; z-index: 20;
 }
 .sidebar-brand {
@@ -180,12 +182,12 @@ html { overflow-x: hidden; }
 .sidebar-brand .sub  { font-size: 10.5px; color: #7C9AB8; margin-top: 2px; }
 .sidebar-section-label {
   font-size: 9.5px; font-weight: 700; letter-spacing: .8px;
-  text-transform: uppercase; color: #4A6080; padding: 16px 18px 6px;
+  text-transform: uppercase; color: #4A6080; padding: 16px 18px 6px; line-height: 14px;
 }
 .menu-item {
   display: flex; align-items: center; gap: 10px; padding: 9px 18px; cursor: pointer;
   font-size: 13px; font-weight: 500; color: #9BAAC4; border-left: 3px solid transparent;
-  transition: background .15s, color .15s; text-decoration: none; user-select: none;
+  transition: background .15s, color .15s; text-decoration: none; user-select: none; line-height: 20px;
 }
 .menu-item:hover { background: rgba(255,255,255,.05); color: #fff; }
 .menu-item.ativo {
@@ -202,13 +204,13 @@ html { overflow-x: hidden; }
 }
 
 .topbar {
-  position: fixed; left: 260px; right: 0; top: 0; height: 52px;
+  position: fixed; left: 220px; right: 0; top: 0; height: 60px;
   background: var(--bg-card); border-bottom: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 22px; z-index: 15;
+  padding: 0 24px; gap: 16px; z-index: 15; box-shadow: var(--shadow);
 }
-.topbar-titulo { font-size: 14px; font-weight: 700; flex: none; }
-.topbar-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.topbar-titulo { font-size: 16px; font-weight: 700; flex: none; line-height: 1.25; }
+.topbar-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; line-height: 1.25; }
 /* Escondido por padrão — só fica visível (classe .ativa, alternada em
    mostrarSecao()) na seção Fluxo de Processos. O <input> em si é criado UMA
    vez (DistrFluxo, na primeira visita à seção) e nunca destruído: só
@@ -237,7 +239,7 @@ html { overflow-x: hidden; }
   border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-label); cursor: pointer; }
 .btn-icone-exp:hover { border-color: var(--accent); color: var(--text); }
 
-.conteudo { margin-left: 260px; padding: 70px 22px 40px; }
+.conteudo { margin-left: 220px; padding: 78px 22px 40px; }
 .secao { display: none; }
 .secao.ativa { display: block; }
 
@@ -903,7 +905,7 @@ tr.total > th, tr.total > td {
    pelo JS medindo de verdade onde a área de conteúdo começa NESTA tela —
    não dá pra usar o truque genérico de "breakout" (margin-left:calc(50% -
    vw/2)) porque ele assume a página inteira centralizada, sem sidebar.
-   Com a sidebar fixa de 260px a página não é simétrica: aquele cálculo
+   Com a sidebar fixa de 220px a página não é simétrica: aquele cálculo
    centralizava o diagrama relativo à LARGURA TOTAL da janela (sidebar
    incluída), sobrando ~130px de sidebar de um lado sem nada do outro —
    bug relatado como "os fluxos não estão centralizados". margin-left aqui
@@ -1176,7 +1178,7 @@ tr.total > th, tr.total > td {
 #dfRoot .df-aviso.df-erro { border-color: var(--df-red); color: var(--df-red); }
 
 /* botão "Editar fluxo" (admin) — flutuante para permanecer visível ao scrollar */
-#dfRoot .df-editbtn { position: fixed; right: 22px; top: 70px; z-index: 100;
+#dfRoot .df-editbtn { position: fixed; right: 22px; top: 78px; z-index: 100;
  background: var(--df-card-2); border: 1px solid var(--df-gold);
  color: var(--df-gold); border-radius: 999px; padding: 8px 16px; font: inherit; font-size: 12.5px; font-weight: 700;
  cursor: pointer; }
@@ -1303,7 +1305,6 @@ tr.total > th, tr.total > td {
     <div class="sidebar-section-label">Gestão</div>
     <div class="menu-item ativo" id="menuEstoque" onclick="mostrarSecao('estoque')">
       <span class="icone">⚖️</span> Balanço de Estoque
-      <span class="badge-admin">Gestão</span>
     </div>
 
     <div class="sidebar-section-label">Processos</div>
