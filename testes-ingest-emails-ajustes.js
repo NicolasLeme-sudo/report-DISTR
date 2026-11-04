@@ -129,6 +129,12 @@ eq(ic.get('222400'), undefined, '… mas a instrução da Erika, no mesmo e-mail
 eq(E.extrairInstrucoes(['Esta nota devolver, 222395.', 'De: Simoni'], 'Simoni Maria Feiten').get('222395'), 'DEVOLVER', 'remetente Simoni: texto livre vale');
 eq(E.extrairInstrucoes(['Esta nota devolver, 222395.', 'De: Simoni'], 'Camila Ferreira').get('222395'), 'DEVOLVER', 'remetente Camila Ferreira: vale (04/11/2026)');
 const instrCamila = E.interpretarEmailAjuste({ assunto: 'RES: NFs com divergência', remetente: 'Camila Ferreira', data: d, corpo: comNf });
+['Camila Ferreira', 'Ferreira, Camila', 'Camila Souza Ferreira', 'CAMILA FERREIRA <camila.ferreira@vulcabras.com>'].forEach(function (nome) {
+  eq(E.extrairInstrucoes(['Esta nota devolver, 222395.', 'De: X'], nome).get('222395'), 'DEVOLVER', 'Camila com nome "' + nome.replace(' ', '[nbsp]') + '": vale');
+});
+eq(E.extrairInstrucoes(['Esta nota devolver, 222395.', 'De: X'], 'Camila Santos').get('222395'), undefined, 'outra Camila (sem Ferreira): não vale');
+eq(E.extrairInstrucoes(['NF', 'INSTRUÇÃO', '222395', 'EMBARCAR'], 'Erika').get('222395'), undefined, '… e a Erika continua sem autorizar');
+eq(E.extrairInstrucoes(['Ok', 'De: Camila Ferreira <c@v.com>', 'NF', 'INSTRUÇÃO', '222395', 'EMBARCAR'], 'Erika').get('222395'), 'EMBARCAR', 'resposta da Camila citada ("De:" com espaço especial) vale');
 ok(instrCamila.some(function (l) { return l.tipo !== null; }), 'tabela de instrução escrita pela Camila Ferreira autoriza');
 
 
