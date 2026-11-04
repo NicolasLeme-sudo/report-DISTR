@@ -114,11 +114,11 @@ function extrairRegistrosDivergencia(linhas, comNf) {
 
 /* Tabela de instrução do comercial: NF|PFA|CLIENTE|SITUAÇÃO|COD. REP|INSTRUÇÃO
    (a INSTRUÇÃO pode vir só na 1ª linha de uma NF repetida). */
-/* Quem autoriza envio com falta / devolução é a GERENTE (Simoni, 01/10/2026): só vale
-   instrução EMBARCAR/DEVOLVER escrita por ela. O autor de cada trecho é o remetente do
+/* Quem autoriza envio com falta / devolução: a GERENTE Simoni (01/10/2026) e a Camila
+   Ferreira (04/11/2026). Só vale instrução EMBARCAR/DEVOLVER escrita por uma delas. O autor de cada trecho é o remetente do
    .msg (mensagem mais nova, em cima) ou o "De:" mais próximo acima da linha, nas
    mensagens citadas. Instrução de outra pessoa (ex.: a própria assistente) é ignorada. */
-const AUTORIZADORES_ENVIO_COM_FALTA = ['simoni'];
+const AUTORIZADORES_ENVIO_COM_FALTA = ['simoni', 'camila ferreira'];
 function autorPodeAutorizar(nome) {
   const n = String(nome || '').toLowerCase();
   return AUTORIZADORES_ENVIO_COM_FALTA.some(function (a) { return n.indexOf(a) !== -1; });
@@ -286,7 +286,7 @@ function interpretarEmailAjuste(msg) {
       else {
         tipo = null; status = 'Aguardando instrução do comercial';
         const ign = instrucoes.ignoradas && (instrucoes.ignoradas.get(r.nf) || instrucoes.ignoradas.get('*'));
-        if (ign) status = 'Instrução de ' + ign + ' ignorada — só vale o retorno da Simoni (gerente)';
+        if (ign) status = 'Instrução de ' + ign + ' ignorada — só vale o retorno da Simoni ou da Camila Ferreira';
       }
       if (citadas.has(r.nf)) status += ' — NF citada de novo na conversa: conferir se a instrução mudou';
     } else {

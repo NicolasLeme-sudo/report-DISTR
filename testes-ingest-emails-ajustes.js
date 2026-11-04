@@ -121,13 +121,15 @@ ok(vd[0].ja_lancado && !vd[0].corrige_tipo, 'mesmo tipo já gravado continua "j�
 console.log('\n=== só vale a instrução da Simoni (gerente) — 01/10/2026 ===');
 const instrErika = E.interpretarEmailAjuste({ assunto: 'RES: NFs com divergência', remetente: 'Erika Domingues Leme', data: d, corpo: comNf });
 ok(instrErika.every(function (l) { return l.tipo === null; }), 'instrução escrita pela Erika (assistente) não autoriza nada');
-ok(/só vale o retorno da Simoni/.test(instrErika[0].status), '… e o status explica por quê');
+ok(/só vale o retorno da Simoni ou da Camila/.test(instrErika[0].status), '… e o status explica por quê');
 const citada = ['Ok, vou verificar', 'De: Simoni Maria Feiten', 'Enviada em: ontem', 'NF', 'INSTRUÇÃO', '222395', 'DEVOLVER', 'De: Erika', 'NF', 'INSTRUÇÃO', '222400', 'EMBARCAR'].join('\n');
 const ic = E.extrairInstrucoes(citada.split('\n'), 'Erika Domingues Leme');
 eq(ic.get('222395'), 'DEVOLVER', 'resposta da Simoni citada mais abaixo no e-mail continua valendo (autor = "De:" acima da linha)');
 eq(ic.get('222400'), undefined, '… mas a instrução da Erika, no mesmo e-mail, não vale');
 eq(E.extrairInstrucoes(['Esta nota devolver, 222395.', 'De: Simoni'], 'Simoni Maria Feiten').get('222395'), 'DEVOLVER', 'remetente Simoni: texto livre vale');
-eq(E.extrairInstrucoes(['Esta nota devolver, 222395.', 'De: Simoni'], 'Camila Ferreira').get('222395'), undefined, 'remetente Camila: não vale');
+eq(E.extrairInstrucoes(['Esta nota devolver, 222395.', 'De: Simoni'], 'Camila Ferreira').get('222395'), 'DEVOLVER', 'remetente Camila Ferreira: vale (04/11/2026)');
+const instrCamila = E.interpretarEmailAjuste({ assunto: 'RES: NFs com divergência', remetente: 'Camila Ferreira', data: d, corpo: comNf });
+ok(instrCamila.some(function (l) { return l.tipo !== null; }), 'tabela de instrução escrita pela Camila Ferreira autoriza');
 
 
 console.log('\n=== 02/10/2026: tabela COMPLETA com a coluna de instrução depois do COD. REP (só na 1ª linha de cada NF) ===');

@@ -7345,7 +7345,7 @@ document.getElementById('inputEmailsAjustes').addEventListener('change', async f
           const aguardandoComercial = !!(l.nf && !l.tipo && (categoriaEmailAtual === 'faltante' || l.email_tem_instrucao));
           return Object.assign(l, { _arquivo: arquivos[i].name, _ordem: i, _categoria: categoriaEmailAtual,
             tipo: aguardandoComercial ? null : (temInstrucao ? l.tipo : cat.tipo(l)),
-            status: aguardandoComercial ? l.status + (l.email_tem_instrucao ? ' (o e-mail tem EMBARCAR/DEVOLVER, mas não para esta NF — conferir)' : ' (e-mail sem EMBARCAR/DEVOLVER da Simoni)')
+            status: aguardandoComercial ? l.status + (l.email_tem_instrucao ? ' (o e-mail tem EMBARCAR/DEVOLVER, mas não para esta NF — conferir)' : ' (e-mail sem EMBARCAR/DEVOLVER da Simoni ou da Camila)')
               : (temInstrucao ? l.status + ' (instrução no e-mail)' : cat.status(l)) });
         });
         if (!linhas.length) falhas.push(arquivos[i].name + ' (nenhuma tabela de divergência reconhecida)');
