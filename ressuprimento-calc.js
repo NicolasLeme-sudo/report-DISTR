@@ -70,13 +70,14 @@ function combinarEtapaRessup(etapaRessup, histAlocacaoBruto, histRetiradaBruto, 
 
 /* Top operadores de um dia, em peças (telão DISTR, 05/11/2026). Alocação lê ressuprimento_operador_diario,
    retirada lê ressuprimento_retirada_operador; geral soma as duas por login. Linhas sem a coluna pecas
-   (antes de migracao_operador_pecas.sql) contam zero. */
-function topOperadoresDia(etapa, opsAlocacao, opsRetirada, dia, n) {
+   (antes de migracao_operador_pecas.sql) contam zero. `turno` (opcional): só esse turno (T02_T03 antigo vale como T02). */
+function topOperadoresDia(etapa, opsAlocacao, opsRetirada, dia, n, turno) {
   const fontes = etapa === 'retirada' ? [opsRetirada] : etapa === 'geral' ? [opsAlocacao, opsRetirada] : [opsAlocacao];
   const porLogin = new Map();
   fontes.forEach(function (lista) {
     (lista || []).forEach(function (o) {
       if (o.dia !== dia) return;
+      if (turno && normalizarTurnoLegado(o.turno) !== turno) return;
       if (!porLogin.has(o.login)) porLogin.set(o.login, { login: o.login, nome: o.nome || '', pecas: 0, movimentos: 0 });
       const x = porLogin.get(o.login);
       x.pecas += Number(o.pecas) || 0; x.movimentos += Number(o.movimentos) || 0;

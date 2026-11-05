@@ -58,7 +58,9 @@ eq(r.fifo.map(function (f) { return f.pares; }), [100, 80, 20, 50], 'FIFO por fa
 eq(r.matriz.cols.map(function (c) { return c.chave; }), ['ACESSÓRIO', 'CALÇADO', 'MEIA', 'VESTUÁRIO', 'OUTROS'], 'colunas da matriz (+ Outros quando existe)');
 eq(r.matriz.linhas.map(function (l) { return [l.chave, l.pares]; }), [['SEM', 200], ['2026-10-28', 10], ['2026-10-30', 40]], 'linhas: Sem NF primeiro, depois as datas da NF');
 eq(r.matriz.linhas[0].vals[1].pares, 130, 'Chinelo entra em Calçados (100 + 30)');
-eq(r.segmentos[0], { segmento: 'CALÇADO', pares: 140, pfas: 2 }, 'segmentos em ordem de peças');
+eq(r.nfSegmento.map(function (s) { return [s.chave, s.sem, s.com]; }),
+  [['ACESSÓRIO', 0, 0], ['CALÇADO', 130, 40], ['MEIA', 50, 0], ['VESTUÁRIO', 20, 0], ['OUTROS', 0, 10]], 'NF × segmento resumido: Sem NF / Com NF por segmento');
+eq(r.segmentos[0],{ segmento: 'CALÇADO', pares: 140, pfas: 2 }, 'segmentos em ordem de peças');
 eq(r.ajustesEmAberto, 2, 'ajustes de PFA em aberto');
 
 console.log('\n=== Ressuprimento: Alocação / Retirada / Soma e Top 5 ===');
@@ -77,6 +79,7 @@ eq(diasA[0].turnos.T02.pecas, 50, 'turno antigo T02_T03 vira T02 (igual ao repor
 const diasG = RC.diasDoHistorico(RC.combinarEtapaRessup('geral', aloc, ret, opsA, opsR).historico);
 eq(diasG[1].pecas, 100, 'soma = alocação 70 + retirada 30');
 eq(RC.topOperadoresDia('geral', opsA, opsR, '2026-11-04', 5).map(function (o) { return [o.login, o.pecas]; }), [['EX1', 100], ['EX2', 5]], 'Top 5 na soma junta as peças do mesmo login');
+eq(RC.topOperadoresDia('geral', opsA, opsR, '2026-11-04', 5, 'T01').map(function (o) { return [o.login, o.pecas]; }), [['EX2', 5]], 'Top 5 de um turno só (T01)');
 eq(RC.topOperadoresDia('alocacao', [{ dia: '2026-11-04', turno: 'T01', login: 'EX9' }], [], '2026-11-04', 5), [], 'linha sem peças (antes da migração) não entra no Top 5');
 
 console.log(falhas ? '\n' + falhas + ' TESTE(S) FALHARAM' : '\nTODOS OS TESTES PASSARAM');

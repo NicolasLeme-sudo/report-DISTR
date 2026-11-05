@@ -294,6 +294,13 @@ function resumoStartInicial(p, agora) {
     return { chave: k, vals: vals, pares: vals.reduce(function (s, v) { return s + v.pares; }, 0) };
   }) };
 
+  // NF × Segmento resumido (telão, 05/11/2026): uma linha por segmento, colunas Sem NF / Com NF, sem as datas.
+  const nfSegmento = cols.map(function (c) {
+    let sem = 0, com = 0;
+    celulas.forEach(function (m, linha) { const x = m.get(c.chave); if (!x) return; if (linha === 'SEM') sem += x.pares; else com += x.pares; });
+    return { chave: c.chave, rotulo: c.rotulo, sem: sem, com: com };
+  });
+
   const porSeg = new Map();
   pend.forEach(function (r) {
     const seg = r.segmento_macro || 'SEM SEGMENTO';
@@ -303,7 +310,7 @@ function resumoStartInicial(p, agora) {
   const segmentos = Array.from(porSeg.values()).sort(function (a, b) { return b.pares - a.pares; });
 
   return { total: total, pendente: pendente, nfAgColeta: nfAgColeta, maisAntiga: maisAntiga,
-    etapas: etapas, fifo: fifo, matriz: matriz, segmentos: segmentos, ajustesEmAberto: (p && p.ajustes_em_aberto) || 0 };
+    etapas: etapas, fifo: fifo, matriz: matriz, nfSegmento: nfSegmento, segmentos: segmentos, ajustesEmAberto: (p && p.ajustes_em_aberto) || 0 };
 }
 
 raiz.StartInicialCalc = {

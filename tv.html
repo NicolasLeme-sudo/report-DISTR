@@ -12,8 +12,9 @@
     abastecidos à mão no Admin › Abastecimento do report; o telão só lê e se atualiza sozinho.
   - Mesmas regras do report: start-inicial-calc.js (Start Inicial) e ressuprimento-calc.js (Ressuprimento).
   - A cada 1 min confere se chegou snapshot novo (só a data); quando chega, busca os dados e redesenha.
+  - Dia mostrado: hoje; clicar na data embaixo do relógio (ou setas ↑/↓) escolhe outro dia e volta sozinho após 30 min.
   - Parâmetros na URL: ?giro=90 (segundos por tela) · ?refresh=60 (segundos entre conferências)
-    · ?ressup=alocacao|retirada|soma (posição inicial do interruptor do Ressuprimento)
+    · ?ressup=alocacao|retirada|soma (posição inicial do interruptor do Ressuprimento) · ?dia=aaaa-mm-dd
   - Não altera nada no banco.
 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -31,10 +32,11 @@ html,body{margin:0;height:100%;background:#05080E;overflow:hidden}
   background:var(--bg);color:var(--text);font-size:16px;line-height:1.35;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-variant-numeric:tabular-nums;overflow:hidden}
 
 /* ---------- topo ---------- */
-.fh{display:flex;align-items:center;gap:24px;padding:8px 22px;border-bottom:1px solid var(--border);flex:none}
+.fh{display:flex;align-items:center;gap:14px;padding:8px 22px;border-bottom:1px solid var(--border);flex:none}
 .fh .lg{display:flex;align-items:center;gap:14px}.fh .lg img{height:46px;width:auto;display:block}.fh .lg small{color:var(--text-muted);font-weight:700;font-size:13px;letter-spacing:.12em;border-left:1px solid var(--border);padding-left:14px}
-.fh .selo{font-size:20px}
-.fh .tt{flex:1;font-size:22px;font-weight:700}
+.fh .selo{font-size:20px;white-space:nowrap}
+.fh .tt{flex:1;min-width:0;font-size:22px;font-weight:700;white-space:nowrap;overflow:hidden}
+.fh .ck{white-space:nowrap}
 .navt{display:inline-flex;align-items:center;gap:12px;vertical-align:middle}
 .navt.so button{visibility:hidden}
 #titulo{display:inline-block}
@@ -47,9 +49,39 @@ html,body{margin:0;height:100%;background:#05080E;overflow:hidden}
 .fsb:hover{background:rgba(127,140,170,.26)}
 .fsb[hidden]{display:none}
 body.ocioso,body.ocioso *{cursor:none!important}
-.fh .lv{font-size:12px;font-weight:700;color:var(--red);border:1px solid var(--red);border-radius:99px;padding:2px 10px}
-.fh .ck{text-align:right;font-size:12px;color:var(--text-muted)}.fh .ck #hora{font-size:24px;font-weight:700;color:var(--text)}
-.fh .ck #data{display:inline-block;margin-top:3px;padding:2px 10px;border:1px solid var(--border);border-radius:99px;color:var(--text-label);font-weight:600;text-transform:capitalize}
+.fh .lv{font-size:12px;font-weight:700;color:var(--red);border:1px solid var(--red);border-radius:99px;padding:2px 10px;white-space:nowrap}
+.fh .lv.passado{color:var(--amber);border-color:var(--amber)}
+.fh .ck{text-align:right;font-size:12px;color:var(--text-muted);position:relative}.fh .ck #hora{font-size:24px;font-weight:700;color:var(--text)}
+.fh .ck #data{cursor:pointer;display:inline-flex;align-items:center;gap:7px;margin-top:3px;padding:2px 10px;border:1px solid var(--border);border-radius:99px;color:var(--text-label);font-weight:600;text-transform:capitalize}
+.fh .ck #data::after{content:"";border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid var(--cc2)}
+.fh .ck #data:hover,.fh .ck #data.aberto{border-color:var(--cc2);color:var(--text)}
+/* Calendário do dia exibido: card escuro com os detalhes na cor da tela aberta */
+.cal{position:absolute;right:0;top:calc(100% + 8px);z-index:60;width:304px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 16px 12px;text-align:left;box-shadow:0 14px 34px rgba(0,0,0,.5);font-family:"Segoe UI",Roboto,Arial,sans-serif}
+.cal[hidden]{display:none}
+.cal .kk{font-size:11px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--cc2)}
+.cal .cab{display:flex;align-items:center;justify-content:space-between;margin:4px 0 10px;padding-bottom:9px;border-bottom:1px solid var(--cc)}
+.cal .mes{font-size:18px;font-weight:700;color:var(--text)}
+.cal .nav{background:none;border:1px solid var(--border);color:var(--text-label);width:30px;height:30px;border-radius:6px;cursor:pointer;font:inherit;font-size:18px;line-height:1}
+.cal .nav:hover:not(:disabled){border-color:var(--cc2);color:var(--cc2)}.cal .nav:disabled{opacity:.25;cursor:default}
+.cal .grade{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}
+.cal .sm{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--text-muted);padding:2px 0 4px}
+.cal .d{position:relative;height:34px;border-radius:6px;border:1px solid transparent;background:none;color:var(--text);font:inherit;font-size:14px;font-weight:600;cursor:pointer;padding:0}
+.cal .d:hover:not(:disabled){background:var(--bg-input);border-color:var(--border)}
+.cal .d:disabled{color:#38445C;cursor:default}
+.cal .d.hoje{border-color:var(--cc);color:var(--cc2)}
+.cal .d.sel{background:var(--cc);border-color:var(--cc);color:var(--cc-t);font-weight:800}
+.cal .d.dado::after{content:"";position:absolute;left:50%;bottom:3px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:var(--cc2)}
+.cal .d.sel.dado::after{background:var(--cc-t)}
+.cal .rod{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted)}
+.cal .rod i{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--cc2);margin-right:6px;vertical-align:2px}
+.cal .rod button{font:inherit;font-weight:700;font-size:12px;color:var(--cc2);background:none;border:1px solid var(--cc2);border-radius:99px;padding:4px 14px;cursor:pointer}
+.cal .rod button:hover{background:var(--cc);color:var(--cc-t)}
+/* interruptor do Ressuprimento: pequeno e meio translúcido na barra de cima (só aparece nessa tela) */
+.chave{display:inline-flex;background:var(--bg-input);border:1px solid var(--border);border-radius:99px;padding:2px;gap:2px;opacity:.5;transition:opacity .3s}
+.chave:hover{opacity:1}.chave[hidden]{display:none}
+.chave button{font:inherit;font-size:11px;font-weight:700;color:var(--text-label);background:none;border:0;border-radius:99px;padding:4px 10px;cursor:pointer;white-space:nowrap}
+.chave button.on{background:var(--olive);color:#0E1626}
+.chave button:not(.on):hover{color:var(--text)}
 .main{flex:1;min-height:0;padding:12px 22px 0;display:flex;flex-direction:column;position:relative}
 .tela{display:none;flex-direction:column;flex:1;min-height:0;gap:14px}.tela.on{display:flex;animation:telaEntra .7s cubic-bezier(.2,.8,.2,1) both}
 .tela.saindo{animation:telaSai .35s ease-in both}
@@ -59,12 +91,13 @@ body.ocioso,body.ocioso *{cursor:none!important}
 .vazio{flex:1;display:grid;place-items:center;color:var(--text-muted);font-size:22px;text-align:center}
 
 /* ---------- cards, painéis e top 5 (mesmos do telão do E-commerce) ---------- */
-.kpi{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 18px;display:grid;gap:4px;align-content:center;border-top:4px solid var(--kc,var(--border));min-width:0}
+/* título sempre no alto do card; número e linha de baixo encostados embaixo */
+.kpi{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 18px;display:grid;grid-template-rows:auto 1fr auto;gap:2px;border-top:4px solid var(--kc,var(--border));min-width:0;min-height:0}
 .kpi .k{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);font-weight:700}
-.kpi .v{font-size:46px;font-weight:800;line-height:1;color:var(--vc,var(--text));white-space:nowrap}
-.kpi .v small{font-size:20px;font-weight:700;color:var(--text-muted);margin-left:8px}
-.kpi .s{font-size:21px;color:var(--text-muted);white-space:nowrap;overflow:hidden}.kpi .s b{color:var(--vc,var(--kc,var(--text)));font-weight:800}
-.painel{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 18px;display:grid;grid-template-rows:auto 1fr;gap:10px;min-height:0;min-width:0}
+.kpi .v{font-size:44px;font-weight:800;line-height:1;color:var(--vc,var(--text));white-space:nowrap;align-self:end}
+.kpi .v small{font-size:19px;font-weight:700;color:var(--text-muted);margin-left:8px}
+.kpi .s{font-size:19px;color:var(--text-muted);white-space:nowrap;overflow:hidden}.kpi .s b{color:var(--vc,var(--kc,var(--text)));font-weight:800}
+.painel{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 18px;display:grid;grid-template-rows:auto 1fr;gap:10px;min-height:0;min-width:0}
 .painel .k{font-size:13px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--pc,var(--text-muted))}
 .painel .k small{letter-spacing:0;text-transform:none;font-weight:600;color:var(--text-muted);font-size:13px}
 .semhora{display:grid;place-items:center;color:var(--text-muted);font-size:18px;text-align:center}
@@ -75,12 +108,12 @@ body.ocioso,body.ocioso *{cursor:none!important}
 
 /* ---------- barras horizontais (funil) ---------- */
 .etapas{display:grid;align-content:space-around;gap:6px;min-height:0}
-.etapa{display:grid;grid-template-columns:300px 1fr 110px 80px;gap:14px;align-items:center}
-.etapa .nm{font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.etapa .trilho{height:30px;background:var(--bg-input);border-radius:7px;overflow:hidden}
+.etapa{display:grid;grid-template-columns:320px 1fr 120px 90px;gap:16px;align-items:center}
+.etapa .nm{font-size:18px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.etapa .trilho{height:34px;background:var(--bg-input);border-radius:7px;overflow:hidden}
 .etapa .barra{height:100%;border-radius:7px;transition:width .9s cubic-bezier(.2,.8,.2,1)}
-.etapa .tot{text-align:right;font-size:24px;font-weight:800}
-.etapa .tot.ped{color:var(--text-label);font-size:20px}
+.etapa .tot{text-align:right;font-size:26px;font-weight:800}
+.etapa .tot.ped{color:var(--text-label);font-size:21px}
 .etapa.cab .nm,.etapa.cab .tot{font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--pc,var(--text-muted))}
 .etapa.cab .tot{color:var(--text-muted)}
 .etapa.total{border-top:1px solid var(--border);padding-top:8px}.etapa.total .nm{color:var(--text-label)}
@@ -94,51 +127,51 @@ body.ocioso,body.ocioso *{cursor:none!important}
 .col .pilha em{position:absolute;left:50%;bottom:100%;transform:translateX(-50%);margin-bottom:4px;font-style:normal;font-weight:800;font-size:19px;white-space:nowrap;background:var(--bg-card);padding:0 5px;border-radius:4px;z-index:2}
 .col .rot{text-align:center;font-size:15px;color:var(--text-label);white-space:nowrap}.col .rot small{display:block;font-size:13px;color:var(--text-muted)}
 .media{position:absolute;left:0;right:0;border-top:2px dashed var(--text);z-index:1;pointer-events:none}
-.media small{position:absolute;right:0;top:-22px;font-size:14px;color:var(--text);background:var(--bg-card);padding:0 5px;border-radius:4px}
 .leg-t{display:flex;gap:16px;font-size:14px;color:var(--text-label);text-transform:none;letter-spacing:0;font-weight:600}.leg-t i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 
 /* ---------- rosca ---------- */
-.pizza{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center;min-height:0}
-.pizza svg{height:100%;max-height:170px;min-height:0;aspect-ratio:1}
-.pizza .leg{display:grid;gap:5px;min-width:0}
-.pizza .leg div{display:grid;grid-template-columns:12px 1fr auto auto;gap:8px;align-items:center;font-size:15px}
+.pizza{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;min-height:0}
+.pizza svg{height:100%;max-height:118px;min-height:0;aspect-ratio:1}
+.pizza .leg{display:grid;gap:4px;min-width:0}
+.pizza .leg div{display:grid;grid-template-columns:11px 1fr auto auto;gap:7px;align-items:center;font-size:14px}
 .pizza .leg span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pizza .leg i{width:12px;height:12px;border-radius:3px;background:var(--m)}.pizza .leg b{font-size:16px}.pizza .leg em{font-style:normal;color:var(--text-muted);width:40px;text-align:right}
+.pizza .leg i{width:11px;height:11px;border-radius:3px;background:var(--m)}.pizza .leg b{font-size:15px}.pizza .leg em{font-style:normal;color:var(--text-muted);width:36px;text-align:right}
 
 /* ---------- Start Inicial ---------- */
-.si-topo{display:grid;grid-template-columns:1fr 1fr 1.45fr;gap:14px;height:212px;flex:none}
-.si-meio{display:grid;grid-template-columns:1.55fr 1fr;gap:14px;flex:1;min-height:0}
-.si-seg{flex:none;height:50px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;overflow:hidden;position:relative}
-.si-seg .tag{flex:none;height:100%;display:flex;align-items:center;padding:0 16px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--accent-light);border-right:1px solid var(--border);background:var(--bg-card);z-index:1}
-.si-seg .janela{flex:1;overflow:hidden;min-width:0}
-/* matriz NF × segmento, em pé: linhas = data da NF, colunas = segmento */
-.mz{display:grid;grid-template-rows:auto 1fr;min-height:0;font-size:16px}
-.mz .lin{display:grid;grid-template-columns:76px repeat(var(--nc),1fr) 84px;gap:4px;align-items:center}
-.mz .cab span{font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--text-muted);text-align:center;padding-bottom:6px}
-.mz .cab span:first-child{text-align:left}
-.mz .corpo{overflow:hidden;min-height:0;position:relative}
-.mz .rolo{display:grid;gap:4px}
-.mz .rolo.anda{animation:mzSobe var(--dur,40s) linear infinite}
-@keyframes mzSobe{to{transform:translateY(calc(-50% - 2px))}}
-.mz .lin .d{font-weight:700;color:var(--text-label);white-space:nowrap}
-.mz .lin .c{text-align:center;border-radius:5px;padding:5px 2px;font-weight:700;color:#0E1626}
-.mz .lin .c.zero{background:transparent!important;color:var(--text-muted);font-weight:400}
-.mz .lin .t{text-align:right;font-weight:800}
-.mz .lin.sem .d{color:var(--amber)}
-@media (prefers-reduced-motion:reduce){.mz .rolo.anda{animation:none}}
+.si-topo{display:grid;grid-template-columns:1fr 1fr 1.45fr;gap:14px;height:150px;flex:none}
+.si-meio{display:grid;grid-template-columns:2.5fr 1fr;gap:14px;flex:1;min-height:0}
+/* NF × Segmento resumido: linhas = segmento, colunas = Sem NF / Com NF / Total */
+.nfs{display:grid;align-content:space-around;gap:8px;min-height:0}
+.nfs .lin{display:grid;grid-template-columns:1.1fr 1fr 1fr 1fr;gap:6px;align-items:center}
+.nfs .cab span{font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--text-muted);text-align:center}
+.nfs .cab span:first-child{text-align:left}
+.nfs .seg{font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nfs .c{text-align:center;border-radius:6px;padding:9px 2px;font-size:18px;font-weight:800;color:#0E1626}
+.nfs .c.zero{background:transparent!important;color:var(--text-muted);font-weight:400}
+.nfs .t{text-align:right;font-size:19px;font-weight:800}
+.nfs .lin.total{border-top:1px solid var(--border);padding-top:8px}.nfs .lin.total .seg{color:var(--text-label)}
+.nfs .lin.total .c{background:transparent;color:var(--text);font-size:19px}
 
-/* ---------- Ressuprimento ---------- */
-.rs-bar{flex:none;display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:-4px}
-.rs-bar .per{font-size:15px;color:var(--text-label)}.rs-bar .per b{color:var(--text)}
-.chave{display:inline-flex;background:var(--bg-input);border:1px solid var(--border);border-radius:99px;padding:3px;gap:2px}
-.chave button{font:inherit;font-size:14px;font-weight:700;color:var(--text-label);background:none;border:0;border-radius:99px;padding:6px 16px;cursor:pointer;white-space:nowrap}
-.chave button.on{background:var(--olive);color:#0E1626}
-.chave button:not(.on):hover{color:var(--text)}
-.rs-topo{display:grid;grid-template-columns:1.25fr 1fr 1fr 1fr 1.6fr;gap:14px;height:200px;flex:none}
-.rs-topo .kpi .v{font-size:40px}
-.rs-baixo{display:grid;grid-template-columns:3fr 1fr;gap:14px;flex:1;min-height:0}
+/* ---------- Ressuprimento: cards de cima alinhados com os painéis de baixo ---------- */
+.rs{display:grid;grid-template-columns:3fr 1fr;grid-template-rows:140px 1fr;gap:14px;flex:1;min-height:0}
+.rs-cards{display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:14px;min-height:0}
+.rs .kpi .v{font-size:38px}
+.rs .painel.rosca{padding:10px 16px;gap:4px}
+/* Top 5 por turno: três blocos empilhados, cada um na cor do turno */
+/* rola de baixo para cima em loop contínuo (conteúdo duplicado, sobe metade da altura e recomeça) */
+.tops{overflow:hidden;min-height:0;position:relative}
+.tops .rolo{display:grid;gap:16px;padding-bottom:16px}
+.tops .rolo.anda{animation:sobe var(--dur,30s) linear infinite}
+@keyframes sobe{to{transform:translateY(-50%)}}
+@media (prefers-reduced-motion:reduce){.tops .rolo.anda{animation:none}}
+.tt5{display:grid;align-content:start;gap:1px}
+.tt5 .tn{font-size:12px;font-weight:800;letter-spacing:.08em;color:var(--t);border-bottom:2px solid var(--t);padding-bottom:2px;margin-bottom:2px}
+.tt5 div{display:grid;grid-template-columns:20px 1fr auto;gap:8px;align-items:center;font-size:16px;line-height:1.35}
+.tt5 .p{font-weight:800;color:var(--t)}.tt5 b{color:var(--t);font-size:17px}
+.tt5 .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tt5 .sem{display:block;color:var(--text-muted);font-size:13px}
 
-/* ---------- faixas em loop contínuo (rodapé e segmentos) ---------- */
+/* ---------- faixa de baixo em loop contínuo ---------- */
 .loopbar{position:relative;overflow:hidden;background:#05080E;border-top:1px solid var(--border);height:46px;display:flex;align-items:center;flex:none;margin-top:12px}
 .loopbar .giro{position:absolute;left:0;top:0;height:3px;width:100%;transform:scaleX(0);transform-origin:0 50%;background:var(--cc,var(--accent));z-index:1;will-change:transform}
 .loopbar .giro[hidden]{display:none}
@@ -165,7 +198,7 @@ body.ocioso,body.ocioso *{cursor:none!important}
 </head>
 <body>
 <div id="palco">
-  <div class="fh"><span class="lg"><img src="tv/logo-vulcabras-cor.png" alt="Vulcabras"><small>DISTRIBUIDORA</small></span><span class="tt"><span class="navt"><button type="button" id="telaAnt" aria-label="Tela anterior">&lt;</button><span id="titulo">Start Inicial</span><button type="button" id="telaProx" aria-label="Próxima tela">&gt;</button></span></span><span class="selo" id="selo">Conectando…</span><button type="button" class="fsb" id="btnTelaCheia">⛶ Tela cheia</button><span class="lv">● AO VIVO</span><div class="ck"><div id="hora">--:--</div><span id="data"></span></div></div>
+  <div class="fh"><span class="lg"><img src="tv/logo-vulcabras-cor.png" alt="Vulcabras"><small>DISTRIBUIDORA</small></span><span class="tt"><span class="navt"><button type="button" id="telaAnt" aria-label="Tela anterior">&lt;</button><span id="titulo">Start Inicial</span><button type="button" id="telaProx" aria-label="Próxima tela">&gt;</button></span></span><div class="chave" id="chaveRessup" hidden></div><span class="selo" id="selo">Conectando…</span><button type="button" class="fsb" id="btnTelaCheia">⛶ Tela cheia</button><span class="lv" id="aoVivo">● AO VIVO</span><button type="button" class="fsb" id="btnHoje" title="Voltar para hoje" hidden>↺ Hoje</button><div class="ck"><div id="hora">--:--</div><span id="data" title="Escolher o dia mostrado" role="button" aria-haspopup="dialog"></span><div class="cal" id="cal" hidden role="dialog" aria-label="Dia exibido"></div></div></div>
   <div class="main">
     <section class="tela on" id="telaS" data-titulo="Start Inicial · PFAs em tela" data-giro="90" data-fonte="pfas"><div class="vazio">Carregando o Start Inicial…</div></section>
     <section class="tela" id="telaR" data-titulo="Ressuprimento" data-giro="90" data-fonte="ressuprimento_mov"><div class="vazio">Carregando o Ressuprimento…</div></section>
@@ -207,14 +240,14 @@ function cssVar(nome){ return 'var('+nome+')'; }
 function qt(n){ return '<b>'+fmt(n)+'</b>'; }
 // O número segue a cor da barra de destaque (kc) quando não vem cor própria (vc). un = unidade ao lado do número.
 function kpiHtml(rot, valor, sub, kc, vc, un){ vc = vc || kc; return '<div class="kpi" style="'+(kc?'--kc:'+kc+';':'')+(vc?'--vc:'+vc:'')+'"><span class="k">'+rot+'</span><span class="v">'+valor+(un?'<small>'+un+'</small>':'')+'</span><span class="s">'+sub+'</span></div>'; }
-function top5Html(lista, cor){
-  if (!lista.length) return '<div class="semhora">Sem peças por operador no dia</div>';
+function top5Html(lista, cor, vazio){
+  if (!lista.length) return '<div class="semhora">'+vazio+'</div>';
   var INTENS = [1, .8, .62, .46, .32];   // intensidade da cor pela posição
   return '<div class="top5">'+lista.slice(0,5).map(function(x, i){ var st = ' style="color:'+cor+';opacity:'+INTENS[i]+'"';
     return '<div><span class="p"'+st+'>'+(i+1)+'</span><span class="nm">'+esc(x.nome ? nomeCurto(nomeBonito(x.nome)) : x.login)+'</span><b'+st+'>'+fmt(x.pecas)+'</b></div>'; }).join('')+'</div>';
 }
-// Linha de baixo dos cards numa linha só: se não couber, a fonte diminui até caber (mínimo 14 px).
-function ajustaLinhaKpi(){ document.querySelectorAll('.kpi .s').forEach(function(el){ el.style.fontSize = ''; var f = 21; while (el.scrollWidth > el.clientWidth + 1 && f > 14) el.style.fontSize = (--f)+'px'; }); }
+// Linha de baixo dos cards numa linha só: se não couber, a fonte diminui até caber (mínimo 13 px).
+function ajustaLinhaKpi(){ document.querySelectorAll('.kpi .s').forEach(function(el){ el.style.fontSize = ''; var f = 19; while (el.scrollWidth > el.clientWidth + 1 && f > 13) el.style.fontSize = (--f)+'px'; }); }
 // Heatmap: do tom claro (pouco) à cor forte (muito).
 function rgbDe(hex){ var n = parseInt(hex.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
 function tomCalor(claro, forte, t){ var a = rgbDe(claro), b = rgbDe(forte); t = Math.max(0, Math.min(1, t || 0));
@@ -225,36 +258,48 @@ function roscaHtml(itens, total, rotTotal){
     var f = total ? x.v/total : 0, s = '<circle r="'+R+'" cx="90" cy="90" fill="none" stroke="'+x.cor+'" stroke-width="34" stroke-dasharray="'+(f*C).toFixed(1)+' '+C.toFixed(1)+'" stroke-dashoffset="'+(-acc*C).toFixed(1)+'" transform="rotate(-90 90 90)"/>';
     acc += f; return s;
   }).join('');
-  var leg = itens.map(function(x){
+  var leg = itens.slice(0, 5).map(function(x){
     return '<div style="--m:'+x.cor+'"><i></i><span>'+esc(x.n)+'</span><b>'+fmt(x.v)+'</b><em>'+(total ? Math.round(x.v/total*100) : 0)+'%</em></div>';
   }).join('');
   return '<div class="pizza"><svg viewBox="0 0 180 180">'+fatias+
-    '<text x="90" y="92" text-anchor="middle" fill="#E8EBF2" font-size="26" font-weight="800">'+fmt(total)+'</text>'+
-    '<text x="90" y="112" text-anchor="middle" fill="#7C8BA8" font-size="12">'+rotTotal+'</text></svg><div class="leg">'+leg+'</div></div>';
+    '<text x="90" y="94" text-anchor="middle" fill="#E8EBF2" font-size="28" font-weight="800">'+fmt(total)+'</text>'+
+    '<text x="90" y="116" text-anchor="middle" fill="#7C8BA8" font-size="13">'+rotTotal+'</text></svg><div class="leg">'+leg+'</div></div>';
 }
 var COR_SEGMENTO = { 'CALÇADO':'#297ADF', 'VESTUÁRIO':'#DFBD41', 'ACESSÓRIO':'#45C645', 'MEIA':'#A77BEA', 'CHINELO':'#2EC4B6', 'CHUTEIRA':'#E8830D', 'SEM FAMÍLIA':'#5B6578' };
 var COR_EXTRA = ['#93A5B8', '#EC4FA0', '#5B7F2B', '#2F5DA8'];
 function corSegmento(seg, i){ return COR_SEGMENTO[seg] || COR_EXTRA[i % COR_EXTRA.length]; }
 function nomeSegmento(seg){ var s = String(seg||'').toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1); }
 
-/* ================= FAIXAS EM LOOP CONTÍNUO ================= */
-// Dois blocos iguais emendados = loop sem pausa; o bloco repete até passar da largura da janela. ~pxs px por segundo.
-var memoriaLoop = {};
-function montaLoop(el, html, chave, larguraMin, pxs){
-  if (memoriaLoop[chave] === html && el.firstChild && !el.dataset.pendente) return;   // mesmo conteúdo: não reinicia a animação
-  memoriaLoop[chave] = html;
-  el._loop = [html, chave, larguraMin, pxs];
-  var g = '<div class="g">'+html+'</div>';
+/* ================= DIA EXIBIDO ================= */
+// Padrão: hoje. Dá para escolher outro clicando na data embaixo do relógio, com as setas ↑/↓ ou por ?dia=aaaa-mm-dd.
+// Escolha pelo telão volta sozinha para hoje depois de 30 min.
+var diaEscolhido = /^\d{4}-\d{2}-\d{2}$/.test(Q.get('dia') || '') ? Q.get('dia') : null, escolhidoEm = Date.now();
+function diaTela(){ return diaEscolhido && diaEscolhido < hojeISO() ? diaEscolhido : hojeISO(); }
+function ehHoje(){ return diaTela() === hojeISO(); }
+function escolheDia(iso){
+  diaEscolhido = iso && iso < hojeISO() ? iso : null; escolhidoEm = Date.now();
+  versaoLida = {};   // força buscar de novo os dados do dia escolhido
+  if (Q.get('demo') === '1' && window.TELAO_DEMO) { renderTudo(); relogio(); return; }   // prévia local: sem banco
+  carregar();
+}
+setInterval(function(){ if (diaEscolhido && Date.now() - escolhidoEm > 30*60000 && diaEscolhido !== Q.get('dia')) escolheDia(null); }, 60000);
+var diasComDado = {};   // pontinho no calendário: dia com snapshot de PFAs ou com ressuprimento
+
+/* ================= FAIXA DE BAIXO EM LOOP CONTÍNUO ================= */
+// Dois blocos iguais emendados = loop sem pausa; o bloco repete até passar da largura da janela (~110 px por segundo).
+var faixaAtual = '';
+function montaLoop(html){
+  if (faixaAtual === html) return;   // mesmo conteúdo: não reinicia a animação
+  faixaAtual = html;
+  var el = document.getElementById('loop'), g = '<div class="g">'+html+'</div>';
   el.innerHTML = g + g;
   var bloco = el.firstChild;
-  if (!bloco.offsetWidth) { el.dataset.pendente = '1'; return; }   // tela escondida: monta de verdade quando ela entrar
-  delete el.dataset.pendente;
-  while (bloco.offsetWidth && bloco.offsetWidth < larguraMin) { bloco.innerHTML += bloco.innerHTML; el.lastChild.innerHTML = bloco.innerHTML; }
-  el.style.setProperty('--dur', Math.max(10, Math.round(bloco.offsetWidth / pxs)) + 's');
+  while (bloco.offsetWidth && bloco.offsetWidth < 1600) { bloco.innerHTML += bloco.innerHTML; el.lastChild.innerHTML = bloco.innerHTML; }
+  el.style.setProperty('--dur', Math.max(10, Math.round(bloco.offsetWidth / 110)) + 's');
 }
 
 /* ================= DADOS EM MEMÓRIA ================= */
-var dadosPfas = null, resumoSI = null, ressup = null, atualizadoEm = {}, falhou = false;
+var resumoSI = null, ressup = null, atualizadoEm = {}, falhou = false;
 var etapaRessup = (function(){
   var q = Q.get('ressup'); if (q === 'soma') q = 'geral';
   if (['alocacao','retirada','geral'].indexOf(q) !== -1) return q;
@@ -262,23 +307,23 @@ var etapaRessup = (function(){
   return 'alocacao';
 })();
 var ROT_ETAPA_RESSUP = { alocacao:'Alocação no Picking', retirada:'Retirada do Pulmão', geral:'Soma' };
-var ROT_CURTO_RESSUP = { alocacao:'alocado no Picking', retirada:'retirado do Pulmão', geral:'movimentado (soma)' };
+var ROT_CARD_RESSUP = { alocacao:'Alocado no Picking', retirada:'Retirado do Pulmão', geral:'Movimentado (soma)' };
 
 /* ================= TELA S · START INICIAL ================= */
 var COR_PEND = '#297ADF', COR_ANTIGA = '#F6BD00', COR_NF = '#C8102E';
 function renderTelaS(){
   var el = document.getElementById('telaS'), r = resumoSI;
-  if (!r || !r.total.pfas) { el.dataset.vazia = '1'; el.innerHTML = '<div class="vazio">Sem PFAs em tela no último envio.</div>'; return; }
+  if (!r || !r.total.pfas) { el.dataset.vazia = '1'; el.innerHTML = '<div class="vazio">Sem PFAs em tela '+(ehHoje() ? 'no último envio' : 'em '+ddmm(diaTela()))+'.</div>'; return; }
   el.dataset.vazia = '';
   var ma = r.maisAntiga;
   var kPend = kpiHtml('Material pendente', fmt(r.pendente.pares), qt(r.pendente.pfas)+' PFAs · sem Não Disp. Picking e Ag. Embarque', COR_PEND, null, 'peças');
   var kAnt = ma ? kpiHtml('PFA mais antiga (NF emitida)', fmt(ma.dias), 'PFA <b>'+esc(ma.pfa)+'</b> · NF '+ddmm(ma.data_nota)+' · '+qt(ma.pecas)+' pçs', COR_ANTIGA, null, ma.dias === 1 ? 'dia' : 'dias')
     : kpiHtml('PFA mais antiga (NF emitida)', '—', 'nenhuma PFA com NF em tela', COR_ANTIGA);
-  // FIFO: colunas com peças em cima e PFAs embaixo
+  // FIFO: colunas com as peças em cima (sem a quantidade de PFAs)
   var maxF = Math.max.apply(null, r.fifo.map(function(f){ return f.pares; }).concat(1));
   var fifo = r.fifo.map(function(f){
-    return '<div class="col"><div class="pilha" style="height:'+(f.pares/maxF*82).toFixed(1)+'%;background:'+cssVar(f.cor)+'"><em style="color:'+cssVar(f.cor)+'">'+fmt(f.pares)+'</em></div>'+
-      '<div class="rot">'+esc(f.rotulo)+'<small>'+fmt(f.pfas)+' PFAs</small></div></div>';
+    return '<div class="col"><div class="pilha" style="height:'+(f.pares/maxF*72).toFixed(1)+'%;background:'+cssVar(f.cor)+'"><em style="color:'+cssVar(f.cor)+'">'+fmt(f.pares)+'</em></div>'+
+      '<div class="rot">'+esc(f.rotulo)+'</div></div>';
   }).join('');
   // Funil: as 7 etapas sempre (00 e 06 também), cada uma na cor do report
   var maxE = Math.max.apply(null, r.etapas.map(function(e){ return e.pares; }).concat(1));
@@ -293,99 +338,98 @@ function renderTelaS(){
       '<div class="painel" style="grid-template-rows:auto 1fr auto"><div class="etapa cab"><span class="nm">Funil por etapa</span><span></span><span class="tot">Peças</span><span class="tot">PFAs</span></div>'+
         '<div class="etapas">'+funil+'</div>'+
         '<div class="etapa total"><span class="nm">Total em tela</span><span></span><span class="tot">'+fmt(r.total.pares)+'</span><span class="tot ped">'+fmt(r.total.pfas)+'</span></div></div>'+
-      '<div class="painel"><span class="k">Nota fiscal × segmento <small>(peças)</small></span>'+matrizHtml(r.matriz)+'</div>'+
-    '</div>'+
-    '<div class="si-seg"><span class="tag">Em tela por segmento</span><div class="janela"><div class="loop" id="loopSeg"></div></div></div>';
-  var segs = r.segmentos.map(function(s, i){
-    return '<span class="ti" style="--c:'+corSegmento(s.segmento, i)+'"><i></i><b>'+esc(nomeSegmento(s.segmento))+'</b> <span class="v">'+fmt(s.pares)+'</span> peças · '+fmt(s.pfas)+' PFAs</span>';
-  }).join('');
-  memoriaLoop.seg = null;   // o elemento foi recriado: monta de novo
-  montaLoop(document.getElementById('loopSeg'), segs, 'seg', 1300, 70);
-  ligaRoloMatriz();
+      '<div class="painel"><span class="k">Nota fiscal × segmento <small>(peças)</small></span>'+nfSegmentoHtml(r.nfSegmento)+'</div>'+
+    '</div>';
 }
-// Matriz NF × Segmento em pé (linhas = data da NF, colunas = segmento): cor de calor por célula, em peças.
-function matrizHtml(mz){
-  var nc = mz.cols.length, maior = 1;
-  mz.linhas.forEach(function(l){ l.vals.forEach(function(v){ if (v.pares > maior) maior = v.pares; }); });
-  var cab = '<div class="lin cab" style="--nc:'+nc+'"><span>NF</span>'+mz.cols.map(function(c){ return '<span>'+esc(c.rotulo)+'</span>'; }).join('')+'<span style="text-align:right">Total</span></div>';
-  var linhas = mz.linhas.map(function(l){
-    var sem = l.chave === 'SEM';
-    return '<div class="lin'+(sem ? ' sem' : '')+'" style="--nc:'+nc+'"><span class="d">'+(sem ? 'Sem NF' : ddmm(l.chave))+'</span>'+
-      l.vals.map(function(v){ return v.pares ? '<span class="c" style="background:'+tomCalor('#CFE2F9', '#297ADF', Math.sqrt(v.pares/maior))+'">'+fmt(v.pares)+'</span>' : '<span class="c zero">·</span>'; }).join('')+
-      '<span class="t">'+fmt(l.pares)+'</span></div>';
-  }).join('');
-  return '<div class="mz">'+cab+'<div class="corpo"><div class="rolo" data-html="1">'+linhas+'</div></div></div>';
-}
-// Linhas que não cabem rolam sozinhas para cima, em loop contínuo (como a faixa de baixo).
-function ligaRoloMatriz(){
-  requestAnimationFrame(function(){
-    var rolo = document.querySelector('#telaS .mz .rolo'); if (!rolo) return;
-    var corpo = rolo.parentNode;
-    if (!corpo.clientHeight || rolo.scrollHeight <= corpo.clientHeight + 2) return;   // cabe: fica parada
-    var altura = rolo.scrollHeight;
-    rolo.innerHTML += rolo.innerHTML;
-    rolo.style.setProperty('--dur', Math.max(15, Math.round(altura / 22)) + 's');   // ~22 px por segundo
-    rolo.classList.add('anda');
-  });
+// NF × Segmento resumido: uma linha por segmento, colunas Sem NF / Com NF (cor de calor) e o total.
+function nfSegmentoHtml(lista){
+  var maior = 1, tSem = 0, tCom = 0;
+  lista.forEach(function(s){ maior = Math.max(maior, s.sem, s.com); tSem += s.sem; tCom += s.com; });
+  var cel = function(v){ return v ? '<span class="c" style="background:'+tomCalor('#CFE2F9', '#297ADF', Math.sqrt(v/maior))+'">'+fmt(v)+'</span>' : '<span class="c zero">·</span>'; };
+  return '<div class="nfs"><div class="lin cab"><span>Segmento</span><span>Sem NF</span><span>Com NF</span><span style="text-align:right">Total</span></div>'+
+    lista.map(function(s){ return '<div class="lin"><span class="seg">'+esc(s.rotulo)+'</span>'+cel(s.sem)+cel(s.com)+'<span class="t">'+fmt(s.sem + s.com)+'</span></div>'; }).join('')+
+    '<div class="lin total"><span class="seg">Total</span><span class="c">'+fmt(tSem)+'</span><span class="c">'+fmt(tCom)+'</span><span class="t">'+fmt(tSem + tCom)+'</span></div></div>';
 }
 
 /* ================= TELA R · RESSUPRIMENTO ================= */
 var COR_TURNO = { T01:'#297ADF', T02:'#DFBD41', T03:'#45C645' }, ORDEM_TURNO = ['T01','T02','T03'];
 var COR_RS = '#45C645';
+// Dias do Ressuprimento: os 7 últimos com registro até o dia exibido (hoje ou o escolhido no calendário).
+function diasRessup(){
+  if (!ressup) return [];
+  var comb = RC.combinarEtapaRessup(etapaRessup, ressup.aloc, ressup.ret, [], []);
+  var ate = diaTela();
+  return { comb: comb, dias: RC.diasDoHistorico(comb.historico).filter(function(d){ return d.pecas > 0 && d.dia <= ate; }).slice(-DIAS_RESSUP) };
+}
+function desenhaChave(){
+  var c = document.getElementById('chaveRessup');
+  c.innerHTML = ['alocacao','retirada','geral'].map(function(k){
+    return '<button type="button" data-etapa="'+k+'" class="'+(k === etapaRessup ? 'on' : '')+'">'+ROT_ETAPA_RESSUP[k]+'</button>'; }).join('');
+}
 function renderTelaR(){
   var el = document.getElementById('telaR');
+  desenhaChave();
   if (!ressup) { el.dataset.vazia = '1'; el.innerHTML = '<div class="vazio">Sem Kardex de ressuprimento ainda.</div>'; return; }
-  var comb = RC.combinarEtapaRessup(etapaRessup, ressup.aloc, ressup.ret, ressup.opsAloc, ressup.opsRet);
-  var dias = RC.diasDoHistorico(comb.historico).filter(function(d){ return d.pecas > 0; }).slice(-DIAS_RESSUP);
   el.dataset.vazia = '';
-  var chave = '<div class="chave" id="chaveRessup">'+['alocacao','retirada','geral'].map(function(k){
-    return '<button type="button" data-etapa="'+k+'" class="'+(k === etapaRessup ? 'on' : '')+'">'+ROT_ETAPA_RESSUP[k]+'</button>'; }).join('')+'</div>';
-  if (!dias.length) {
-    el.innerHTML = '<div class="rs-bar"><span class="per">'+ROT_ETAPA_RESSUP[etapaRessup]+'</span>'+chave+'</div><div class="vazio">Sem registro de '+ROT_CURTO_RESSUP[etapaRessup]+' nos últimos 30 dias.</div>';
-    return;
-  }
+  var x = diasRessup(), dias = x.dias, comb = x.comb;
+  if (!dias.length) { el.innerHTML = '<div class="vazio">Sem registro de '+ROT_ETAPA_RESSUP[etapaRessup].toLowerCase()+' até '+ddmm(diaTela())+'.</div>'; return; }
   var ult = dias[dias.length-1], diaU = ult.dia;
   var turnoCard = function(t){
-    var x = ult.turnos[t] || { pecas:0, movimentos:0 };
-    return kpiHtml(t, fmt(x.pecas), qt(x.movimentos)+' movimentos', COR_TURNO[t], null, 'peças');
+    var y = ult.turnos[t] || { pecas:0, movimentos:0 };
+    return kpiHtml(t, fmt(y.pecas), qt(y.movimentos)+' movimentos', COR_TURNO[t], null, 'peças');
   };
   // Rosca: segmentos do último dia
   var segs = RC.porSegmentoDoHistorico(comb.historico.filter(function(h){ return h.dia === diaU; })).filter(function(s){ return s.pecas > 0; });
   var itensRosca = segs.map(function(s, i){ return { n:nomeSegmento(s.segmento), v:s.pecas, cor:corSegmento(s.segmento, i) }; });
   // Barras dos 7 dias empilhadas por turno, com a média dos dias mostrados
-  var maxD = Math.max.apply(null, dias.map(function(d){ return d.pecas; }).concat(1)) * 1.15;
+  var maxD = Math.max.apply(null, dias.map(function(d){ return d.pecas; }).concat(1)) * 1.12;
   var media = Math.round(dias.reduce(function(s, d){ return s + d.pecas; }, 0) / dias.length);
   var cols = dias.map(function(d){
     var pedacos = ORDEM_TURNO.map(function(t){ var p = (d.turnos[t] || {}).pecas || 0; return p ? '<i style="flex:'+p+' 0 0;background:'+COR_TURNO[t]+'"></i>' : ''; }).join('');
     return '<div class="col"><div class="pilha" style="height:'+(d.pecas/maxD*100).toFixed(1)+'%"><em>'+fmt(d.pecas)+'</em>'+pedacos+'</div>'+
-      '<div class="rot">'+esc(rotDia(d.dia))+'<small>'+fmt(d.movimentos)+' mov.</small></div></div>';
+      '<div class="rot">'+esc(rotDia(d.dia))+'</div></div>';
   }).join('');
   var leg = '<span class="leg-t">'+ORDEM_TURNO.map(function(t){ return '<span><i style="background:'+COR_TURNO[t]+'"></i>'+t+'</span>'; }).join('')+
     '<span><i style="background:none;border-top:2px dashed var(--text);border-radius:0;height:0;width:18px;vertical-align:3px"></i>média '+fmt(media)+'/dia</span></span>';
-  // Top 5 do último dia em peças; antes da migração das peças por operador, usa o último Kardex inteiro (só alocação)
-  var top = RC.topOperadoresDia(etapaRessup, ressup.opsAloc, ressup.opsRet, diaU, 5), tituloTop = 'Top 5 operadores · '+ddmm(diaU);
-  if (!top.length && etapaRessup === 'alocacao' && ressup.opsKardex.length) {
-    top = ressup.opsKardex.slice(0, 5);
-    tituloTop = 'Top 5 · Kardex '+(ressup.periodo ? esc(String(ressup.periodo.de||'').slice(0,5))+'–'+esc(String(ressup.periodo.ate||'').slice(0,5)) : '');
-  }
+  // Top 5 de cada turno no dia exibido (hoje, ou o dia escolhido no calendário), um embaixo do outro, na cor do turno
+  var diaTop = diaTela();
+  var tops = ORDEM_TURNO.map(function(t){
+    var l = RC.topOperadoresDia(etapaRessup, ressup.opsAloc, ressup.opsRet, diaTop, 5, t);
+    var linhas = l.map(function(o, i){
+      return '<div><span class="p">'+(i+1)+'</span><span class="nm">'+esc(o.nome ? nomeCurto(nomeBonito(o.nome)) : o.login)+'</span><b>'+fmt(o.pecas)+'</b></div>'; }).join('');
+    return '<div class="tt5" style="--t:'+COR_TURNO[t]+'"><span class="tn">'+t+'</span>'+(linhas || '<div class="sem">sem registro</div>')+'</div>';
+  }).join('');
   el.innerHTML =
-    '<div class="rs-bar"><span class="per">'+ROT_ETAPA_RESSUP[etapaRessup]+' · últimos '+dias.length+' dias com registro · <b>'+ddmm(dias[0].dia)+'</b> a <b>'+ddmm(diaU)+'</b></span>'+chave+'</div>'+
-    '<div class="rs-topo">'+
-      kpiHtml('Ressuprido em '+ddmm(diaU), fmt(ult.pecas), qt(ult.movimentos)+' movimentos · média 7d '+qt(media), COR_RS, null, 'peças')+
-      turnoCard('T01')+turnoCard('T02')+turnoCard('T03')+
-      '<div class="painel" style="padding:12px 16px"><span class="k">Por segmento · '+ddmm(diaU)+'</span>'+(itensRosca.length ? roscaHtml(itensRosca, ult.pecas, 'peças') : '<div class="semhora">Sem segmento no dia</div>')+'</div>'+
-    '</div>'+
-    '<div class="rs-baixo">'+
-      '<div class="painel" style="--pc:'+COR_RS+'"><span class="k" style="display:flex;justify-content:space-between;align-items:center">Peças por dia e turno'+leg+'</span>'+
+    '<div class="rs">'+
+      '<div class="rs-cards">'+
+        kpiHtml(ROT_CARD_RESSUP[etapaRessup]+' em '+ddmm(diaU), fmt(ult.pecas), qt(ult.movimentos)+' movimentos · média 7d '+qt(media), COR_RS, null, 'peças')+
+        turnoCard('T01')+turnoCard('T02')+turnoCard('T03')+
+      '</div>'+
+      '<div class="painel rosca"><span class="k">Por segmento · '+ddmm(diaU)+'</span>'+(itensRosca.length ? roscaHtml(itensRosca, ult.pecas, 'peças') : '<div class="semhora">Sem segmento no dia</div>')+'</div>'+
+      '<div class="painel" style="--pc:'+COR_RS+'"><span class="k" style="display:flex;justify-content:space-between;align-items:center">'+
+        '<span>Peças por dia e turno</span>'+leg+'</span>'+
         '<div class="colunas" style="padding-top:26px">'+cols+'<div class="media" data-frac="'+(media/maxD).toFixed(4)+'"></div></div></div>'+
-      '<div class="painel" style="--pc:'+COR_RS+'"><span class="k">'+tituloTop+'</span>'+top5Html(top, COR_RS)+'</div>'+
+      '<div class="painel" style="--pc:'+COR_RS+'"><span class="k">Top 5 por turno · '+(diaTop === hojeISO() ? 'hoje' : ddmm(diaTop))+'</span>'+
+        '<div class="tops"><div class="rolo">'+tops+'</div></div></div>'+
     '</div>';
   ajustaMediaColunas(el);
+  ligaRolo(el);
+}
+// Top 5 por turno rolando de baixo para cima em loop: duplica os blocos e anda ~24 px por segundo.
+function ligaRolo(el){
+  requestAnimationFrame(function(){
+    var rolo = el.querySelector('.tops .rolo'); if (!rolo || rolo.classList.contains('anda')) return;
+    if (!rolo.parentNode.clientHeight) return;   // tela escondida: liga quando ela entrar
+    var altura = rolo.scrollHeight;
+    rolo.innerHTML += rolo.innerHTML;
+    rolo.style.setProperty('--dur', Math.max(12, Math.round(altura / 24)) + 's');
+    rolo.classList.add('anda');
+  });
 }
 // A linha da média fica na altura certa só medindo a área das barras (o rótulo do dia embaixo ocupa espaço).
 function ajustaMediaColunas(el){
   requestAnimationFrame(function(){
-    var area = el.querySelector('.rs-baixo .colunas'), m = area && area.querySelector('.media'), col = area && area.querySelector('.col');
+    var area = el.querySelector('.colunas .media') && el.querySelector('.colunas .media').parentNode, m = area && area.querySelector('.media'), col = area && area.querySelector('.col');
     if (!m || !col || !col.clientHeight) return;   // tela escondida: mede quando ela entrar
     var rot = col.querySelector('.rot').offsetHeight + 6, pilhaArea = col.clientHeight - rot;
     m.style.bottom = (rot + pilhaArea * (+m.dataset.frac || 0)).toFixed(0) + 'px';
@@ -397,29 +441,29 @@ function trocaEtapaRessup(k){
   try { localStorage.setItem('telao_distr_ressup', k); } catch(e) {}
   renderTelaR(); renderFaixa(); ajustaLinhaKpi();
 }
-document.addEventListener('click', function(e){ var b = e.target.closest && e.target.closest('#chaveRessup button'); if (b) { e.stopPropagation(); trocaEtapaRessup(b.dataset.etapa); } });
+document.getElementById('chaveRessup').addEventListener('click', function(e){ var b = e.target.closest('button'); if (b) { e.stopPropagation(); trocaEtapaRessup(b.dataset.etapa); } });
 
 /* ================= FAIXA DE BAIXO (totais em loop) ================= */
 function renderFaixa(){
-  var itens = [], r = resumoSI;
+  var itens = [], r = resumoSI, em = ehHoje() ? '' : ' em '+ddmm(diaTela());
   if (r && r.total.pfas) {
-    itens.push('<span class="ti" style="--c:'+COR_PEND+'"><b>Material pendente</b> <span class="v">'+fmt(r.pendente.pares)+'</span> peças · '+fmt(r.pendente.pfas)+' PFAs</span>');
-    itens.push('<span class="ti" style="--c:'+COR_NF+'"><b>NF emitida · ag. coleta</b> <span class="v">'+fmt(r.nfAgColeta.pares)+'</span> peças · '+fmt(r.nfAgColeta.pfas)+' PFAs</span>');
+    itens.push('<span class="ti" style="--c:'+COR_PEND+'"><b>Material pendente'+em+'</b> <span class="v">'+fmt(r.pendente.pares)+'</span> peças</span>');
+    itens.push('<span class="ti" style="--c:'+COR_NF+'"><b>NF emitida · ag. coleta</b> <span class="v">'+fmt(r.nfAgColeta.pares)+'</span> peças</span>');
     if (r.maisAntiga) itens.push('<span class="ti" style="--c:'+COR_ANTIGA+'"><b>PFA mais antiga (NF)</b> <span class="v">'+fmt(r.maisAntiga.dias)+'</span> '+(r.maisAntiga.dias === 1 ? 'dia' : 'dias')+' · PFA '+esc(r.maisAntiga.pfa)+'</span>');
-    itens.push('<span class="ti" style="--c:var(--accent-light)"><b>Total em tela</b> <span class="v">'+fmt(r.total.pares)+'</span> peças · '+fmt(r.total.pfas)+' PFAs</span>');
+    itens.push('<span class="ti" style="--c:var(--accent-light)"><b>Total em tela</b> <span class="v">'+fmt(r.total.pares)+'</span> peças</span>');
+    // total em tela por segmento (antes ficava numa faixa própria dentro da tela)
+    r.segmentos.forEach(function(s, i){
+      itens.push('<span class="ti" style="--c:'+corSegmento(s.segmento, i)+'"><i></i><b>'+esc(nomeSegmento(s.segmento))+' em tela</b> <span class="v">'+fmt(s.pares)+'</span> peças</span>');
+    });
     if (r.ajustesEmAberto) itens.push('<span class="ti" style="--c:var(--accent-light)"><b>Ajustes de PFA em aberto</b> <span class="v">'+fmt(r.ajustesEmAberto)+'</span> ag. comercial</span>');
   }
-  if (ressup) {
-    var comb = RC.combinarEtapaRessup(etapaRessup, ressup.aloc, ressup.ret, ressup.opsAloc, ressup.opsRet);
-    var dias = RC.diasDoHistorico(comb.historico).filter(function(d){ return d.pecas > 0; }).slice(-DIAS_RESSUP);
-    if (dias.length) {
-      var u = dias[dias.length-1], media = dias.reduce(function(s, d){ return s + d.pecas; }, 0) / dias.length;
-      itens.push('<span class="ti" style="--c:'+COR_RS+'"><b>Ressuprimento '+ddmm(u.dia)+' · '+ROT_ETAPA_RESSUP[etapaRessup]+'</b> <span class="v">'+fmt(u.pecas)+'</span> peças</span>');
-      itens.push('<span class="ti" style="--c:'+COR_RS+'"><b>Média '+dias.length+' dias</b> <span class="v">'+fmt(media)+'</span> peças/dia</span>');
-    }
+  var x = diasRessup(), dias = x.dias || [];
+  if (dias.length) {
+    var u = dias[dias.length-1], media = dias.reduce(function(s, d){ return s + d.pecas; }, 0) / dias.length;
+    itens.push('<span class="ti" style="--c:'+COR_RS+'"><b>'+ROT_CARD_RESSUP[etapaRessup]+' em '+ddmm(u.dia)+'</b> <span class="v">'+fmt(u.pecas)+'</span> peças</span>');
+    itens.push('<span class="ti" style="--c:'+COR_RS+'"><b>Média '+dias.length+' dias</b> <span class="v">'+fmt(media)+'</span> peças/dia</span>');
   }
-  if (!itens.length) return;
-  montaLoop(document.getElementById('loop'), itens.join(''), 'faixa', 1600, 110);
+  if (itens.length) montaLoop(itens.join(''));
 }
 
 /* ================= GIRO DAS TELAS ================= */
@@ -439,7 +483,7 @@ function mostraTela(i){
     trocaPendente = setTimeout(function(){ velha.classList.remove('saindo'); entraTela(i); }, 350);
   } else entraTela(i);
 }
-// Cor de destaque de cada tela: [forte, clara, texto sobre a forte]
+// Cor de destaque de cada tela (barra do giro, setas e calendário): [forte, clara, texto sobre a forte]
 var COR_TELA = { telaS:['#297ADF','#7FB2EC','#fff'], telaR:['#45C645','#9BE29B','#0E1626'] };
 var sentidoTroca = 1;   // 1 = avançou (botão >, seta → ou rodízio), -1 = voltou (botão <, seta ←)
 function entraTela(i){
@@ -449,14 +493,13 @@ function entraTela(i){
   var tit = document.getElementById('titulo'), novoTit = telas[i].getAttribute('data-titulo');
   if (tit.textContent !== novoTit) { tit.textContent = novoTit; tit.classList.remove('troca', 'recua'); void tit.offsetWidth; tit.classList.add('troca'); if (sentidoTroca < 0) tit.classList.add('recua'); }
   sentidoTroca = 1;
+  document.getElementById('chaveRessup').hidden = telas[i].id !== 'telaR' || !ressup;   // interruptor só na tela de Ressuprimento
   document.getElementById('barra').hidden = telasAtivas().length < 2;   // com uma tela só não há o que girar
   document.querySelector('.navt').classList.toggle('so', telasAtivas().length < 2);
   relogio();
   requestAnimationFrame(function(){   // tela estava escondida: só agora dá para medir
     ajustaLinhaKpi();
-    if (telas[i].id === 'telaS') { var rolo = telas[i].querySelector('.mz .rolo'); if (rolo && !rolo.classList.contains('anda')) ligaRoloMatriz(); }
-    telas[i].querySelectorAll('.loop[data-pendente]').forEach(function(l){ montaLoop.apply(null, [l].concat(l._loop)); });
-    if (telas[i].id === 'telaR') ajustaMediaColunas(telas[i]);
+    if (telas[i].id === 'telaR') { ajustaMediaColunas(telas[i]); ligaRolo(telas[i]); }
   });
 }
 // Barra do giro redesenhada a cada quadro: anda contínua, sem pulos.
@@ -473,24 +516,65 @@ document.addEventListener('keydown', function(e){   // para quem estiver ao lado
   if (e.target && /input/i.test(e.target.tagName)) return;
   if (e.key === 'ArrowRight') mostraTela(proximaTela(1));
   if (e.key === 'ArrowLeft') { sentidoTroca = -1; mostraTela(proximaTela(-1)); }
+  if (e.key === 'ArrowDown') escolheDia(somaDias(diaTela(), -1));   // dia anterior
+  if (e.key === 'ArrowUp') escolheDia(somaDias(diaTela(), 1));      // dia seguinte (até hoje)
   var k = String(e.key).toLowerCase();   // interruptor do Ressuprimento: A = alocação, R = retirada, S = soma
   if (k === 'a') trocaEtapaRessup('alocacao');
   if (k === 'r') trocaEtapaRessup('retirada');
   if (k === 's') trocaEtapaRessup('geral');
 });
+// Calendário do dia exibido (no lugar do calendário nativo do Chrome, que não segue a identidade).
+(function(){
+  var cal = document.getElementById('cal'), lbl = document.getElementById('data'), mesCal = null;
+  var MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  function iso(a, m, d){ return a+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
+  function desenha(){
+    var hj = hojeISO(), sel = diaTela(), a = mesCal[0], m = mesCal[1];
+    var ini = new Date(a, m, 1).getDay(), n = new Date(a, m+1, 0).getDate(), temProx = (m === 11 ? iso(a+1, 0, 1) : iso(a, m+1, 1)) <= hj;
+    var h = '<div class="kk">Dia exibido</div><div class="cab"><button type="button" class="nav" data-mes="-1" aria-label="Mês anterior">‹</button>'+
+      '<span class="mes">'+MESES[m]+' de '+a+'</span><button type="button" class="nav" data-mes="1" aria-label="Próximo mês"'+(temProx ? '' : ' disabled')+'>›</button></div>'+
+      '<div class="grade">'+['D','S','T','Q','Q','S','S'].map(function(x){ return '<span class="sm">'+x+'</span>'; }).join('');
+    for (var b = 0; b < ini; b++) h += '<span></span>';
+    for (var d = 1; d <= n; d++) {
+      var k = iso(a, m, d), cls = 'd'+(k === hj ? ' hoje' : '')+(k === sel ? ' sel' : '')+(diasComDado[k] ? ' dado' : '');
+      h += '<button type="button" class="'+cls+'" data-dia="'+k+'"'+(k > hj ? ' disabled' : '')+'>'+d+'</button>';
+    }
+    cal.innerHTML = h + '</div><div class="rod"><span><i></i>dia com dado</span><button type="button" data-dia="'+hj+'">Hoje</button></div>';
+  }
+  function fecha(){ cal.hidden = true; lbl.classList.remove('aberto'); }
+  lbl.addEventListener('click', function(e){
+    e.stopPropagation();
+    if (!cal.hidden) { fecha(); return; }
+    var p = diaTela().split('-'); mesCal = [+p[0], +p[1]-1];
+    desenha(); cal.hidden = false; lbl.classList.add('aberto');
+  });
+  cal.addEventListener('click', function(e){
+    e.stopPropagation();
+    var b = e.target.closest('button'); if (!b || b.disabled) return;
+    if (b.dataset.mes) { var m = mesCal[1] + (+b.dataset.mes); mesCal = [mesCal[0] + Math.floor(m/12), (m%12+12)%12]; desenha(); return; }
+    if (b.dataset.dia) { escolheDia(b.dataset.dia === hojeISO() ? null : b.dataset.dia); fecha(); }
+  });
+  document.addEventListener('click', fecha);
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') fecha(); });
+  document.getElementById('btnHoje').addEventListener('click', function(e){ e.stopPropagation(); escolheDia(null); });
+})();
 
 /* ================= RELÓGIO, SELO E ESCALA ================= */
 function relogio(){
-  var d = new Date();
+  var d = new Date(), dia = diaTela(), passado = !ehHoje();
   document.getElementById('hora').textContent = d.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
-  document.getElementById('data').textContent = rotDia(hojeISO());
+  document.getElementById('data').textContent = rotDia(dia);
+  var lv = document.getElementById('aoVivo');
+  lv.textContent = passado ? '⚠ ' + ddmm(dia) : '● AO VIVO';
+  lv.classList.toggle('passado', passado);
+  document.getElementById('btnHoje').hidden = !passado;
   var s = document.getElementById('selo');
   var ultimoDado = atualizadoEm[telas[atual] ? telas[atual].getAttribute('data-fonte') : 'pfas'];
   if (!ultimoDado) return;
   var min = (Date.now() - ultimoDado.getTime()) / 60000, hh = ultimoDado.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
   var dd = ultimoDado.toDateString() === d.toDateString() ? '' : ' de ' + ultimoDado.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' });
   s.textContent = '● Dado de ' + hh + dd + (falhou ? ' · sem conexão' : '');
-  s.className = 'selo ' + (falhou || min > SELO_ATENCAO_MIN ? 'velho' : min > SELO_OK_MIN ? 'atencao' : 'ok');
+  s.className = 'selo ' + (falhou ? 'velho' : passado ? 'atencao' : min > SELO_ATENCAO_MIN ? 'velho' : min > SELO_OK_MIN ? 'atencao' : 'ok');
 }
 setInterval(relogio, 15000); relogio();
 // O palco tem 1500 px de base e estica na outra direção até preencher a janela inteira (TV 16:9, navegador, ultrawide).
@@ -513,7 +597,7 @@ var ocioso = null;
 function mexeu(){ document.body.classList.remove('ocioso'); clearTimeout(ocioso); ocioso = setTimeout(function(){ document.body.classList.add('ocioso'); }, 3000); }
 document.addEventListener('mousemove', mexeu); mexeu();
 var reRender = null;
-addEventListener('resize', function(){ escala(); clearTimeout(reRender); reRender = setTimeout(function(){ renderTudo(); }, 300); }); escala();
+addEventListener('resize', function(){ escala(); clearTimeout(reRender); reRender = setTimeout(function(){ faixaAtual = ''; renderTudo(); }, 300); }); escala();
 setTimeout(function(){ location.reload(); }, RECARREGA_H*3600*1000);
 // Versão nova publicada (deploy na Vercel): confere a cada 5 min e recarrega sozinho, sem precisar de F5.
 (function(){
@@ -532,61 +616,81 @@ if (navigator.wakeLock) { var pedeWake = function(){ navigator.wakeLock.request(
 /* ================= DADOS ================= */
 // A cada REFRESH_S só confere a data do último snapshot de cada página; os dados pesados só vêm quando ela muda.
 var versaoLida = {}, lidoEm = 0;
+function inicioDoDiaSeguinte(iso){ var p = iso.split('-'); return new Date(+p[0], +p[1]-1, +p[2] + 1).toISOString(); }
 async function ultimoGerado(pagina){
   var r = await sb.from('dashboard_snapshots').select('gerado_em').eq('pagina', pagina).order('gerado_em', { ascending:false }).limit(1);
   if (r.error) throw r.error;
   return r.data && r.data[0] ? r.data[0].gerado_em : null;
 }
-async function carregaPfas(){
+// Lê tudo de uma consulta em páginas de 1000 linhas (o Supabase devolve no máximo 1000 por vez).
+async function lerTudo(montaConsulta){
+  var todas = [];
+  for (var de = 0; de < 50000; de += 1000) {
+    var r = await montaConsulta().range(de, de + 999);
+    if (r.error) return { error: r.error, data: todas };
+    todas = todas.concat(r.data || []);
+    if (!r.data || r.data.length < 1000) break;
+  }
+  return { data: todas };
+}
+async function carregaPfas(dia){
+  // Hoje: o último snapshot. Dia passado: o último snapshot enviado até o fim daquele dia.
+  var q = sb.from('dashboard_snapshots')
+    .select('pendentes:payload->pendentes, aguardando_coleta:payload->aguardando_coleta, etapas:payload->etapas, faixas_fifo:payload->faixas_fifo, ajustes_em_aberto:payload->ajustes_em_aberto, conferencia_regra:payload->conferencia_regra, gerado_em')
+    .eq('pagina', 'pfas');
+  if (dia !== hojeISO()) q = q.lt('gerado_em', inicioDoDiaSeguinte(dia));
   var r = await Promise.all([
-    sb.from('dashboard_snapshots')
-      .select('pendentes:payload->pendentes, aguardando_coleta:payload->aguardando_coleta, etapas:payload->etapas, faixas_fifo:payload->faixas_fifo, ajustes_em_aberto:payload->ajustes_em_aberto, conferencia_regra:payload->conferencia_regra, gerado_em')
-      .eq('pagina', 'pfas').order('gerado_em', { ascending:false }).limit(1),
+    q.order('gerado_em', { ascending:false }).limit(1),
     sb.from('dim_clientes_persona').select('nome, personalizavel'),
+    // dias com snapshot de PFAs (pontinho do calendário)
+    sb.from('dashboard_snapshots').select('gerado_em').eq('pagina', 'pfas').gte('gerado_em', new Date(Date.now() - 120*86400000).toISOString()).limit(1000),
   ]);
   if (r[0].error) throw r[0].error;
+  (r[2].data || []).forEach(function(x){ diasComDado[isoLocal(new Date(x.gerado_em))] = 1; });
   var p = r[0].data && r[0].data[0];
   if (!p) { resumoSI = null; return; }
   // Lista de clientes que personalizam: a do banco; tabela vazia ou ilegível = lista padrão (igual ao report)
   var lista = !r[1].error && r[1].data && r[1].data.length ? r[1].data.map(function(c){ return { nome:c.nome, personalizavel:c.personalizavel }; }) : SI.listaPadraoPersona();
   SI.aplicarEtapaPersona(p, lista);
-  dadosPfas = p;
-  resumoSI = SI.resumoStartInicial(p);
+  // a idade da PFA mais antiga conta até o dia exibido
+  var p2 = dia.split('-');
+  resumoSI = SI.resumoStartInicial(p, dia === hojeISO() ? new Date() : new Date(+p2[0], +p2[1]-1, +p2[2], 12));
   atualizadoEm.pfas = new Date(p.gerado_em);
 }
-async function leOperadores(tabela, de){
-  var r = await sb.from(tabela).select('dia, turno, login, nome, pecas, movimentos').gte('dia', de);
-  if (r.error) r = await sb.from(tabela).select('dia, turno, login, nome').gte('dia', de);   // banco sem migracao_operador_pecas.sql
+async function leOperadores(tabela, dia){
+  var r = await sb.from(tabela).select('dia, turno, login, nome, pecas, movimentos').eq('dia', dia);
+  if (r.error) r = await sb.from(tabela).select('dia, turno, login, nome').eq('dia', dia);   // banco sem migracao_operador_pecas.sql
   return r.error ? [] : (r.data || []);
 }
-async function carregaRessup(){
-  var de = somaDias(hojeISO(), -30);
+async function carregaRessup(dia){
+  var de = somaDias(dia, -40);
   var r = await Promise.all([
-    sb.from('ressuprimento_historico_diario').select('dia, segmento, turno, pecas, movimentos').gte('dia', de),
-    sb.from('ressuprimento_retirada_diario').select('dia, segmento, turno, pecas, movimentos').gte('dia', de),
-    leOperadores('ressuprimento_operador_diario', de),
-    leOperadores('ressuprimento_retirada_operador', de),
-    sb.from('dashboard_snapshots').select('operadores:payload->operadores, periodo:payload->periodo, gerado_em')
-      .eq('pagina', 'ressuprimento_mov').order('gerado_em', { ascending:false }).limit(1),
+    lerTudo(function(){ return sb.from('ressuprimento_historico_diario').select('dia, segmento, turno, pecas, movimentos').gte('dia', de).lte('dia', dia).order('dia'); }),
+    lerTudo(function(){ return sb.from('ressuprimento_retirada_diario').select('dia, segmento, turno, pecas, movimentos').gte('dia', de).lte('dia', dia).order('dia'); }),
+    leOperadores('ressuprimento_operador_diario', dia),
+    leOperadores('ressuprimento_retirada_operador', dia),
+    sb.from('dashboard_snapshots').select('gerado_em').eq('pagina', 'ressuprimento_mov').order('gerado_em', { ascending:false }).limit(1),
   ]);
   if (r[0].error) throw r[0].error;
   var snap = !r[4].error && r[4].data && r[4].data[0];
-  ressup = { aloc: r[0].data || [], ret: r[1].error ? [] : (r[1].data || []), opsAloc: r[2], opsRet: r[3],
-    opsKardex: snap && snap.operadores ? snap.operadores : [], periodo: snap ? snap.periodo : null };
+  ressup = { aloc: r[0].data || [], ret: r[1].error ? [] : (r[1].data || []), opsAloc: r[2], opsRet: r[3] };
+  ressup.aloc.concat(ressup.ret).forEach(function(h){ if (h.pecas > 0) diasComDado[h.dia] = 1; });
   if (snap) atualizadoEm.ressuprimento_mov = new Date(snap.gerado_em);
   if (!ressup.aloc.length && !ressup.ret.length) ressup = null;
 }
 function renderTudo(){
   renderTelaS(); renderTelaR(); renderFaixa(); ajustaLinhaKpi();
+  document.getElementById('chaveRessup').hidden = telas[atual].id !== 'telaR' || !ressup;
   if (telas[atual].dataset.vazia && telasAtivas().length) mostraTela(proximaTela(1));
 }
 async function carregar(){
   try {
+    var dia = diaTela();
     var g = await Promise.all([ultimoGerado('pfas'), ultimoGerado('ressuprimento_mov')]);
-    var tudo = Date.now() - lidoEm > RELE_TUDO_MIN*60000, mudou = false;
-    if (tudo || g[0] !== versaoLida.pfas) { await carregaPfas(); versaoLida.pfas = g[0]; mudou = true; }
-    if (tudo || g[1] !== versaoLida.ressup) { await carregaRessup(); versaoLida.ressup = g[1]; mudou = true; }
-    if (tudo) lidoEm = Date.now();
+    var tudo = Date.now() - lidoEm > RELE_TUDO_MIN*60000 || versaoLida.dia !== dia, mudou = false;
+    if (tudo || g[0] !== versaoLida.pfas) { await carregaPfas(dia); versaoLida.pfas = g[0]; mudou = true; }
+    if (tudo || g[1] !== versaoLida.ressup) { await carregaRessup(dia); versaoLida.ressup = g[1]; mudou = true; }
+    if (tudo) { lidoEm = Date.now(); versaoLida.dia = dia; }
     falhou = false;
     if (mudou) renderTudo();
   } catch(e) {
@@ -617,8 +721,15 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
   if (!(await temPerfil(r.data.session))) { erro.textContent = 'Usuário sem perfil de acesso. Fale com o admin.'; await sb.auth.signOut(); return; }
   iniciar();
 });
-// Prévia sem banco (só para teste local): ?demo=1 desenha com dados de exemplo.
-if (Q.get('demo') === '1' && window.TELAO_DEMO) { window.TELAO_DEMO(function(pfas, rs){ SI.aplicarEtapaPersona(pfas, SI.listaPadraoPersona()); resumoSI = SI.resumoStartInicial(pfas); ressup = rs; atualizadoEm.pfas = atualizadoEm.ressuprimento_mov = new Date(); mostraTela(0); renderTudo(); relogio(); }); return; }
+// Prévia sem banco (só para teste local): ?demo=1 desenha com dados de exemplo injetados pelo teste.
+if (Q.get('demo') === '1' && window.TELAO_DEMO) {
+  window.TELAO_DEMO(function(pfas, rs){
+    SI.aplicarEtapaPersona(pfas, SI.listaPadraoPersona()); resumoSI = SI.resumoStartInicial(pfas); ressup = rs;
+    rs.aloc.concat(rs.ret).forEach(function(h){ diasComDado[h.dia] = 1; });
+    atualizadoEm.pfas = atualizadoEm.ressuprimento_mov = new Date(); mostraTela(0); renderTudo(); relogio();
+  });
+  return;
+}
 iniciar();
 })();
 </script>
