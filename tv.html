@@ -92,11 +92,14 @@ body.ocioso,body.ocioso *{cursor:none!important}
 
 /* ---------- cards, painéis e top 5 (mesmos do telão do E-commerce) ---------- */
 /* título sempre no alto do card; número e linha de baixo encostados embaixo */
-.kpi{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 18px;display:grid;grid-template-rows:auto 1fr auto;gap:2px;border-top:4px solid var(--kc,var(--border));min-width:0;min-height:0}
+.kpi{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 18px;display:grid;grid-template-rows:auto 1fr;gap:2px;border-top:4px solid var(--kc,var(--border));min-width:0;min-height:0}
 .kpi .k{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);font-weight:700}
-.kpi .v{font-size:44px;font-weight:800;line-height:1;color:var(--vc,var(--text));white-space:nowrap;align-self:end}
+/* informação principal centralizada no espaço abaixo do título */
+.kpi .m{align-self:center;display:grid;gap:4px;justify-items:center;text-align:center;min-width:0;width:100%}
+.kpi .v{font-size:44px;font-weight:800;line-height:1;color:var(--vc,var(--text));white-space:nowrap}
+.kpi .v .dt{display:inline-block;margin-left:14px;padding:2px 12px;border-radius:8px;font-size:30px;vertical-align:4px;color:var(--amber);background:rgba(246,189,0,.14);border:1px solid rgba(246,189,0,.55)}
 .kpi .v small{font-size:19px;font-weight:700;color:var(--text-muted);margin-left:8px}
-.kpi .s{font-size:19px;color:var(--text-muted);white-space:nowrap;overflow:hidden}.kpi .s b{color:var(--vc,var(--kc,var(--text)));font-weight:800}
+.kpi .s{font-size:19px;color:var(--text-muted);white-space:nowrap;overflow:hidden;max-width:100%}.kpi .s b{color:var(--vc,var(--kc,var(--text)));font-weight:800}
 .painel{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 18px;display:grid;grid-template-rows:auto 1fr;gap:10px;min-height:0;min-width:0}
 .painel .k{font-size:13px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--pc,var(--text-muted))}
 .painel .k small{letter-spacing:0;text-transform:none;font-weight:600;color:var(--text-muted);font-size:13px}
@@ -131,11 +134,11 @@ body.ocioso,body.ocioso *{cursor:none!important}
 
 /* ---------- rosca ---------- */
 .pizza{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;min-height:0}
-.pizza svg{height:100%;max-height:118px;min-height:0;aspect-ratio:1}
-.pizza .leg{display:grid;gap:4px;min-width:0}
-.pizza .leg div{display:grid;grid-template-columns:11px 1fr auto auto;gap:7px;align-items:center;font-size:14px}
-.pizza .leg span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pizza .leg i{width:11px;height:11px;border-radius:3px;background:var(--m)}.pizza .leg b{font-size:15px}.pizza .leg em{font-style:normal;color:var(--text-muted);width:36px;text-align:right}
+.pizza svg{height:100%;max-height:100px;min-height:0;aspect-ratio:1}
+.pizza .leg{display:grid;grid-template-rows:repeat(3,auto);grid-auto-flow:column;column-gap:14px;row-gap:6px;align-content:center;min-width:0}
+.pizza .leg div{display:flex;align-items:center;gap:5px;font-size:13px;white-space:nowrap;color:var(--text-label)}
+.pizza .leg span{color:var(--text)}
+.pizza .leg i{flex:none;width:10px;height:10px;border-radius:3px;background:var(--m)}.pizza .leg b{font-size:15px;color:var(--m)}
 
 /* ---------- Start Inicial ---------- */
 .si-topo{display:grid;grid-template-columns:1fr 1fr 1.45fr;gap:14px;height:150px;flex:none}
@@ -153,7 +156,7 @@ body.ocioso,body.ocioso *{cursor:none!important}
 .nfs .lin.total .c{background:transparent;color:var(--text);font-size:19px}
 
 /* ---------- Ressuprimento: cards de cima alinhados com os painéis de baixo ---------- */
-.rs{display:grid;grid-template-columns:3fr 1fr;grid-template-rows:140px 1fr;gap:14px;flex:1;min-height:0}
+.rs{display:grid;grid-template-columns:2.6fr 1.15fr;grid-template-rows:140px 1fr;gap:14px;flex:1;min-height:0}
 .rs-cards{display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:14px;min-height:0}
 .rs .kpi .v{font-size:38px}
 .rs .painel.rosca{padding:10px 16px;gap:4px}
@@ -239,7 +242,7 @@ function rotDia(iso){ var p = iso.split('-'), d = new Date(+p[0], +p[1]-1, +p[2]
 function cssVar(nome){ return 'var('+nome+')'; }
 function qt(n){ return '<b>'+fmt(n)+'</b>'; }
 // O número segue a cor da barra de destaque (kc) quando não vem cor própria (vc). un = unidade ao lado do número.
-function kpiHtml(rot, valor, sub, kc, vc, un){ vc = vc || kc; return '<div class="kpi" style="'+(kc?'--kc:'+kc+';':'')+(vc?'--vc:'+vc:'')+'"><span class="k">'+rot+'</span><span class="v">'+valor+(un?'<small>'+un+'</small>':'')+'</span><span class="s">'+sub+'</span></div>'; }
+function kpiHtml(rot, valor, sub, kc, vc, un, extra){ vc = vc || kc; return '<div class="kpi" style="'+(kc?'--kc:'+kc+';':'')+(vc?'--vc:'+vc:'')+'"><span class="k">'+rot+'</span><div class="m"><span class="v">'+valor+(un?'<small>'+un+'</small>':'')+(extra||'')+'</span><span class="s">'+sub+'</span></div></div>'; }
 function top5Html(lista, cor, vazio){
   if (!lista.length) return '<div class="semhora">'+vazio+'</div>';
   var INTENS = [1, .8, .62, .46, .32];   // intensidade da cor pela posição
@@ -258,8 +261,9 @@ function roscaHtml(itens, total, rotTotal){
     var f = total ? x.v/total : 0, s = '<circle r="'+R+'" cx="90" cy="90" fill="none" stroke="'+x.cor+'" stroke-width="34" stroke-dasharray="'+(f*C).toFixed(1)+' '+C.toFixed(1)+'" stroke-dashoffset="'+(-acc*C).toFixed(1)+'" transform="rotate(-90 90 90)"/>';
     acc += f; return s;
   }).join('');
-  var leg = itens.slice(0, 5).map(function(x){
-    return '<div style="--m:'+x.cor+'"><i></i><span>'+esc(x.n)+'</span><b>'+fmt(x.v)+'</b><em>'+(total ? Math.round(x.v/total*100) : 0)+'%</em></div>';
+  // legenda em 2 colunas de 3 linhas, sem %: "■ Meia - 4.772" com a quantidade na cor do segmento
+  var leg = itens.slice(0, 6).map(function(x){
+    return '<div style="--m:'+x.cor+'"><i></i><span>'+esc(x.n)+'</span> - <b>'+fmt(x.v)+'</b></div>';
   }).join('');
   return '<div class="pizza"><svg viewBox="0 0 180 180">'+fatias+
     '<text x="90" y="94" text-anchor="middle" fill="#E8EBF2" font-size="28" font-weight="800">'+fmt(total)+'</text>'+
@@ -268,6 +272,10 @@ function roscaHtml(itens, total, rotTotal){
 var COR_SEGMENTO = { 'CALÇADO':'#297ADF', 'VESTUÁRIO':'#DFBD41', 'ACESSÓRIO':'#45C645', 'MEIA':'#A77BEA', 'CHINELO':'#2EC4B6', 'CHUTEIRA':'#E8830D', 'SEM FAMÍLIA':'#5B6578' };
 var COR_EXTRA = ['#93A5B8', '#EC4FA0', '#5B7F2B', '#2F5DA8'];
 function corSegmento(seg, i){ return COR_SEGMENTO[seg] || COR_EXTRA[i % COR_EXTRA.length]; }
+function corMaiorSegmento(lista){   // lista de { segmento, pares }: cor do segmento com mais peças
+  var m = lista.reduce(function(a, x){ return !a || x.pares > a.pares ? x : a; }, null);
+  return m && m.pares > 0 ? corSegmento(m.segmento, 0) : 'var(--border)';
+}
 function nomeSegmento(seg){ var s = String(seg||'').toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1); }
 
 /* ================= DIA EXIBIDO ================= */
@@ -316,8 +324,9 @@ function renderTelaS(){
   if (!r || !r.total.pfas) { el.dataset.vazia = '1'; el.innerHTML = '<div class="vazio">Sem PFAs em tela '+(ehHoje() ? 'no último envio' : 'em '+ddmm(diaTela()))+'.</div>'; return; }
   el.dataset.vazia = '';
   var ma = r.maisAntiga;
-  var kPend = kpiHtml('Material pendente', fmt(r.pendente.pares), qt(r.pendente.pfas)+' PFAs · sem Não Disp. Picking e Ag. Embarque', COR_PEND, null, 'peças');
-  var kAnt = ma ? kpiHtml('PFA mais antiga (NF emitida)', fmt(ma.dias), 'PFA <b>'+esc(ma.pfa)+'</b> · NF '+ddmm(ma.data_nota)+' · '+qt(ma.pecas)+' pçs', COR_ANTIGA, null, ma.dias === 1 ? 'dia' : 'dias')
+  var kPend = kpiHtml('Material pendente', fmt(r.pendente.pares), qt(r.pendente.pfas)+' PFAs', COR_PEND, null, 'peças');
+  // data da NF ao lado dos dias, em destaque amarelo
+  var kAnt = ma ? kpiHtml('PFA mais antiga (NF emitida)', fmt(ma.dias), 'PFA <b>'+esc(ma.pfa)+'</b> · '+qt(ma.pecas)+' pçs', COR_ANTIGA, null, ma.dias === 1 ? 'dia' : 'dias', '<span class="dt">'+ddmm(ma.data_nota)+'</span>')
     : kpiHtml('PFA mais antiga (NF emitida)', '—', 'nenhuma PFA com NF em tela', COR_ANTIGA);
   // FIFO: colunas com as peças em cima (sem a quantidade de PFAs)
   var maxF = Math.max.apply(null, r.fifo.map(function(f){ return f.pares; }).concat(1));
@@ -325,20 +334,25 @@ function renderTelaS(){
     return '<div class="col"><div class="pilha" style="height:'+(f.pares/maxF*72).toFixed(1)+'%;background:'+cssVar(f.cor)+'"><em style="color:'+cssVar(f.cor)+'">'+fmt(f.pares)+'</em></div>'+
       '<div class="rot">'+esc(f.rotulo)+'</div></div>';
   }).join('');
-  // Funil: as 7 etapas sempre (00 e 06 também), cada uma na cor do report
-  var maxE = Math.max.apply(null, r.etapas.map(function(e){ return e.pares; }).concat(1));
-  var funil = r.etapas.map(function(e){
+  // Funil sem "00 Não Disp. Picking" e "06 Lido na Esteira" (pedido 05/11, para ganhar espaço): o total bate com o Material pendente
+  var etapasF = r.etapas.filter(function(e){ return e.etapa !== 'Nao disp. picking' && e.etapa !== SI.ETAPA_LIDA; });
+  var maxE = Math.max.apply(null, etapasF.map(function(e){ return e.pares; }).concat(1));
+  var totF = etapasF.reduce(function(s, e){ return { pares: s.pares + e.pares, pfas: s.pfas + e.pfas }; }, { pares:0, pfas:0 });
+  // barra de destaque de cada painel na cor de onde está o maior volume
+  var maiorDe = function(l){ return l.reduce(function(m, x){ return !m || x.pares > m.pares ? x : m; }, null); };
+  var corFifo = maiorDe(r.fifo), corFunil = maiorDe(etapasF);
+  var funil = etapasF.map(function(e){
     return '<div class="etapa"><span class="nm">'+esc(e.rotulo)+'</span><div class="trilho"><div class="barra" style="width:'+(e.pares/maxE*100).toFixed(2)+'%;background:'+cssVar(e.cor)+'"></div></div>'+
       '<span class="tot">'+fmt(e.pares)+'</span><span class="tot ped">'+fmt(e.pfas)+'</span></div>';
   }).join('');
   el.innerHTML =
     '<div class="si-topo">'+kPend+kAnt+
-      '<div class="painel"><span class="k">FIFO · idade das PFAs em tela <small>(peças)</small></span><div class="colunas">'+fifo+'</div></div></div>'+
+      '<div class="painel" style="border-top:4px solid '+(corFifo ? cssVar(corFifo.cor) : 'var(--border)')+'"><span class="k">FIFO · idade das PFAs em tela <small>(peças)</small></span><div class="colunas">'+fifo+'</div></div></div>'+
     '<div class="si-meio">'+
-      '<div class="painel" style="grid-template-rows:auto 1fr auto"><div class="etapa cab"><span class="nm">Funil por etapa</span><span></span><span class="tot">Peças</span><span class="tot">PFAs</span></div>'+
+      '<div class="painel" style="grid-template-rows:auto 1fr auto;border-top:4px solid '+(corFunil ? cssVar(corFunil.cor) : 'var(--border)')+'"><div class="etapa cab"><span class="nm">Funil por etapa</span><span></span><span class="tot">Peças</span><span class="tot">PFAs</span></div>'+
         '<div class="etapas">'+funil+'</div>'+
-        '<div class="etapa total"><span class="nm">Total em tela</span><span></span><span class="tot">'+fmt(r.total.pares)+'</span><span class="tot ped">'+fmt(r.total.pfas)+'</span></div></div>'+
-      '<div class="painel"><span class="k">Nota fiscal × segmento <small>(peças)</small></span>'+nfSegmentoHtml(r.nfSegmento)+'</div>'+
+        '<div class="etapa total"><span class="nm">Total</span><span></span><span class="tot">'+fmt(totF.pares)+'</span><span class="tot ped">'+fmt(totF.pfas)+'</span></div></div>'+
+      '<div class="painel" style="border-top:4px solid '+corMaiorSegmento(r.nfSegmento.map(function(s){ return { segmento:s.chave, pares:s.sem + s.com }; }))+'"><span class="k">Nota fiscal × segmento <small>(peças)</small></span>'+nfSegmentoHtml(r.nfSegmento)+'</div>'+
     '</div>';
 }
 // NF × Segmento resumido: uma linha por segmento, colunas Sem NF / Com NF (cor de calor) e o total.
@@ -405,7 +419,7 @@ function renderTelaR(){
         kpiHtml(ROT_CARD_RESSUP[etapaRessup]+' em '+ddmm(diaU), fmt(ult.pecas), qt(ult.movimentos)+' movimentos · média 7d '+qt(media), COR_RS, null, 'peças')+
         turnoCard('T01')+turnoCard('T02')+turnoCard('T03')+
       '</div>'+
-      '<div class="painel rosca"><span class="k">Por segmento · '+ddmm(diaU)+'</span>'+(itensRosca.length ? roscaHtml(itensRosca, ult.pecas, 'peças') : '<div class="semhora">Sem segmento no dia</div>')+'</div>'+
+      '<div class="painel rosca" style="border-top:4px solid '+corMaiorSegmento(segs.map(function(s){ return { segmento:s.segmento, pares:s.pecas }; }))+'"><span class="k">Por segmento · '+ddmm(diaU)+'</span>'+(itensRosca.length ? roscaHtml(itensRosca, ult.pecas, 'peças') : '<div class="semhora">Sem segmento no dia</div>')+'</div>'+
       '<div class="painel" style="--pc:'+COR_RS+'"><span class="k" style="display:flex;justify-content:space-between;align-items:center">'+
         '<span>Peças por dia e turno</span>'+leg+'</span>'+
         '<div class="colunas" style="padding-top:26px">'+cols+'<div class="media" data-frac="'+(media/maxD).toFixed(4)+'"></div></div></div>'+
@@ -456,12 +470,6 @@ function renderFaixa(){
       itens.push('<span class="ti" style="--c:'+corSegmento(s.segmento, i)+'"><i></i><b>'+esc(nomeSegmento(s.segmento))+' em tela</b> <span class="v">'+fmt(s.pares)+'</span> peças</span>');
     });
     if (r.ajustesEmAberto) itens.push('<span class="ti" style="--c:var(--accent-light)"><b>Ajustes de PFA em aberto</b> <span class="v">'+fmt(r.ajustesEmAberto)+'</span> ag. comercial</span>');
-  }
-  var x = diasRessup(), dias = x.dias || [];
-  if (dias.length) {
-    var u = dias[dias.length-1], media = dias.reduce(function(s, d){ return s + d.pecas; }, 0) / dias.length;
-    itens.push('<span class="ti" style="--c:'+COR_RS+'"><b>'+ROT_CARD_RESSUP[etapaRessup]+' em '+ddmm(u.dia)+'</b> <span class="v">'+fmt(u.pecas)+'</span> peças</span>');
-    itens.push('<span class="ti" style="--c:'+COR_RS+'"><b>Média '+dias.length+' dias</b> <span class="v">'+fmt(media)+'</span> peças/dia</span>');
   }
   if (itens.length) montaLoop(itens.join(''));
 }
