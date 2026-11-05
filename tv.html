@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0F1A33">
+<!-- Celular: "Adicionar à Tela de Início" abre o telão sem as barras do navegador (iPhone não aceita tela cheia em página) -->
+<link rel="manifest" href="/tv.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Telão DISTR">
+<link rel="apple-touch-icon" href="/logo-mark.png">
 <title>Telão · DISTR</title>
 <link rel="icon" href="/logo-mark.png" type="image/png">
 <!--
@@ -45,6 +52,8 @@ html,body{margin:0;height:100%;background:#05080E;overflow:hidden}
 @keyframes tituloVolta{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:none}}
 .navt button{width:34px;height:34px;border-radius:8px;border:1px solid color-mix(in srgb, var(--cc,#297ADF) 55%, transparent);background:color-mix(in srgb, var(--cc,#297ADF) 14%, transparent);color:var(--cc,#297ADF);font-family:inherit;font-size:20px;font-weight:800;line-height:1;padding:0 0 2px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background .3s,border-color .3s,color .3s}
 .navt button:hover{background:color-mix(in srgb, var(--cc,#297ADF) 30%, transparent);border-color:var(--cc,#297ADF)}
+.dica-tc{position:fixed;top:70px;right:16px;z-index:60;max-width:360px;background:var(--bg-card);border:1px solid var(--border);border-top:4px solid var(--accent);border-radius:10px;padding:14px 16px;font-size:15px;line-height:1.6;box-shadow:0 10px 30px rgba(0,0,0,.45)}.dica-tc[hidden]{display:none}
+.dica-tc>b:first-child{display:block;font-size:16px;margin-bottom:6px}.dica-tc small{display:block;margin-top:8px;color:var(--text-muted);font-size:12px}
 .fsb{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;cursor:pointer;background:rgba(127,140,170,.14);border:1px solid rgba(127,140,170,.35);color:inherit;font-family:inherit;font-size:12px;font-weight:600;line-height:1.2;white-space:nowrap}
 .fsb:hover{background:rgba(127,140,170,.26)}
 .fsb[hidden]{display:none}
@@ -213,7 +222,7 @@ body.ocioso,body.ocioso *{cursor:none!important}
 </head>
 <body>
 <div id="palco">
-  <div class="fh"><span class="lg"><img src="tv/logo-vulcabras-cor.png" alt="Vulcabras"><small>DISTRIBUIDORA</small></span><span class="tt"><span class="navt"><button type="button" id="telaAnt" aria-label="Tela anterior">&lt;</button><span id="titulo">Start Inicial</span><button type="button" id="telaProx" aria-label="Próxima tela">&gt;</button></span></span><div class="chave" id="chaveRessup" hidden></div><span class="selo" id="selo">Conectando…</span><button type="button" class="fsb" id="btnTelaCheia">⛶ Tela cheia</button><span class="lv" id="aoVivo">● AO VIVO</span><button type="button" class="fsb" id="btnHoje" title="Voltar para hoje" hidden>↺ Hoje</button><div class="ck"><div id="hora">--:--</div><span id="data" title="Escolher o dia mostrado" role="button" aria-haspopup="dialog"></span><div class="cal" id="cal" hidden role="dialog" aria-label="Dia exibido"></div></div></div>
+  <div class="fh"><span class="lg"><img src="tv/logo-vulcabras-cor.png" alt="Vulcabras"><small>DISTRIBUIDORA</small></span><span class="tt"><span class="navt"><button type="button" id="telaAnt" aria-label="Tela anterior">&lt;</button><span id="titulo">Start Inicial</span><button type="button" id="telaProx" aria-label="Próxima tela">&gt;</button></span></span><div class="chave" id="chaveRessup" hidden></div><span class="selo" id="selo">Conectando…</span><button type="button" class="fsb" id="btnTelaCheia">⛶ Tela cheia</button><div class="dica-tc" id="dicaTC" hidden><b>Tela cheia no celular</b>1. Toque em <b>Compartilhar</b> (⬆) no Safari ou no menu ⋮ do Chrome<br>2. <b>Adicionar à Tela de Início</b><br>3. Abra pelo ícone <b>Telão DISTR</b> e deite o celular<small>Toque para fechar</small></div><span class="lv" id="aoVivo">● AO VIVO</span><button type="button" class="fsb" id="btnHoje" title="Voltar para hoje" hidden>↺ Hoje</button><div class="ck"><div id="hora">--:--</div><span id="data" title="Escolher o dia mostrado" role="button" aria-haspopup="dialog"></span><div class="cal" id="cal" hidden role="dialog" aria-label="Dia exibido"></div></div></div>
   <div class="main">
     <section class="tela on" id="telaS" data-titulo="Start Inicial · PFAs em tela" data-giro="90" data-fonte="pfas"><div class="vazio">Carregando o Start Inicial…</div></section>
     <section class="tela" id="telaR" data-titulo="Ressuprimento" data-giro="90" data-fonte="ressuprimento_mov"><div class="vazio">Carregando o Ressuprimento…</div></section>
@@ -642,12 +651,16 @@ function escala(){
 }
 /* ---------- tela cheia e cursor escondido ---------- */
 function telaCheiaAtiva(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
-function atualizaBotaoTC(){ document.getElementById('btnTelaCheia').hidden = telaCheiaAtiva() || !(document.fullscreenEnabled || document.webkitFullscreenEnabled); }
+function modoApp(){ return navigator.standalone === true || matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches; }
+function atualizaBotaoTC(){ var b = document.getElementById('btnTelaCheia');
+  b.hidden = (document.fullscreenEnabled || document.webkitFullscreenEnabled) ? telaCheiaAtiva() : modoApp(); }   // iPhone: o botão ensina a instalar
 document.getElementById('btnTelaCheia').addEventListener('click', function(e){
   e.stopPropagation();
   var el = document.documentElement, f = el.requestFullscreen || el.webkitRequestFullscreen;
-  if (f) { var p = f.call(el); if (p && p.catch) p.catch(function(){}); }
+  if (f && (document.fullscreenEnabled || document.webkitFullscreenEnabled)) { var p = f.call(el); if (p && p.catch) p.catch(function(){}); return; }
+  document.getElementById('dicaTC').hidden = false;   // navegador sem tela cheia (iPhone): mostra como instalar
 });
+document.getElementById('dicaTC').addEventListener('click', function(e){ e.stopPropagation(); this.hidden = true; });
 document.addEventListener('fullscreenchange', atualizaBotaoTC); document.addEventListener('webkitfullscreenchange', atualizaBotaoTC);
 atualizaBotaoTC();
 var ocioso = null;
