@@ -173,6 +173,12 @@ body.ocioso,body.ocioso *{cursor:none!important}
 .rs-col{display:flex;flex-direction:column;gap:14px;min-height:0;min-width:0}
 .rs-col .cresce{flex:1}
 .rs-cards{display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:14px;height:140px;flex:none}
+.rs.sem-nomes{display:flex;flex-direction:column}
+.rs.sem-nomes .cresce{flex:1;min-height:0}
+.rs-topo{display:grid;grid-template-columns:2.6fr 1.15fr;gap:14px;height:200px;flex:none}
+.rs-topo .rs-cards{height:auto}
+.rs.sem-nomes .painel.rosca{height:auto}
+.rs.sem-nomes .painel.rosca .pizza svg{max-height:140px}
 .rs .kpi .v{font-size:38px}
 .rs .painel.rosca{padding:12px 16px;gap:6px;height:240px;flex:none}
 /* rosca grande à esquerda e a legenda numa coluna só à direita */
@@ -242,7 +248,10 @@ var RECARREGA_H = 6;                        // recarga completa da página (pega
 var RELE_TUDO_MIN = 30;                     // relê tudo de tempos em tempos, mesmo sem snapshot novo
 // Selo de atualização: o abastecimento da DISTR é manual (upload no report), então os limites são maiores que os do E-commerce.
 var SELO_OK_MIN = 120, SELO_ATENCAO_MIN = 360;
-var DIAS_RESSUP = 10;                       // últimos dias corridos no gráfico do Ressuprimento
+// Nomes dos colaboradores (Top 5 por turno) fora do telão desde 05/11/2026: exposição de nome foi apontada como assédio.
+// ROLLBACK, se a operação liberar: trocar para true e publicar (a TV recarrega sozinha em até 5 min).
+var MOSTRAR_NOMES = false;
+var DIAS_RESSUP = MOSTRAR_NOMES ? 10 : 13;  // últimos dias corridos no gráfico do Ressuprimento (sem o Top 5, o gráfico ocupa a largura toda)
 var SUPABASE_URL = 'https://qaehjplsasumuhszjcnu.supabase.co';
 var SUPABASE_ANON_KEY = 'sb_publishable_NkbzLFHMLhVVJYSKDW9NrA_JWQAnPI9';
 var DOMINIO_LOGIN = '@vulcabras.com';
@@ -460,6 +469,18 @@ function renderTelaR(){
       return '<div><span class="p"'+st+'>'+(i+1)+'</span><span class="nm">'+esc(nome ? nomeCurto(nomeBonito(nome)) : o.login)+'</span><b'+st+'>'+fmt(o.pecas)+'</b></div>'; }).join('')+'</div>' : '';
     return '<div class="tt5" style="--t:'+COR_TURNO[t]+'"><span class="tn">'+t+(diaT ? '<em>'+(diaT === hojeISO() ? 'hoje' : ddmm(diaT))+'</em>' : '')+'</span>'+(linhas || '<span class="sem">sem registro</span>')+'</div>';
   }).join('');
+  var cardsHtml = kpiHtml(ROT_CARD_RESSUP[etapaRessup]+' em '+ddmm(diaU), fmt(ult.pecas), qt(ult.movimentos)+' movimentos · média/dia '+qt(media), COR_RS, null, 'peças')+
+    turnoCard('T01')+turnoCard('T02')+turnoCard('T03');
+  var graficoHtml = '<div class="painel cresce" style="--pc:'+COR_RS+'"><span class="k" style="display:flex;justify-content:space-between;align-items:center">'+
+    '<span>Peças por dia e turno</span>'+leg+'</span>'+
+    '<div class="colunas" style="padding-top:26px">'+cols+'<div class="media" data-frac="'+(media/maxD).toFixed(4)+'"></div></div></div>';
+  var roscaCard = '<div class="painel rosca" style="border-top:4px solid '+corMaiorSegmento(segs.map(function(s){ return { segmento:s.segmento, pares:s.pecas }; }))+'"><span class="k">Por segmento · '+ddmm(diaU)+'</span>'+(itensRosca.length ? roscaHtml(itensRosca, ult.pecas, 'peças') : '<div class="semhora">Sem segmento no dia</div>')+'</div>';
+  if (!MOSTRAR_NOMES) {
+    // Sem nomes: cards + rosca em cima, gráfico de colunas na largura toda embaixo
+    el.innerHTML = '<div class="rs sem-nomes"><div class="rs-topo"><div class="rs-cards">'+cardsHtml+'</div>'+roscaCard+'</div>'+graficoHtml+'</div>';
+    ajustaMediaColunas(el);
+    return;
+  }
   el.innerHTML =
     '<div class="rs">'+
       '<div class="rs-col">'+
@@ -738,10 +759,10 @@ async function carregaRessup(dia){
   var r = await Promise.all([
     lerTudo(function(){ return sb.from('ressuprimento_historico_diario').select('dia, segmento, turno, pecas, movimentos').gte('dia', de).lte('dia', dia).order('dia'); }),
     lerTudo(function(){ return sb.from('ressuprimento_retirada_diario').select('dia, segmento, turno, pecas, movimentos').gte('dia', de).lte('dia', dia).order('dia'); }),
-    leOperadores('ressuprimento_operador_diario', dia),
-    leOperadores('ressuprimento_retirada_operador', dia),
+    MOSTRAR_NOMES ? leOperadores('ressuprimento_operador_diario', dia) : [],
+    MOSTRAR_NOMES ? leOperadores('ressuprimento_retirada_operador', dia) : [],
     sb.from('dashboard_snapshots').select('gerado_em').eq('pagina', 'ressuprimento_mov').order('gerado_em', { ascending:false }).limit(1),
-    lerTudo(function(){ return sb.from('dim_colaboradores_turno').select('login, nome').order('login'); }),   // base de ativos: nome completo
+    MOSTRAR_NOMES ? lerTudo(function(){ return sb.from('dim_colaboradores_turno').select('login, nome').order('login'); }) : { data: [] },   // base de ativos: nome completo
   ]);
   if (!r[5].error) { nomesAtivos = {}; (r[5].data || []).forEach(function(c){ if (c.login && c.nome) nomesAtivos[String(c.login).toUpperCase()] = c.nome; }); }
   if (r[0].error) throw r[0].error;
