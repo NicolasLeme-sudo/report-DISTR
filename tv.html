@@ -77,10 +77,15 @@ body.ocioso,body.ocioso *{cursor:none!important}
 .cal .rod button{font:inherit;font-weight:700;font-size:12px;color:var(--cc2);background:none;border:1px solid var(--cc2);border-radius:99px;padding:4px 14px;cursor:pointer}
 .cal .rod button:hover{background:var(--cc);color:var(--cc-t)}
 /* interruptor do Ressuprimento: pequeno e meio translúcido na barra de cima (só aparece nessa tela) */
-.chave{display:inline-flex;background:transparent;border:1px solid var(--border);border-radius:99px;padding:2px;gap:2px;opacity:.35;transition:opacity .3s}
+.chave{position:relative;display:inline-flex;background:transparent;border:1px solid var(--border);border-radius:99px;padding:2px;gap:2px;opacity:.35;transition:opacity .3s}
 .chave:hover{opacity:1}.chave[hidden]{display:none}
 .chave button{font:inherit;font-size:11px;font-weight:700;color:var(--olive);background:none;border:0;border-radius:99px;padding:4px 10px;cursor:pointer;white-space:nowrap}
-.chave button.on{background:var(--olive);color:#0E1626}
+.chave .ind{position:absolute;top:2px;bottom:2px;left:0;width:0;border-radius:99px;background:var(--olive);transition:left .35s cubic-bezier(.2,.8,.2,1),width .35s cubic-bezier(.2,.8,.2,1)}
+.chave .ind.sem{transition:none}
+.chave button{position:relative;z-index:1;transition:color .35s}
+.chave button.on{color:#0E1626}
+#telaR.troca-etapa>*{animation:trocaEtapa .45s ease-out}
+@keyframes trocaEtapa{from{opacity:.15}to{opacity:1}}
 .chave button:not(.on):hover{color:var(--olive)}
 .main{flex:1;min-height:0;padding:12px 22px 0;display:flex;flex-direction:column;position:relative}
 .tela{display:none;flex-direction:column;flex:1;min-height:0;gap:14px}.tela.on{display:flex;animation:telaEntra .7s cubic-bezier(.2,.8,.2,1) both}
@@ -391,8 +396,18 @@ function diasRessup(){
 }
 function desenhaChave(){
   var c = document.getElementById('chaveRessup');
-  c.innerHTML = ['alocacao','retirada','geral'].map(function(k){
-    return '<button type="button" data-etapa="'+k+'" class="'+(k === etapaRessup ? 'on' : '')+'">'+ROT_ETAPA_RESSUP[k]+'</button>'; }).join('');
+  if (!c.querySelector('.ind')) c.innerHTML = '<span class="ind sem"></span>' + ['alocacao','retirada','geral'].map(function(k){
+    return '<button type="button" data-etapa="'+k+'">'+ROT_ETAPA_RESSUP[k]+'</button>'; }).join('');
+  c.querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', b.dataset.etapa === etapaRessup); });
+  posicionaChave();
+}
+/* Desliza o destaque verde até a opção escolhida; escondido não dá para medir, então posiciona sem animar ao aparecer. */
+function posicionaChave(semAnimar){
+  var c = document.getElementById('chaveRessup'), ind = c.querySelector('.ind'), b = c.querySelector('button.on');
+  if (!ind || !b || c.hidden || !b.offsetWidth) { if (ind) ind.classList.add('sem'); return; }
+  if (semAnimar) ind.classList.add('sem');
+  ind.style.left = b.offsetLeft + 'px'; ind.style.width = b.offsetWidth + 'px';
+  if (ind.classList.contains('sem')) { void ind.offsetWidth; ind.classList.remove('sem'); }
 }
 function renderTelaR(){
   var el = document.getElementById('telaR');
@@ -481,6 +496,7 @@ function trocaEtapaRessup(k){
   etapaRessup = k;
   try { localStorage.setItem('telao_distr_ressup', k); } catch(e) {}
   renderTelaR(); renderFaixa(); ajustaLinhaKpi();
+  var el = document.getElementById('telaR'); el.classList.remove('troca-etapa'); void el.offsetWidth; el.classList.add('troca-etapa');
 }
 document.getElementById('chaveRessup').addEventListener('click', function(e){ var b = e.target.closest('button'); if (b) { e.stopPropagation(); trocaEtapaRessup(b.dataset.etapa); } });
 
@@ -534,6 +550,7 @@ function entraTela(i){
   if (tit.textContent !== novoTit) { tit.textContent = novoTit; tit.classList.remove('troca', 'recua'); void tit.offsetWidth; tit.classList.add('troca'); if (sentidoTroca < 0) tit.classList.add('recua'); }
   sentidoTroca = 1;
   document.getElementById('chaveRessup').hidden = telas[i].id !== 'telaR' || !ressup;   // interruptor só na tela de Ressuprimento
+  posicionaChave(true);
   document.getElementById('barra').hidden = telasAtivas().length < 2;   // com uma tela só não há o que girar
   document.querySelector('.navt').classList.toggle('so', telasAtivas().length < 2);
   relogio();
@@ -724,6 +741,7 @@ async function carregaRessup(dia){
 function renderTudo(){
   renderTelaS(); renderTelaR(); renderFaixa(); ajustaLinhaKpi();
   document.getElementById('chaveRessup').hidden = telas[atual].id !== 'telaR' || !ressup;
+  posicionaChave(true);
   if (telas[atual].dataset.vazia && telasAtivas().length) mostraTela(proximaTela(1));
 }
 async function carregar(){
