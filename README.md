@@ -490,3 +490,29 @@ versão validada com a operação (66 etapas, 4 fases + Reversa) como a primeira
 linha de `dashboard_snapshots` para `pagina='distr_fluxo'`. Depois disso, é
 editor na tela — não precisa rodar esse arquivo de novo (e se rodar, só cria
 mais uma versão igual, não quebra nada).
+
+## 11. Telão DISTR (`tv.html`)
+
+Mesma estrutura do telão do E-commerce (`Produtividade---E-commerce/tv.html`): palco 1500×844 escalado para a TV,
+telas em rodízio com transição, barra do giro, selo de atualização, faixa de totais em loop, tela cheia, recarga a
+cada 6 h e sozinho quando sai versão nova. Lê o **mesmo banco** do report: o abastecimento continua manual no
+Admin › Abastecimento e o telão se atualiza sozinho (a cada 60 s confere o `gerado_em` dos snapshots `pfas` e
+`ressuprimento_mov`; só busca os dados quando muda, e relê tudo a cada 30 min).
+
+- **Endereço:** `/tv` no site do report. Parâmetros: `?giro=90`, `?refresh=60`, `?ressup=alocacao|retirada|soma`.
+- **Login:** conta própria da TV com perfil `operador` (`telao_usuario.sql`), sessão guardada (`storageKey: telao-distr`).
+- **Mesmos números do report:** as regras moram em `start-inicial-calc.js` (etapas, clientes que personalizam,
+  `aplicarEtapaPersona`, cores do funil/FIFO, `resumoStartInicial`) e `ressuprimento-calc.js` (Alocação / Retirada /
+  Soma, histórico por dia/turno/segmento, Top operadores), usados pelo `index.html` e pelo `tv.html`. Teste: `node testes-telao.js`.
+- **Tela Start Inicial** (sem filtros): Material pendente (total − "00 Não Disp. Picking" − "06 Lido na Esteira (Ag.
+  Embarque)"; as duas continuam no funil), PFA mais antiga (NF emitida), FIFO em colunas, funil com as 7 etapas, Nota
+  fiscal × segmento em pé (linhas = data da NF, rola sozinha se não couber) e faixa contínua com o total por segmento.
+- **Tela Ressuprimento:** últimos 7 dias com registro (`ressuprimento_historico_diario` / `ressuprimento_retirada_diario`).
+  Interruptor Alocação no Picking · Retirada do Pulmão · Soma (clique ou teclas A/R/S; fica guardado na TV). Cards do
+  último dia (total e T01/T02/T03), rosca por segmento do dia, barras dos 7 dias por turno com a média, Top 5 operadores do dia.
+- **Peças por operador:** `migracao_operador_pecas.sql` acrescenta `pecas`/`movimentos` em `ressuprimento_operador_diario`
+  e `ressuprimento_retirada_operador` (o ingest do Kardex já grava; sem a migração ele grava sem as colunas e avisa).
+  Depois de rodar, reenvie o Kardex dos últimos 7 dias. Até lá o Top 5 usa os operadores do último Kardex inteiro.
+- **Faixa de baixo:** Material pendente, NF emitida ag. coleta, PFA mais antiga, total em tela, ajustes em aberto,
+  ressuprido no último dia e média dos 7 dias (na posição do interruptor).
+- **Fase 2:** tela Embarque × Forecast (consultas do `embarque.js`).

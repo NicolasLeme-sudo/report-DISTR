@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0F1A33">
+<title>Telão · DISTR</title>
+<link rel="icon" href="/logo-mark.png" type="image/png">
+<!--
+  TELÃO DA DISTRIBUIDORA (DISTR) — mesma estrutura do telão do E-commerce (Produtividade---E-commerce/tv.html).
+  - Lê o MESMO banco do report da DISTR (Supabase qaehjplsasumuhszjcnu). Os dados continuam sendo
+    abastecidos à mão no Admin › Abastecimento do report; o telão só lê e se atualiza sozinho.
+  - Mesmas regras do report: start-inicial-calc.js (Start Inicial) e ressuprimento-calc.js (Ressuprimento).
+  - A cada 1 min confere se chegou snapshot novo (só a data); quando chega, busca os dados e redesenha.
+  - Parâmetros na URL: ?giro=90 (segundos por tela) · ?refresh=60 (segundos entre conferências)
+    · ?ressup=alocacao|retirada|soma (posição inicial do interruptor do Ressuprimento)
+  - Não altera nada no banco.
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="start-inicial-calc.js"></script>
+<script src="ressuprimento-calc.js"></script>
+<style>
+html,body{margin:0;height:100%;background:#05080E;overflow:hidden}
+*{box-sizing:border-box}
+/* ---------- palco 1500×844 (16:9) escalado para qualquer TV ---------- */
+#palco{position:absolute;left:50%;top:50%;width:1500px;height:844px;transform-origin:50% 50%;display:flex;flex-direction:column;
+  --bg:#0F1623;--bg-card:#192032;--bg-input:#1E2A3D;--border:#253048;--text:#E8EBF2;--text-muted:#7C8BA8;--text-label:#9BAAC4;
+  --cc:#297ADF;--cc2:#7FB2EC;--cc-t:#fff;
+  --accent:#297ADF;--accent-light:#7FB2EC;--olive:#45C645;--amber:#F6BD00;--orange:#F5A524;--red:#C8102E;
+  --gelo:#93A5B8;--laranja:#E8830D;--roxo:#A77BEA;--verde-escuro:#2E8B3E;--verde-musgo:#5B7F2B;--brand-miz:#DFBD41;
+  background:var(--bg);color:var(--text);font-size:16px;line-height:1.35;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-variant-numeric:tabular-nums;overflow:hidden}
+
+/* ---------- topo ---------- */
+.fh{display:flex;align-items:center;gap:24px;padding:8px 22px;border-bottom:1px solid var(--border);flex:none}
+.fh .lg{display:flex;align-items:center;gap:14px}.fh .lg img{height:46px;width:auto;display:block}.fh .lg small{color:var(--text-muted);font-weight:700;font-size:13px;letter-spacing:.12em;border-left:1px solid var(--border);padding-left:14px}
+.fh .selo{font-size:20px}
+.fh .tt{flex:1;font-size:22px;font-weight:700}
+.navt{display:inline-flex;align-items:center;gap:12px;vertical-align:middle}
+.navt.so button{visibility:hidden}
+#titulo{display:inline-block}
+#titulo.troca{animation:tituloAvanca .55s cubic-bezier(.2,.8,.2,1)}#titulo.troca.recua{animation-name:tituloVolta}
+@keyframes tituloAvanca{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:none}}
+@keyframes tituloVolta{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:none}}
+.navt button{width:34px;height:34px;border-radius:8px;border:1px solid color-mix(in srgb, var(--cc,#297ADF) 55%, transparent);background:color-mix(in srgb, var(--cc,#297ADF) 14%, transparent);color:var(--cc,#297ADF);font-family:inherit;font-size:20px;font-weight:800;line-height:1;padding:0 0 2px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background .3s,border-color .3s,color .3s}
+.navt button:hover{background:color-mix(in srgb, var(--cc,#297ADF) 30%, transparent);border-color:var(--cc,#297ADF)}
+.fsb{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;cursor:pointer;background:rgba(127,140,170,.14);border:1px solid rgba(127,140,170,.35);color:inherit;font-family:inherit;font-size:12px;font-weight:600;line-height:1.2;white-space:nowrap}
+.fsb:hover{background:rgba(127,140,170,.26)}
+.fsb[hidden]{display:none}
+body.ocioso,body.ocioso *{cursor:none!important}
+.fh .lv{font-size:12px;font-weight:700;color:var(--red);border:1px solid var(--red);border-radius:99px;padding:2px 10px}
+.fh .ck{text-align:right;font-size:12px;color:var(--text-muted)}.fh .ck #hora{font-size:24px;font-weight:700;color:var(--text)}
+.fh .ck #data{display:inline-block;margin-top:3px;padding:2px 10px;border:1px solid var(--border);border-radius:99px;color:var(--text-label);font-weight:600;text-transform:capitalize}
+.main{flex:1;min-height:0;padding:12px 22px 0;display:flex;flex-direction:column;position:relative}
+.tela{display:none;flex-direction:column;flex:1;min-height:0;gap:14px}.tela.on{display:flex;animation:telaEntra .7s cubic-bezier(.2,.8,.2,1) both}
+.tela.saindo{animation:telaSai .35s ease-in both}
+@keyframes telaEntra{from{opacity:0;transform:translateX(28px)}}
+@keyframes telaSai{to{opacity:0;transform:translateX(-28px)}}
+@media (prefers-reduced-motion:reduce){.tela.on,.tela.saindo{animation:none}}
+.vazio{flex:1;display:grid;place-items:center;color:var(--text-muted);font-size:22px;text-align:center}
+
+/* ---------- cards, painéis e top 5 (mesmos do telão do E-commerce) ---------- */
+.kpi{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 18px;display:grid;gap:4px;align-content:center;border-top:4px solid var(--kc,var(--border));min-width:0}
+.kpi .k{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);font-weight:700}
+.kpi .v{font-size:46px;font-weight:800;line-height:1;color:var(--vc,var(--text));white-space:nowrap}
+.kpi .v small{font-size:20px;font-weight:700;color:var(--text-muted);margin-left:8px}
+.kpi .s{font-size:21px;color:var(--text-muted);white-space:nowrap;overflow:hidden}.kpi .s b{color:var(--vc,var(--kc,var(--text)));font-weight:800}
+.painel{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 18px;display:grid;grid-template-rows:auto 1fr;gap:10px;min-height:0;min-width:0}
+.painel .k{font-size:13px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--pc,var(--text-muted))}
+.painel .k small{letter-spacing:0;text-transform:none;font-weight:600;color:var(--text-muted);font-size:13px}
+.semhora{display:grid;place-items:center;color:var(--text-muted);font-size:18px;text-align:center}
+.top5{display:grid;align-content:start;gap:6px}
+.top5 div{display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:center;font-size:18px;border-bottom:1px solid var(--border);padding-bottom:6px}
+.top5 .p{font-weight:800;color:var(--text-muted)}.top5 b{font-size:20px}
+.top5 .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ---------- barras horizontais (funil) ---------- */
+.etapas{display:grid;align-content:space-around;gap:6px;min-height:0}
+.etapa{display:grid;grid-template-columns:300px 1fr 110px 80px;gap:14px;align-items:center}
+.etapa .nm{font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.etapa .trilho{height:30px;background:var(--bg-input);border-radius:7px;overflow:hidden}
+.etapa .barra{height:100%;border-radius:7px;transition:width .9s cubic-bezier(.2,.8,.2,1)}
+.etapa .tot{text-align:right;font-size:24px;font-weight:800}
+.etapa .tot.ped{color:var(--text-label);font-size:20px}
+.etapa.cab .nm,.etapa.cab .tot{font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--pc,var(--text-muted))}
+.etapa.cab .tot{color:var(--text-muted)}
+.etapa.total{border-top:1px solid var(--border);padding-top:8px}.etapa.total .nm{color:var(--text-label)}
+
+/* ---------- colunas (FIFO e 7 dias) ---------- */
+.colunas{position:relative;display:flex;align-items:flex-end;gap:14px;min-height:0;height:100%}
+.col{flex:1;display:grid;grid-template-rows:1fr auto;gap:6px;height:100%;min-width:0}
+.col .pilha{display:flex;flex-direction:column-reverse;justify-content:flex-start;align-self:end;position:relative;border-radius:6px 6px 0 0;overflow:visible;transition:height .9s cubic-bezier(.2,.8,.2,1)}
+.col .pilha i{display:block;min-height:2px}
+.col .pilha i:last-child{border-radius:6px 6px 0 0}
+.col .pilha em{position:absolute;left:50%;bottom:100%;transform:translateX(-50%);margin-bottom:4px;font-style:normal;font-weight:800;font-size:19px;white-space:nowrap;background:var(--bg-card);padding:0 5px;border-radius:4px;z-index:2}
+.col .rot{text-align:center;font-size:15px;color:var(--text-label);white-space:nowrap}.col .rot small{display:block;font-size:13px;color:var(--text-muted)}
+.media{position:absolute;left:0;right:0;border-top:2px dashed var(--text);z-index:1;pointer-events:none}
+.media small{position:absolute;right:0;top:-22px;font-size:14px;color:var(--text);background:var(--bg-card);padding:0 5px;border-radius:4px}
+.leg-t{display:flex;gap:16px;font-size:14px;color:var(--text-label);text-transform:none;letter-spacing:0;font-weight:600}.leg-t i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+
+/* ---------- rosca ---------- */
+.pizza{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center;min-height:0}
+.pizza svg{height:100%;max-height:170px;min-height:0;aspect-ratio:1}
+.pizza .leg{display:grid;gap:5px;min-width:0}
+.pizza .leg div{display:grid;grid-template-columns:12px 1fr auto auto;gap:8px;align-items:center;font-size:15px}
+.pizza .leg span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pizza .leg i{width:12px;height:12px;border-radius:3px;background:var(--m)}.pizza .leg b{font-size:16px}.pizza .leg em{font-style:normal;color:var(--text-muted);width:40px;text-align:right}
+
+/* ---------- Start Inicial ---------- */
+.si-topo{display:grid;grid-template-columns:1fr 1fr 1.45fr;gap:14px;height:212px;flex:none}
+.si-meio{display:grid;grid-template-columns:1.55fr 1fr;gap:14px;flex:1;min-height:0}
+.si-seg{flex:none;height:50px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;overflow:hidden;position:relative}
+.si-seg .tag{flex:none;height:100%;display:flex;align-items:center;padding:0 16px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--accent-light);border-right:1px solid var(--border);background:var(--bg-card);z-index:1}
+.si-seg .janela{flex:1;overflow:hidden;min-width:0}
+/* matriz NF × segmento, em pé: linhas = data da NF, colunas = segmento */
+.mz{display:grid;grid-template-rows:auto 1fr;min-height:0;font-size:16px}
+.mz .lin{display:grid;grid-template-columns:76px repeat(var(--nc),1fr) 84px;gap:4px;align-items:center}
+.mz .cab span{font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--text-muted);text-align:center;padding-bottom:6px}
+.mz .cab span:first-child{text-align:left}
+.mz .corpo{overflow:hidden;min-height:0;position:relative}
+.mz .rolo{display:grid;gap:4px}
+.mz .rolo.anda{animation:mzSobe var(--dur,40s) linear infinite}
+@keyframes mzSobe{to{transform:translateY(calc(-50% - 2px))}}
+.mz .lin .d{font-weight:700;color:var(--text-label);white-space:nowrap}
+.mz .lin .c{text-align:center;border-radius:5px;padding:5px 2px;font-weight:700;color:#0E1626}
+.mz .lin .c.zero{background:transparent!important;color:var(--text-muted);font-weight:400}
+.mz .lin .t{text-align:right;font-weight:800}
+.mz .lin.sem .d{color:var(--amber)}
+@media (prefers-reduced-motion:reduce){.mz .rolo.anda{animation:none}}
+
+/* ---------- Ressuprimento ---------- */
+.rs-bar{flex:none;display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:-4px}
+.rs-bar .per{font-size:15px;color:var(--text-label)}.rs-bar .per b{color:var(--text)}
+.chave{display:inline-flex;background:var(--bg-input);border:1px solid var(--border);border-radius:99px;padding:3px;gap:2px}
+.chave button{font:inherit;font-size:14px;font-weight:700;color:var(--text-label);background:none;border:0;border-radius:99px;padding:6px 16px;cursor:pointer;white-space:nowrap}
+.chave button.on{background:var(--olive);color:#0E1626}
+.chave button:not(.on):hover{color:var(--text)}
+.rs-topo{display:grid;grid-template-columns:1.25fr 1fr 1fr 1fr 1.6fr;gap:14px;height:200px;flex:none}
+.rs-topo .kpi .v{font-size:40px}
+.rs-baixo{display:grid;grid-template-columns:3fr 1fr;gap:14px;flex:1;min-height:0}
+
+/* ---------- faixas em loop contínuo (rodapé e segmentos) ---------- */
+.loopbar{position:relative;overflow:hidden;background:#05080E;border-top:1px solid var(--border);height:46px;display:flex;align-items:center;flex:none;margin-top:12px}
+.loopbar .giro{position:absolute;left:0;top:0;height:3px;width:100%;transform:scaleX(0);transform-origin:0 50%;background:var(--cc,var(--accent));z-index:1;will-change:transform}
+.loopbar .giro[hidden]{display:none}
+.loop{display:flex;width:max-content;animation:loopa var(--dur,55s) linear infinite}
+.loop .g{display:flex;align-items:center;flex:none}
+.ti{display:inline-flex;align-items:center;gap:8px;font-size:18px;white-space:nowrap;padding-right:34px;position:relative}
+.ti::after{content:"";position:absolute;right:15px;top:50%;width:4px;height:4px;border-radius:50%;background:var(--text-muted)}
+.ti i{width:11px;height:11px;border-radius:50%;background:var(--c)}
+.ti .v{color:var(--c,var(--accent-light));font-weight:800}
+.ti b{color:var(--text-muted);font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase}
+@keyframes loopa{to{transform:translateX(-50%)}}
+.selo{font-weight:700}.selo.ok{color:var(--olive)}.selo.atencao{color:var(--amber)}.selo.velho{color:var(--red)}
+
+/* ---------- login ---------- */
+#login{position:fixed;inset:0;display:none;place-items:center;background:#0F1623;z-index:50;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#E8EBF2}
+#login.on{display:grid}
+#login form{display:grid;gap:12px;width:min(360px,90vw);background:#192032;border:1px solid #253048;border-radius:12px;padding:26px}
+#login h1{margin:0 0 6px;font-size:20px}#login p{margin:0;color:#7C8BA8;font-size:13px}
+#login input{font:inherit;padding:10px 12px;border-radius:8px;border:1px solid #253048;background:#1E2A3D;color:#E8EBF2}
+#login button{font:inherit;font-weight:700;padding:10px;border-radius:8px;border:0;background:#297ADF;color:#fff;cursor:pointer}
+#loginErro{color:#E0334F;font-size:13px;min-height:1em}
+@media (prefers-reduced-motion:reduce){.loop{animation:none}}
+</style>
+</head>
+<body>
+<div id="palco">
+  <div class="fh"><span class="lg"><img src="tv/logo-vulcabras-cor.png" alt="Vulcabras"><small>DISTRIBUIDORA</small></span><span class="tt"><span class="navt"><button type="button" id="telaAnt" aria-label="Tela anterior">&lt;</button><span id="titulo">Start Inicial</span><button type="button" id="telaProx" aria-label="Próxima tela">&gt;</button></span></span><span class="selo" id="selo">Conectando…</span><button type="button" class="fsb" id="btnTelaCheia">⛶ Tela cheia</button><span class="lv">● AO VIVO</span><div class="ck"><div id="hora">--:--</div><span id="data"></span></div></div>
+  <div class="main">
+    <section class="tela on" id="telaS" data-titulo="Start Inicial · PFAs em tela" data-giro="90" data-fonte="pfas"><div class="vazio">Carregando o Start Inicial…</div></section>
+    <section class="tela" id="telaR" data-titulo="Ressuprimento" data-giro="90" data-fonte="ressuprimento_mov"><div class="vazio">Carregando o Ressuprimento…</div></section>
+  </div>
+  <div class="loopbar"><i class="giro" id="barra" hidden></i><div class="loop" id="loop"></div></div>
+</div>
+<div id="login"><form id="loginForm"><h1>Telão · DISTR</h1><p>Entre uma vez. A TV guarda o acesso.</p><input id="loginEmail" placeholder="Usuário ou e-mail" autocomplete="username" required><input id="loginSenha" type="password" placeholder="Senha" autocomplete="current-password" required><div id="loginErro"></div><button type="submit">Entrar</button></form></div>
+
+<script>
+(function(){
+'use strict';
+/* ================= CONFIGURAÇÃO ================= */
+var Q = new URLSearchParams(location.search);
+var GIRO_S = +Q.get('giro') || 90;          // segundos por tela
+var REFRESH_S = +Q.get('refresh') || 60;    // segundos entre conferências de dado novo
+var RECARREGA_H = 6;                        // recarga completa da página (pega versão nova, libera memória)
+var RELE_TUDO_MIN = 30;                     // relê tudo de tempos em tempos, mesmo sem snapshot novo
+// Selo de atualização: o abastecimento da DISTR é manual (upload no report), então os limites são maiores que os do E-commerce.
+var SELO_OK_MIN = 120, SELO_ATENCAO_MIN = 360;
+var DIAS_RESSUP = 7;                        // últimos dias com registro na tela de Ressuprimento
+var SUPABASE_URL = 'https://qaehjplsasumuhszjcnu.supabase.co';
+var SUPABASE_ANON_KEY = 'sb_publishable_NkbzLFHMLhVVJYSKDW9NrA_JWQAnPI9';
+var DOMINIO_LOGIN = '@vulcabras.com';
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'telao-distr' } });
+var SI = window.StartInicialCalc, RC = window.RessupCalc;
+
+/* ================= UTILITÁRIOS ================= */
+function fmt(n){ n = Number(n); return isFinite(n) ? Math.round(n).toLocaleString('pt-BR') : '—'; }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+var CONECTIVOS = ['DE','DA','DO','DAS','DOS','E'];
+function nomeCurto(n){ var t = String(n||'').trim().split(/\s+/).filter(function(x){ return x && CONECTIVOS.indexOf(x.toUpperCase()) === -1; }); return t.length <= 1 ? n : t[0]+' '+t[t.length-1]; }
+function nomeBonito(u){ return String(u||'').split(/[.\s]+/).filter(Boolean).map(function(x){ return x.charAt(0).toUpperCase()+x.slice(1).toLowerCase(); }).join(' '); }
+function isoLocal(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function hojeISO(){ return isoLocal(new Date()); }
+function somaDias(iso, n){ var p = iso.split('-'), d = new Date(+p[0], +p[1]-1, +p[2] + n); return isoLocal(d); }
+function ddmm(iso){ return iso ? iso.slice(8,10)+'/'+iso.slice(5,7) : '—'; }
+function rotDia(iso){ var p = iso.split('-'), d = new Date(+p[0], +p[1]-1, +p[2]); return d.toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'2-digit' }); }
+function cssVar(nome){ return 'var('+nome+')'; }
+function qt(n){ return '<b>'+fmt(n)+'</b>'; }
+// O número segue a cor da barra de destaque (kc) quando não vem cor própria (vc). un = unidade ao lado do número.
+function kpiHtml(rot, valor, sub, kc, vc, un){ vc = vc || kc; return '<div class="kpi" style="'+(kc?'--kc:'+kc+';':'')+(vc?'--vc:'+vc:'')+'"><span class="k">'+rot+'</span><span class="v">'+valor+(un?'<small>'+un+'</small>':'')+'</span><span class="s">'+sub+'</span></div>'; }
+function top5Html(lista, cor){
+  if (!lista.length) return '<div class="semhora">Sem peças por operador no dia</div>';
+  var INTENS = [1, .8, .62, .46, .32];   // intensidade da cor pela posição
+  return '<div class="top5">'+lista.slice(0,5).map(function(x, i){ var st = ' style="color:'+cor+';opacity:'+INTENS[i]+'"';
+    return '<div><span class="p"'+st+'>'+(i+1)+'</span><span class="nm">'+esc(x.nome ? nomeCurto(nomeBonito(x.nome)) : x.login)+'</span><b'+st+'>'+fmt(x.pecas)+'</b></div>'; }).join('')+'</div>';
+}
+// Linha de baixo dos cards numa linha só: se não couber, a fonte diminui até caber (mínimo 14 px).
+function ajustaLinhaKpi(){ document.querySelectorAll('.kpi .s').forEach(function(el){ el.style.fontSize = ''; var f = 21; while (el.scrollWidth > el.clientWidth + 1 && f > 14) el.style.fontSize = (--f)+'px'; }); }
+// Heatmap: do tom claro (pouco) à cor forte (muito).
+function rgbDe(hex){ var n = parseInt(hex.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+function tomCalor(claro, forte, t){ var a = rgbDe(claro), b = rgbDe(forte); t = Math.max(0, Math.min(1, t || 0));
+  return 'rgb('+a.map(function(x, i){ return Math.round(x + (b[i] - x)*t); }).join(',')+')'; }
+function roscaHtml(itens, total, rotTotal){
+  var R = 70, C = 2*Math.PI*R, acc = 0;
+  var fatias = itens.map(function(x){
+    var f = total ? x.v/total : 0, s = '<circle r="'+R+'" cx="90" cy="90" fill="none" stroke="'+x.cor+'" stroke-width="34" stroke-dasharray="'+(f*C).toFixed(1)+' '+C.toFixed(1)+'" stroke-dashoffset="'+(-acc*C).toFixed(1)+'" transform="rotate(-90 90 90)"/>';
+    acc += f; return s;
+  }).join('');
+  var leg = itens.map(function(x){
+    return '<div style="--m:'+x.cor+'"><i></i><span>'+esc(x.n)+'</span><b>'+fmt(x.v)+'</b><em>'+(total ? Math.round(x.v/total*100) : 0)+'%</em></div>';
+  }).join('');
+  return '<div class="pizza"><svg viewBox="0 0 180 180">'+fatias+
+    '<text x="90" y="92" text-anchor="middle" fill="#E8EBF2" font-size="26" font-weight="800">'+fmt(total)+'</text>'+
+    '<text x="90" y="112" text-anchor="middle" fill="#7C8BA8" font-size="12">'+rotTotal+'</text></svg><div class="leg">'+leg+'</div></div>';
+}
+var COR_SEGMENTO = { 'CALÇADO':'#297ADF', 'VESTUÁRIO':'#DFBD41', 'ACESSÓRIO':'#45C645', 'MEIA':'#A77BEA', 'CHINELO':'#2EC4B6', 'CHUTEIRA':'#E8830D', 'SEM FAMÍLIA':'#5B6578' };
+var COR_EXTRA = ['#93A5B8', '#EC4FA0', '#5B7F2B', '#2F5DA8'];
+function corSegmento(seg, i){ return COR_SEGMENTO[seg] || COR_EXTRA[i % COR_EXTRA.length]; }
+function nomeSegmento(seg){ var s = String(seg||'').toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1); }
+
+/* ================= FAIXAS EM LOOP CONTÍNUO ================= */
+// Dois blocos iguais emendados = loop sem pausa; o bloco repete até passar da largura da janela. ~pxs px por segundo.
+var memoriaLoop = {};
+function montaLoop(el, html, chave, larguraMin, pxs){
+  if (memoriaLoop[chave] === html && el.firstChild && !el.dataset.pendente) return;   // mesmo conteúdo: não reinicia a animação
+  memoriaLoop[chave] = html;
+  el._loop = [html, chave, larguraMin, pxs];
+  var g = '<div class="g">'+html+'</div>';
+  el.innerHTML = g + g;
+  var bloco = el.firstChild;
+  if (!bloco.offsetWidth) { el.dataset.pendente = '1'; return; }   // tela escondida: monta de verdade quando ela entrar
+  delete el.dataset.pendente;
+  while (bloco.offsetWidth && bloco.offsetWidth < larguraMin) { bloco.innerHTML += bloco.innerHTML; el.lastChild.innerHTML = bloco.innerHTML; }
+  el.style.setProperty('--dur', Math.max(10, Math.round(bloco.offsetWidth / pxs)) + 's');
+}
+
+/* ================= DADOS EM MEMÓRIA ================= */
+var dadosPfas = null, resumoSI = null, ressup = null, atualizadoEm = {}, falhou = false;
+var etapaRessup = (function(){
+  var q = Q.get('ressup'); if (q === 'soma') q = 'geral';
+  if (['alocacao','retirada','geral'].indexOf(q) !== -1) return q;
+  try { var v = localStorage.getItem('telao_distr_ressup'); if (['alocacao','retirada','geral'].indexOf(v) !== -1) return v; } catch(e) {}
+  return 'alocacao';
+})();
+var ROT_ETAPA_RESSUP = { alocacao:'Alocação no Picking', retirada:'Retirada do Pulmão', geral:'Soma' };
+var ROT_CURTO_RESSUP = { alocacao:'alocado no Picking', retirada:'retirado do Pulmão', geral:'movimentado (soma)' };
+
+/* ================= TELA S · START INICIAL ================= */
+var COR_PEND = '#297ADF', COR_ANTIGA = '#F6BD00', COR_NF = '#C8102E';
+function renderTelaS(){
+  var el = document.getElementById('telaS'), r = resumoSI;
+  if (!r || !r.total.pfas) { el.dataset.vazia = '1'; el.innerHTML = '<div class="vazio">Sem PFAs em tela no último envio.</div>'; return; }
+  el.dataset.vazia = '';
+  var ma = r.maisAntiga;
+  var kPend = kpiHtml('Material pendente', fmt(r.pendente.pares), qt(r.pendente.pfas)+' PFAs · sem Não Disp. Picking e Ag. Embarque', COR_PEND, null, 'peças');
+  var kAnt = ma ? kpiHtml('PFA mais antiga (NF emitida)', fmt(ma.dias), 'PFA <b>'+esc(ma.pfa)+'</b> · NF '+ddmm(ma.data_nota)+' · '+qt(ma.pecas)+' pçs', COR_ANTIGA, null, ma.dias === 1 ? 'dia' : 'dias')
+    : kpiHtml('PFA mais antiga (NF emitida)', '—', 'nenhuma PFA com NF em tela', COR_ANTIGA);
+  // FIFO: colunas com peças em cima e PFAs embaixo
+  var maxF = Math.max.apply(null, r.fifo.map(function(f){ return f.pares; }).concat(1));
+  var fifo = r.fifo.map(function(f){
+    return '<div class="col"><div class="pilha" style="height:'+(f.pares/maxF*82).toFixed(1)+'%;background:'+cssVar(f.cor)+'"><em style="color:'+cssVar(f.cor)+'">'+fmt(f.pares)+'</em></div>'+
+      '<div class="rot">'+esc(f.rotulo)+'<small>'+fmt(f.pfas)+' PFAs</small></div></div>';
+  }).join('');
+  // Funil: as 7 etapas sempre (00 e 06 também), cada uma na cor do report
+  var maxE = Math.max.apply(null, r.etapas.map(function(e){ return e.pares; }).concat(1));
+  var funil = r.etapas.map(function(e){
+    return '<div class="etapa"><span class="nm">'+esc(e.rotulo)+'</span><div class="trilho"><div class="barra" style="width:'+(e.pares/maxE*100).toFixed(2)+'%;background:'+cssVar(e.cor)+'"></div></div>'+
+      '<span class="tot">'+fmt(e.pares)+'</span><span class="tot ped">'+fmt(e.pfas)+'</span></div>';
+  }).join('');
+  el.innerHTML =
+    '<div class="si-topo">'+kPend+kAnt+
+      '<div class="painel"><span class="k">FIFO · idade das PFAs em tela <small>(peças)</small></span><div class="colunas">'+fifo+'</div></div></div>'+
+    '<div class="si-meio">'+
+      '<div class="painel" style="grid-template-rows:auto 1fr auto"><div class="etapa cab"><span class="nm">Funil por etapa</span><span></span><span class="tot">Peças</span><span class="tot">PFAs</span></div>'+
+        '<div class="etapas">'+funil+'</div>'+
+        '<div class="etapa total"><span class="nm">Total em tela</span><span></span><span class="tot">'+fmt(r.total.pares)+'</span><span class="tot ped">'+fmt(r.total.pfas)+'</span></div></div>'+
+      '<div class="painel"><span class="k">Nota fiscal × segmento <small>(peças)</small></span>'+matrizHtml(r.matriz)+'</div>'+
+    '</div>'+
+    '<div class="si-seg"><span class="tag">Em tela por segmento</span><div class="janela"><div class="loop" id="loopSeg"></div></div></div>';
+  var segs = r.segmentos.map(function(s, i){
+    return '<span class="ti" style="--c:'+corSegmento(s.segmento, i)+'"><i></i><b>'+esc(nomeSegmento(s.segmento))+'</b> <span class="v">'+fmt(s.pares)+'</span> peças · '+fmt(s.pfas)+' PFAs</span>';
+  }).join('');
+  memoriaLoop.seg = null;   // o elemento foi recriado: monta de novo
+  montaLoop(document.getElementById('loopSeg'), segs, 'seg', 1300, 70);
+  ligaRoloMatriz();
+}
+// Matriz NF × Segmento em pé (linhas = data da NF, colunas = segmento): cor de calor por célula, em peças.
+function matrizHtml(mz){
+  var nc = mz.cols.length, maior = 1;
+  mz.linhas.forEach(function(l){ l.vals.forEach(function(v){ if (v.pares > maior) maior = v.pares; }); });
+  var cab = '<div class="lin cab" style="--nc:'+nc+'"><span>NF</span>'+mz.cols.map(function(c){ return '<span>'+esc(c.rotulo)+'</span>'; }).join('')+'<span style="text-align:right">Total</span></div>';
+  var linhas = mz.linhas.map(function(l){
+    var sem = l.chave === 'SEM';
+    return '<div class="lin'+(sem ? ' sem' : '')+'" style="--nc:'+nc+'"><span class="d">'+(sem ? 'Sem NF' : ddmm(l.chave))+'</span>'+
+      l.vals.map(function(v){ return v.pares ? '<span class="c" style="background:'+tomCalor('#CFE2F9', '#297ADF', Math.sqrt(v.pares/maior))+'">'+fmt(v.pares)+'</span>' : '<span class="c zero">·</span>'; }).join('')+
+      '<span class="t">'+fmt(l.pares)+'</span></div>';
+  }).join('');
+  return '<div class="mz">'+cab+'<div class="corpo"><div class="rolo" data-html="1">'+linhas+'</div></div></div>';
+}
+// Linhas que não cabem rolam sozinhas para cima, em loop contínuo (como a faixa de baixo).
+function ligaRoloMatriz(){
+  requestAnimationFrame(function(){
+    var rolo = document.querySelector('#telaS .mz .rolo'); if (!rolo) return;
+    var corpo = rolo.parentNode;
+    if (!corpo.clientHeight || rolo.scrollHeight <= corpo.clientHeight + 2) return;   // cabe: fica parada
+    var altura = rolo.scrollHeight;
+    rolo.innerHTML += rolo.innerHTML;
+    rolo.style.setProperty('--dur', Math.max(15, Math.round(altura / 22)) + 's');   // ~22 px por segundo
+    rolo.classList.add('anda');
+  });
+}
+
+/* ================= TELA R · RESSUPRIMENTO ================= */
+var COR_TURNO = { T01:'#297ADF', T02:'#DFBD41', T03:'#45C645' }, ORDEM_TURNO = ['T01','T02','T03'];
+var COR_RS = '#45C645';
+function renderTelaR(){
+  var el = document.getElementById('telaR');
+  if (!ressup) { el.dataset.vazia = '1'; el.innerHTML = '<div class="vazio">Sem Kardex de ressuprimento ainda.</div>'; return; }
+  var comb = RC.combinarEtapaRessup(etapaRessup, ressup.aloc, ressup.ret, ressup.opsAloc, ressup.opsRet);
+  var dias = RC.diasDoHistorico(comb.historico).filter(function(d){ return d.pecas > 0; }).slice(-DIAS_RESSUP);
+  el.dataset.vazia = '';
+  var chave = '<div class="chave" id="chaveRessup">'+['alocacao','retirada','geral'].map(function(k){
+    return '<button type="button" data-etapa="'+k+'" class="'+(k === etapaRessup ? 'on' : '')+'">'+ROT_ETAPA_RESSUP[k]+'</button>'; }).join('')+'</div>';
+  if (!dias.length) {
+    el.innerHTML = '<div class="rs-bar"><span class="per">'+ROT_ETAPA_RESSUP[etapaRessup]+'</span>'+chave+'</div><div class="vazio">Sem registro de '+ROT_CURTO_RESSUP[etapaRessup]+' nos últimos 30 dias.</div>';
+    return;
+  }
+  var ult = dias[dias.length-1], diaU = ult.dia;
+  var turnoCard = function(t){
+    var x = ult.turnos[t] || { pecas:0, movimentos:0 };
+    return kpiHtml(t, fmt(x.pecas), qt(x.movimentos)+' movimentos', COR_TURNO[t], null, 'peças');
+  };
+  // Rosca: segmentos do último dia
+  var segs = RC.porSegmentoDoHistorico(comb.historico.filter(function(h){ return h.dia === diaU; })).filter(function(s){ return s.pecas > 0; });
+  var itensRosca = segs.map(function(s, i){ return { n:nomeSegmento(s.segmento), v:s.pecas, cor:corSegmento(s.segmento, i) }; });
+  // Barras dos 7 dias empilhadas por turno, com a média dos dias mostrados
+  var maxD = Math.max.apply(null, dias.map(function(d){ return d.pecas; }).concat(1)) * 1.15;
+  var media = Math.round(dias.reduce(function(s, d){ return s + d.pecas; }, 0) / dias.length);
+  var cols = dias.map(function(d){
+    var pedacos = ORDEM_TURNO.map(function(t){ var p = (d.turnos[t] || {}).pecas || 0; return p ? '<i style="flex:'+p+' 0 0;background:'+COR_TURNO[t]+'"></i>' : ''; }).join('');
+    return '<div class="col"><div class="pilha" style="height:'+(d.pecas/maxD*100).toFixed(1)+'%"><em>'+fmt(d.pecas)+'</em>'+pedacos+'</div>'+
+      '<div class="rot">'+esc(rotDia(d.dia))+'<small>'+fmt(d.movimentos)+' mov.</small></div></div>';
+  }).join('');
+  var leg = '<span class="leg-t">'+ORDEM_TURNO.map(function(t){ return '<span><i style="background:'+COR_TURNO[t]+'"></i>'+t+'</span>'; }).join('')+
+    '<span><i style="background:none;border-top:2px dashed var(--text);border-radius:0;height:0;width:18px;vertical-align:3px"></i>média '+fmt(media)+'/dia</span></span>';
+  // Top 5 do último dia em peças; antes da migração das peças por operador, usa o último Kardex inteiro (só alocação)
+  var top = RC.topOperadoresDia(etapaRessup, ressup.opsAloc, ressup.opsRet, diaU, 5), tituloTop = 'Top 5 operadores · '+ddmm(diaU);
+  if (!top.length && etapaRessup === 'alocacao' && ressup.opsKardex.length) {
+    top = ressup.opsKardex.slice(0, 5);
+    tituloTop = 'Top 5 · Kardex '+(ressup.periodo ? esc(String(ressup.periodo.de||'').slice(0,5))+'–'+esc(String(ressup.periodo.ate||'').slice(0,5)) : '');
+  }
+  el.innerHTML =
+    '<div class="rs-bar"><span class="per">'+ROT_ETAPA_RESSUP[etapaRessup]+' · últimos '+dias.length+' dias com registro · <b>'+ddmm(dias[0].dia)+'</b> a <b>'+ddmm(diaU)+'</b></span>'+chave+'</div>'+
+    '<div class="rs-topo">'+
+      kpiHtml('Ressuprido em '+ddmm(diaU), fmt(ult.pecas), qt(ult.movimentos)+' movimentos · média 7d '+qt(media), COR_RS, null, 'peças')+
+      turnoCard('T01')+turnoCard('T02')+turnoCard('T03')+
+      '<div class="painel" style="padding:12px 16px"><span class="k">Por segmento · '+ddmm(diaU)+'</span>'+(itensRosca.length ? roscaHtml(itensRosca, ult.pecas, 'peças') : '<div class="semhora">Sem segmento no dia</div>')+'</div>'+
+    '</div>'+
+    '<div class="rs-baixo">'+
+      '<div class="painel" style="--pc:'+COR_RS+'"><span class="k" style="display:flex;justify-content:space-between;align-items:center">Peças por dia e turno'+leg+'</span>'+
+        '<div class="colunas" style="padding-top:26px">'+cols+'<div class="media" data-frac="'+(media/maxD).toFixed(4)+'"></div></div></div>'+
+      '<div class="painel" style="--pc:'+COR_RS+'"><span class="k">'+tituloTop+'</span>'+top5Html(top, COR_RS)+'</div>'+
+    '</div>';
+  ajustaMediaColunas(el);
+}
+// A linha da média fica na altura certa só medindo a área das barras (o rótulo do dia embaixo ocupa espaço).
+function ajustaMediaColunas(el){
+  requestAnimationFrame(function(){
+    var area = el.querySelector('.rs-baixo .colunas'), m = area && area.querySelector('.media'), col = area && area.querySelector('.col');
+    if (!m || !col || !col.clientHeight) return;   // tela escondida: mede quando ela entrar
+    var rot = col.querySelector('.rot').offsetHeight + 6, pilhaArea = col.clientHeight - rot;
+    m.style.bottom = (rot + pilhaArea * (+m.dataset.frac || 0)).toFixed(0) + 'px';
+  });
+}
+function trocaEtapaRessup(k){
+  if (k === etapaRessup || !ROT_ETAPA_RESSUP[k]) return;
+  etapaRessup = k;
+  try { localStorage.setItem('telao_distr_ressup', k); } catch(e) {}
+  renderTelaR(); renderFaixa(); ajustaLinhaKpi();
+}
+document.addEventListener('click', function(e){ var b = e.target.closest && e.target.closest('#chaveRessup button'); if (b) { e.stopPropagation(); trocaEtapaRessup(b.dataset.etapa); } });
+
+/* ================= FAIXA DE BAIXO (totais em loop) ================= */
+function renderFaixa(){
+  var itens = [], r = resumoSI;
+  if (r && r.total.pfas) {
+    itens.push('<span class="ti" style="--c:'+COR_PEND+'"><b>Material pendente</b> <span class="v">'+fmt(r.pendente.pares)+'</span> peças · '+fmt(r.pendente.pfas)+' PFAs</span>');
+    itens.push('<span class="ti" style="--c:'+COR_NF+'"><b>NF emitida · ag. coleta</b> <span class="v">'+fmt(r.nfAgColeta.pares)+'</span> peças · '+fmt(r.nfAgColeta.pfas)+' PFAs</span>');
+    if (r.maisAntiga) itens.push('<span class="ti" style="--c:'+COR_ANTIGA+'"><b>PFA mais antiga (NF)</b> <span class="v">'+fmt(r.maisAntiga.dias)+'</span> '+(r.maisAntiga.dias === 1 ? 'dia' : 'dias')+' · PFA '+esc(r.maisAntiga.pfa)+'</span>');
+    itens.push('<span class="ti" style="--c:var(--accent-light)"><b>Total em tela</b> <span class="v">'+fmt(r.total.pares)+'</span> peças · '+fmt(r.total.pfas)+' PFAs</span>');
+    if (r.ajustesEmAberto) itens.push('<span class="ti" style="--c:var(--accent-light)"><b>Ajustes de PFA em aberto</b> <span class="v">'+fmt(r.ajustesEmAberto)+'</span> ag. comercial</span>');
+  }
+  if (ressup) {
+    var comb = RC.combinarEtapaRessup(etapaRessup, ressup.aloc, ressup.ret, ressup.opsAloc, ressup.opsRet);
+    var dias = RC.diasDoHistorico(comb.historico).filter(function(d){ return d.pecas > 0; }).slice(-DIAS_RESSUP);
+    if (dias.length) {
+      var u = dias[dias.length-1], media = dias.reduce(function(s, d){ return s + d.pecas; }, 0) / dias.length;
+      itens.push('<span class="ti" style="--c:'+COR_RS+'"><b>Ressuprimento '+ddmm(u.dia)+' · '+ROT_ETAPA_RESSUP[etapaRessup]+'</b> <span class="v">'+fmt(u.pecas)+'</span> peças</span>');
+      itens.push('<span class="ti" style="--c:'+COR_RS+'"><b>Média '+dias.length+' dias</b> <span class="v">'+fmt(media)+'</span> peças/dia</span>');
+    }
+  }
+  if (!itens.length) return;
+  montaLoop(document.getElementById('loop'), itens.join(''), 'faixa', 1600, 110);
+}
+
+/* ================= GIRO DAS TELAS ================= */
+var telas = Array.prototype.slice.call(document.querySelectorAll('.tela')), atual = 0, inicioTela = Date.now();
+function telasAtivas(){ return telas.filter(function(t){ return !t.dataset.vazia; }); }
+function proximaTela(passo){ var n = telas.length; for (var k = 1; k <= n; k++){ var j = (atual + passo*k + n*k) % n; if (!telas[j].dataset.vazia) return j; } return atual; }
+function giroDe(i){ return (Q.get('giro') ? GIRO_S : (+telas[i].getAttribute('data-giro') || GIRO_S)) * 1000; }
+// Troca com transição: a tela atual esmaece (.saindo) e só então a próxima entra.
+var trocaPendente = null;
+function mostraTela(i){
+  var velha = telas[atual];
+  atual = i; inicioTela = Date.now();
+  clearTimeout(trocaPendente);
+  telas.forEach(function(t){ t.classList.remove('saindo'); });
+  if (velha && velha !== telas[i] && velha.classList.contains('on') && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    velha.classList.add('saindo');
+    trocaPendente = setTimeout(function(){ velha.classList.remove('saindo'); entraTela(i); }, 350);
+  } else entraTela(i);
+}
+// Cor de destaque de cada tela: [forte, clara, texto sobre a forte]
+var COR_TELA = { telaS:['#297ADF','#7FB2EC','#fff'], telaR:['#45C645','#9BE29B','#0E1626'] };
+var sentidoTroca = 1;   // 1 = avançou (botão >, seta → ou rodízio), -1 = voltou (botão <, seta ←)
+function entraTela(i){
+  telas.forEach(function(t, k){ t.classList.toggle('on', k === i); });
+  var cc = COR_TELA[telas[i].id] || COR_TELA.telaS, pal = document.getElementById('palco');
+  pal.style.setProperty('--cc', cc[0]); pal.style.setProperty('--cc2', cc[1]); pal.style.setProperty('--cc-t', cc[2]);
+  var tit = document.getElementById('titulo'), novoTit = telas[i].getAttribute('data-titulo');
+  if (tit.textContent !== novoTit) { tit.textContent = novoTit; tit.classList.remove('troca', 'recua'); void tit.offsetWidth; tit.classList.add('troca'); if (sentidoTroca < 0) tit.classList.add('recua'); }
+  sentidoTroca = 1;
+  document.getElementById('barra').hidden = telasAtivas().length < 2;   // com uma tela só não há o que girar
+  document.querySelector('.navt').classList.toggle('so', telasAtivas().length < 2);
+  relogio();
+  requestAnimationFrame(function(){   // tela estava escondida: só agora dá para medir
+    ajustaLinhaKpi();
+    if (telas[i].id === 'telaS') { var rolo = telas[i].querySelector('.mz .rolo'); if (rolo && !rolo.classList.contains('anda')) ligaRoloMatriz(); }
+    telas[i].querySelectorAll('.loop[data-pendente]').forEach(function(l){ montaLoop.apply(null, [l].concat(l._loop)); });
+    if (telas[i].id === 'telaR') ajustaMediaColunas(telas[i]);
+  });
+}
+// Barra do giro redesenhada a cada quadro: anda contínua, sem pulos.
+(function anima(){
+  document.getElementById('barra').style.transform = 'scaleX(' + Math.min(1, (Date.now() - inicioTela) / giroDe(atual)) + ')';
+  requestAnimationFrame(anima);
+})();
+setInterval(function(){
+  if (telasAtivas().length > 1 && (Date.now() - inicioTela) >= giroDe(atual)) mostraTela(proximaTela(1));
+}, 500);
+['telaAnt', 'telaProx'].forEach(function(id, k){ document.getElementById(id).addEventListener('click', function(e){
+  e.stopPropagation(); sentidoTroca = k ? 1 : -1; mostraTela(proximaTela(sentidoTroca)); }); });
+document.addEventListener('keydown', function(e){   // para quem estiver ao lado da TV
+  if (e.target && /input/i.test(e.target.tagName)) return;
+  if (e.key === 'ArrowRight') mostraTela(proximaTela(1));
+  if (e.key === 'ArrowLeft') { sentidoTroca = -1; mostraTela(proximaTela(-1)); }
+  var k = String(e.key).toLowerCase();   // interruptor do Ressuprimento: A = alocação, R = retirada, S = soma
+  if (k === 'a') trocaEtapaRessup('alocacao');
+  if (k === 'r') trocaEtapaRessup('retirada');
+  if (k === 's') trocaEtapaRessup('geral');
+});
+
+/* ================= RELÓGIO, SELO E ESCALA ================= */
+function relogio(){
+  var d = new Date();
+  document.getElementById('hora').textContent = d.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+  document.getElementById('data').textContent = rotDia(hojeISO());
+  var s = document.getElementById('selo');
+  var ultimoDado = atualizadoEm[telas[atual] ? telas[atual].getAttribute('data-fonte') : 'pfas'];
+  if (!ultimoDado) return;
+  var min = (Date.now() - ultimoDado.getTime()) / 60000, hh = ultimoDado.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+  var dd = ultimoDado.toDateString() === d.toDateString() ? '' : ' de ' + ultimoDado.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' });
+  s.textContent = '● Dado de ' + hh + dd + (falhou ? ' · sem conexão' : '');
+  s.className = 'selo ' + (falhou || min > SELO_ATENCAO_MIN ? 'velho' : min > SELO_OK_MIN ? 'atencao' : 'ok');
+}
+setInterval(relogio, 15000); relogio();
+// O palco tem 1500 px de base e estica na outra direção até preencher a janela inteira (TV 16:9, navegador, ultrawide).
+function escala(){
+  var k = Math.min(innerWidth/1500, innerHeight/844), palco = document.getElementById('palco');
+  palco.style.width = (innerWidth/k)+'px'; palco.style.height = (innerHeight/k)+'px';
+  palco.style.transform = 'translate(-50%,-50%) scale('+k+')';
+}
+/* ---------- tela cheia e cursor escondido ---------- */
+function telaCheiaAtiva(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+function atualizaBotaoTC(){ document.getElementById('btnTelaCheia').hidden = telaCheiaAtiva() || !(document.fullscreenEnabled || document.webkitFullscreenEnabled); }
+document.getElementById('btnTelaCheia').addEventListener('click', function(e){
+  e.stopPropagation();
+  var el = document.documentElement, f = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (f) { var p = f.call(el); if (p && p.catch) p.catch(function(){}); }
+});
+document.addEventListener('fullscreenchange', atualizaBotaoTC); document.addEventListener('webkitfullscreenchange', atualizaBotaoTC);
+atualizaBotaoTC();
+var ocioso = null;
+function mexeu(){ document.body.classList.remove('ocioso'); clearTimeout(ocioso); ocioso = setTimeout(function(){ document.body.classList.add('ocioso'); }, 3000); }
+document.addEventListener('mousemove', mexeu); mexeu();
+var reRender = null;
+addEventListener('resize', function(){ escala(); clearTimeout(reRender); reRender = setTimeout(function(){ renderTudo(); }, 300); }); escala();
+setTimeout(function(){ location.reload(); }, RECARREGA_H*3600*1000);
+// Versão nova publicada (deploy na Vercel): confere a cada 5 min e recarrega sozinho, sem precisar de F5.
+(function(){
+  var versao = null;
+  function confere(){
+    fetch(location.pathname + '?v=' + Date.now(), { cache: 'no-store' }).then(function(r){ return r.ok ? r.text() : null; }).then(function(t){
+      if (!t) return;
+      if (versao === null) { versao = t; return; }
+      if (t !== versao) location.reload();
+    }).catch(function(){});
+  }
+  confere(); setInterval(confere, 5*60000);
+})();
+if (navigator.wakeLock) { var pedeWake = function(){ navigator.wakeLock.request('screen').catch(function(){}); }; pedeWake(); document.addEventListener('visibilitychange', function(){ if (!document.hidden) pedeWake(); }); }
+
+/* ================= DADOS ================= */
+// A cada REFRESH_S só confere a data do último snapshot de cada página; os dados pesados só vêm quando ela muda.
+var versaoLida = {}, lidoEm = 0;
+async function ultimoGerado(pagina){
+  var r = await sb.from('dashboard_snapshots').select('gerado_em').eq('pagina', pagina).order('gerado_em', { ascending:false }).limit(1);
+  if (r.error) throw r.error;
+  return r.data && r.data[0] ? r.data[0].gerado_em : null;
+}
+async function carregaPfas(){
+  var r = await Promise.all([
+    sb.from('dashboard_snapshots')
+      .select('pendentes:payload->pendentes, aguardando_coleta:payload->aguardando_coleta, etapas:payload->etapas, faixas_fifo:payload->faixas_fifo, ajustes_em_aberto:payload->ajustes_em_aberto, conferencia_regra:payload->conferencia_regra, gerado_em')
+      .eq('pagina', 'pfas').order('gerado_em', { ascending:false }).limit(1),
+    sb.from('dim_clientes_persona').select('nome, personalizavel'),
+  ]);
+  if (r[0].error) throw r[0].error;
+  var p = r[0].data && r[0].data[0];
+  if (!p) { resumoSI = null; return; }
+  // Lista de clientes que personalizam: a do banco; tabela vazia ou ilegível = lista padrão (igual ao report)
+  var lista = !r[1].error && r[1].data && r[1].data.length ? r[1].data.map(function(c){ return { nome:c.nome, personalizavel:c.personalizavel }; }) : SI.listaPadraoPersona();
+  SI.aplicarEtapaPersona(p, lista);
+  dadosPfas = p;
+  resumoSI = SI.resumoStartInicial(p);
+  atualizadoEm.pfas = new Date(p.gerado_em);
+}
+async function leOperadores(tabela, de){
+  var r = await sb.from(tabela).select('dia, turno, login, nome, pecas, movimentos').gte('dia', de);
+  if (r.error) r = await sb.from(tabela).select('dia, turno, login, nome').gte('dia', de);   // banco sem migracao_operador_pecas.sql
+  return r.error ? [] : (r.data || []);
+}
+async function carregaRessup(){
+  var de = somaDias(hojeISO(), -30);
+  var r = await Promise.all([
+    sb.from('ressuprimento_historico_diario').select('dia, segmento, turno, pecas, movimentos').gte('dia', de),
+    sb.from('ressuprimento_retirada_diario').select('dia, segmento, turno, pecas, movimentos').gte('dia', de),
+    leOperadores('ressuprimento_operador_diario', de),
+    leOperadores('ressuprimento_retirada_operador', de),
+    sb.from('dashboard_snapshots').select('operadores:payload->operadores, periodo:payload->periodo, gerado_em')
+      .eq('pagina', 'ressuprimento_mov').order('gerado_em', { ascending:false }).limit(1),
+  ]);
+  if (r[0].error) throw r[0].error;
+  var snap = !r[4].error && r[4].data && r[4].data[0];
+  ressup = { aloc: r[0].data || [], ret: r[1].error ? [] : (r[1].data || []), opsAloc: r[2], opsRet: r[3],
+    opsKardex: snap && snap.operadores ? snap.operadores : [], periodo: snap ? snap.periodo : null };
+  if (snap) atualizadoEm.ressuprimento_mov = new Date(snap.gerado_em);
+  if (!ressup.aloc.length && !ressup.ret.length) ressup = null;
+}
+function renderTudo(){
+  renderTelaS(); renderTelaR(); renderFaixa(); ajustaLinhaKpi();
+  if (telas[atual].dataset.vazia && telasAtivas().length) mostraTela(proximaTela(1));
+}
+async function carregar(){
+  try {
+    var g = await Promise.all([ultimoGerado('pfas'), ultimoGerado('ressuprimento_mov')]);
+    var tudo = Date.now() - lidoEm > RELE_TUDO_MIN*60000, mudou = false;
+    if (tudo || g[0] !== versaoLida.pfas) { await carregaPfas(); versaoLida.pfas = g[0]; mudou = true; }
+    if (tudo || g[1] !== versaoLida.ressup) { await carregaRessup(); versaoLida.ressup = g[1]; mudou = true; }
+    if (tudo) lidoEm = Date.now();
+    falhou = false;
+    if (mudou) renderTudo();
+  } catch(e) {
+    console.error('Telão DISTR: falha ao buscar dados', e); falhou = true;   // mantém o último dado na tela, com o selo vermelho
+  }
+  relogio();
+}
+
+/* ================= LOGIN (uma vez; a TV guarda a sessão) ================= */
+async function temPerfil(session){
+  var r = await sb.from('perfis_acesso').select('role').eq('user_id', session.user.id).single();
+  return !r.error && r.data;
+}
+async function iniciar(){
+  var s = (await sb.auth.getSession()).data.session;
+  if (!s || !(await temPerfil(s))) { document.getElementById('login').classList.add('on'); return; }
+  document.getElementById('login').classList.remove('on');
+  mostraTela(0);
+  await carregar();
+  setInterval(carregar, REFRESH_S*1000);
+}
+document.getElementById('loginForm').addEventListener('submit', async function(e){
+  e.preventDefault();
+  var u = document.getElementById('loginEmail').value.trim().toLowerCase(), erro = document.getElementById('loginErro');
+  erro.textContent = '';
+  var r = await sb.auth.signInWithPassword({ email: u.indexOf('@') !== -1 ? u : u + DOMINIO_LOGIN, password: document.getElementById('loginSenha').value });
+  if (r.error) { erro.textContent = 'Usuário ou senha inválidos.'; return; }
+  if (!(await temPerfil(r.data.session))) { erro.textContent = 'Usuário sem perfil de acesso. Fale com o admin.'; await sb.auth.signOut(); return; }
+  iniciar();
+});
+// Prévia sem banco (só para teste local): ?demo=1 desenha com dados de exemplo.
+if (Q.get('demo') === '1' && window.TELAO_DEMO) { window.TELAO_DEMO(function(pfas, rs){ SI.aplicarEtapaPersona(pfas, SI.listaPadraoPersona()); resumoSI = SI.resumoStartInicial(pfas); ressup = rs; atualizadoEm.pfas = atualizadoEm.ressuprimento_mov = new Date(); mostraTela(0); renderTudo(); relogio(); }); return; }
+iniciar();
+})();
+</script>
+</body>
+</html>

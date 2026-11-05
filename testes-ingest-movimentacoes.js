@@ -210,6 +210,8 @@ eq(snapBaixa.total.pecas_diretas, 5, 'parte da retirada que foi direto pro Picki
 eq(snapBaixa.por_dia_retirada.map(function (d) { return [d.dia, d.pecas]; }), [['2026-10-19', 42], ['2026-10-20', 5]], 'retirada conta no dia de quem desceu');
 eq(snapBaixa.historico_retirada.reduce(function (t, h) { return t + h.pecas; }, 0) + snapBaixa.total.pecas_ressupridas, 64,
   'geral = 47 retiradas + 17 alocadas (soma simples)');
+eq(snapBaixa.historico_retirada_operador.map(function (o) { return [o.dia, o.login, o.pecas]; }).sort(),
+  [['2026-10-19', 'EX3', 42], ['2026-10-20', 'EX1', 5]].sort(), 'retirada por operador no dia traz as peças (Top 5 do telão)');
 
 /* ------------------------------------------------------------------ */
 console.log('\n=== fila em andamento: rua 98 é staging de RECEBIMENTO, não fila de ressuprimento ===');
@@ -284,6 +286,10 @@ eq(snapDias.historico_diario_operador.length, 3, '3 combinações distintas de d
 ok(!!operadorPorChave['2026-08-10|T01|EX1'], 'EX1 no dia 10 turno T01');
 ok(!!operadorPorChave['2026-08-10|T02|EX2'], 'EX2 no dia 10 turno T02');
 ok(!!operadorPorChave['2026-08-11|T03|EX1'], 'EX1 de novo no dia 11 turno T03 (login repetido, dia diferente = outra linha)');
+// Peças e movimentos por operador no dia (05/11/2026): Top 5 do telão DISTR
+eq([operadorPorChave['2026-08-10|T01|EX1'].pecas, operadorPorChave['2026-08-10|T02|EX2'].pecas, operadorPorChave['2026-08-11|T03|EX1'].pecas],
+  [10, 20, 30], 'cada linha de operador traz as peças do dia+turno');
+eq(operadorPorChave['2026-08-10|T01|EX1'].movimentos, 1, '… e os movimentos');
 
 /* ------------------------------------------------------------------ */
 console.log('\n=== turno real do colaborador (dim_colaboradores_turno) vence o chute por horário ===');

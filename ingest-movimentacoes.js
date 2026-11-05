@@ -789,7 +789,9 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
       xR.pecas += m.qtd; xR.movimentos += 1;
       if (direto) { xR.diretas_pecas += m.qtd; xR.diretas_movimentos += 1; }
       const kO = m.dia + '|' + m.turno + '|' + m.login;
-      if (!porDiaTurnoOperadorRetirada.has(kO)) porDiaTurnoOperadorRetirada.set(kO, { dia: m.dia, turno: m.turno, login: m.login, nome: m.nome });
+      if (!porDiaTurnoOperadorRetirada.has(kO)) porDiaTurnoOperadorRetirada.set(kO, { dia: m.dia, turno: m.turno, login: m.login, nome: m.nome, pecas: 0, movimentos: 0 });
+      // Peças por operador no dia (05/11/2026): Top 5 do telão DISTR
+      const oR = porDiaTurnoOperadorRetirada.get(kO); oR.pecas += m.qtd; oR.movimentos += 1;
       if (!porDiaRetirada.has(m.dia)) porDiaRetirada.set(m.dia, { dia: m.dia, pecas: 0, movimentos: 0, turnos: {}, operadores: new Set() });
       const dR = porDiaRetirada.get(m.dia);
       dR.pecas += m.qtd; dR.movimentos += 1; dR.operadores.add(m.login);
@@ -852,8 +854,10 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
 
     const chaveDTO = m.dia + '|' + m.turno + '|' + m.login;
     if (!porDiaTurnoOperador.has(chaveDTO)) {
-      porDiaTurnoOperador.set(chaveDTO, { dia: m.dia, turno: m.turno, login: m.login, nome: m.nome });
+      porDiaTurnoOperador.set(chaveDTO, { dia: m.dia, turno: m.turno, login: m.login, nome: m.nome, pecas: 0, movimentos: 0 });
     }
+    // Peças por operador no dia (05/11/2026): Top 5 do telão DISTR
+    const oDTO = porDiaTurnoOperador.get(chaveDTO); oDTO.pecas += m.qtd; oDTO.movimentos += 1;
   });
 
   const dias = Array.from(porDia.values())
@@ -1241,8 +1245,8 @@ async function upsertHistoricoRetirada(supabaseClient, payload, onAviso) {
       if (error) throw error;
     }
     for (let i = 0; i < ops.length; i += 500) {
-      const lote = ops.slice(i, i + 500).map(function (o) { return { dia: o.dia, turno: o.turno, login: o.login, nome: o.nome || null }; });
-      const { error } = await supabaseClient.from('ressuprimento_retirada_operador').upsert(lote, { onConflict: 'dia,turno,login' });
+      const lote = ops.slice(i, i + 500).map(function (o) { return { dia: o.dia, turno: o.turno, login: o.login, nome: o.nome || null, pecas: o.pecas || 0, movimentos: o.movimentos || 0 }; });
+      const error = await upsertOperadorComPecas(supabaseClient, 'ressuprimento_retirada_operador', lote, avisar);
       if (error) throw error;
     }
     avisar(linhas.length.toLocaleString('pt-BR') + ' linha(s) de retirada do Pulmão gravadas no histórico.');
@@ -1254,6 +1258,17 @@ async function upsertHistoricoRetirada(supabaseClient, payload, onAviso) {
 /* As listas de histórico (dia x segmento/família/operador x turno, retirada) já vão pras tabelas próprias e a
    tela lê de lá — no snapshot elas só pesam. Kardex de 41 dias estourou o tempo do insert (statement timeout,
    21/10/2026): o snapshot é publicado sem elas. */
+/* Peças e movimentos por operador no dia (05/11/2026, Top 5 do telão DISTR). Banco sem as colunas
+   (migracao_operador_pecas.sql não rodada): grava de novo sem elas e só avisa — nada deixa de ser gravado. */
+let avisouSemColunaPecas = false;
+async function upsertOperadorComPecas(supabaseClient, tabela, lote, avisar) {
+  const r = await supabaseClient.from(tabela).upsert(lote, { onConflict: 'dia,turno,login' });
+  if (!r.error || !/pecas|movimentos|column/i.test(r.error.message || '')) return r.error || null;
+  if (!avisouSemColunaPecas) { avisouSemColunaPecas = true; (avisar || function () {})('Aviso: rode migracao_operador_pecas.sql no Supabase para gravar as peças por operador (Top 5 do telão).'); }
+  const semPecas = lote.map(function (o) { return { dia: o.dia, turno: o.turno, login: o.login, nome: o.nome || null }; });
+  const r2 = await supabaseClient.from(tabela).upsert(semPecas, { onConflict: 'dia,turno,login' });
+  return r2.error || null;
+}
 function semHistoricoNoSnapshot(payload) {
   const p = Object.assign({}, payload);
   ['historico_diario', 'historico_diario_familia', 'historico_diario_operador', 'historico_retirada', 'historico_retirada_operador']
@@ -1331,8 +1346,7 @@ async function upsertHistoricoOperadorDiario(supabaseClient, linhas, onAviso) {
   }
   try {
     for (const lote of lotes) {
-      const { error } = await supabaseClient.from('ressuprimento_operador_diario')
-        .upsert(lote, { onConflict: 'dia,turno,login' });
+      const error = await upsertOperadorComPecas(supabaseClient, 'ressuprimento_operador_diario', lote, avisar);
       if (error) throw error;
     }
     avisar(linhas.length.toLocaleString('pt-BR') + ' linha(s) gravadas no histórico de operadores.');
