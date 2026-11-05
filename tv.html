@@ -95,9 +95,9 @@ body.ocioso,body.ocioso *{cursor:none!important}
 .kpi{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 18px;display:grid;grid-template-rows:auto 1fr;gap:2px;border-top:4px solid var(--kc,var(--border));min-width:0;min-height:0}
 .kpi .k{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);font-weight:700}
 /* informação principal centralizada no espaço abaixo do título */
-.kpi .m{align-self:center;display:grid;gap:4px;justify-items:center;text-align:center;min-width:0;width:100%}
+.kpi .m{align-self:center;display:grid;gap:4px;justify-items:start;text-align:left;min-width:0;width:100%}
 .kpi .v{font-size:44px;font-weight:800;line-height:1;color:var(--vc,var(--text));white-space:nowrap}
-.kpi .v .dt{display:inline-block;margin-left:14px;padding:2px 12px;border-radius:8px;font-size:30px;vertical-align:4px;color:var(--amber);background:rgba(246,189,0,.14);border:1px solid rgba(246,189,0,.55)}
+.kpi .v .dt{margin-left:16px;font-size:34px;color:var(--amber)}
 .kpi .v small{font-size:19px;font-weight:700;color:var(--text-muted);margin-left:8px}
 .kpi .s{font-size:19px;color:var(--text-muted);white-space:nowrap;overflow:hidden;max-width:100%}.kpi .s b{color:var(--vc,var(--kc,var(--text)));font-weight:800}
 .painel{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 18px;display:grid;grid-template-rows:auto 1fr;gap:10px;min-height:0;min-width:0}
@@ -113,8 +113,8 @@ body.ocioso,body.ocioso *{cursor:none!important}
 .etapas{display:grid;align-content:space-around;gap:6px;min-height:0}
 .etapa{display:grid;grid-template-columns:320px 1fr 120px 90px;gap:16px;align-items:center}
 .etapa .nm{font-size:18px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.etapa .trilho{height:34px;background:var(--bg-input);border-radius:7px;overflow:hidden}
-.etapa .barra{height:100%;border-radius:7px;transition:width .9s cubic-bezier(.2,.8,.2,1)}
+.etapa .trilho{height:52px;background:var(--bg-input);border-radius:8px;overflow:hidden}
+.etapa .barra{height:100%;border-radius:8px;transition:width .9s cubic-bezier(.2,.8,.2,1)}
 .etapa .tot{text-align:right;font-size:26px;font-weight:800}
 .etapa .tot.ped{color:var(--text-label);font-size:21px}
 .etapa.cab .nm,.etapa.cab .tot{font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--pc,var(--text-muted))}
@@ -133,12 +133,12 @@ body.ocioso,body.ocioso *{cursor:none!important}
 .leg-t{display:flex;gap:16px;font-size:14px;color:var(--text-label);text-transform:none;letter-spacing:0;font-weight:600}.leg-t i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 
 /* ---------- rosca ---------- */
-.pizza{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;min-height:0}
-.pizza svg{height:100%;max-height:100px;min-height:0;aspect-ratio:1}
-.pizza .leg{display:grid;grid-template-rows:repeat(3,auto);grid-auto-flow:column;column-gap:14px;row-gap:6px;align-content:center;min-width:0}
-.pizza .leg div{display:flex;align-items:center;gap:5px;font-size:13px;white-space:nowrap;color:var(--text-label)}
+.pizza{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center;min-height:0}
+.pizza svg{height:100%;max-height:150px;min-height:0;aspect-ratio:1}
+.pizza .leg{display:grid;grid-template-columns:repeat(2,auto);column-gap:18px;row-gap:14px;align-content:center;justify-content:start;min-width:0}
+.pizza .leg div{display:flex;align-items:center;gap:6px;font-size:15px;white-space:nowrap;color:var(--text-label)}
 .pizza .leg span{color:var(--text)}
-.pizza .leg i{flex:none;width:10px;height:10px;border-radius:3px;background:var(--m)}.pizza .leg b{font-size:15px;color:var(--m)}
+.pizza .leg i{flex:none;width:12px;height:12px;border-radius:3px;background:var(--m)}.pizza .leg b{font-size:17px;color:var(--m)}
 
 /* ---------- Start Inicial ---------- */
 .si-topo{display:grid;grid-template-columns:1fr 1fr 1.45fr;gap:14px;height:150px;flex:none}
@@ -156,10 +156,16 @@ body.ocioso,body.ocioso *{cursor:none!important}
 .nfs .lin.total .c{background:transparent;color:var(--text);font-size:19px}
 
 /* ---------- Ressuprimento: cards de cima alinhados com os painéis de baixo ---------- */
-.rs{display:grid;grid-template-columns:2.6fr 1.15fr;grid-template-rows:140px 1fr;gap:14px;flex:1;min-height:0}
-.rs-cards{display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:14px;min-height:0}
+.rs{display:grid;grid-template-columns:2.6fr 1.15fr;gap:14px;flex:1;min-height:0}
+.rs-col{display:flex;flex-direction:column;gap:14px;min-height:0;min-width:0}
+.rs-col .cresce{flex:1}
+.rs-cards{display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:14px;height:140px;flex:none}
 .rs .kpi .v{font-size:38px}
-.rs .painel.rosca{padding:10px 16px;gap:4px}
+.rs .painel.rosca{padding:12px 16px;gap:6px;height:240px;flex:none}
+/* rosca em cima e a legenda (2 colunas de 2) embaixo, usando a largura toda do card */
+.rs .painel.rosca .pizza{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto;justify-items:center;gap:10px}
+.rs .painel.rosca .pizza svg{max-height:116px}
+.rs .painel.rosca .pizza .leg{justify-content:center;row-gap:8px;column-gap:28px}
 /* Top 5 por turno: três blocos empilhados, cada um na cor do turno */
 /* rola de baixo para cima em loop contínuo (conteúdo duplicado, sobe metade da altura e recomeça) */
 .tops{overflow:hidden;min-height:0;position:relative}
@@ -168,7 +174,8 @@ body.ocioso,body.ocioso *{cursor:none!important}
 @keyframes sobe{to{transform:translateY(-50%)}}
 @media (prefers-reduced-motion:reduce){.tops .rolo.anda{animation:none}}
 .tt5{display:grid;align-content:start;gap:1px}
-.tt5 .tn{font-size:12px;font-weight:800;letter-spacing:.08em;color:var(--t);border-bottom:2px solid var(--t);padding-bottom:2px;margin-bottom:2px}
+.tt5 .tn{display:flex;justify-content:space-between;font-size:12px;font-weight:800;letter-spacing:.08em;color:var(--t);border-bottom:2px solid var(--t);padding-bottom:2px;margin-bottom:2px}
+.tt5 .tn em{font-style:normal;letter-spacing:0;font-weight:700}
 .tt5 div{display:grid;grid-template-columns:20px 1fr auto;gap:8px;align-items:center;font-size:16px;line-height:1.35}
 .tt5 .p{font-weight:800;color:var(--t)}.tt5 b{color:var(--t);font-size:17px}
 .tt5 .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -221,7 +228,7 @@ var RECARREGA_H = 6;                        // recarga completa da página (pega
 var RELE_TUDO_MIN = 30;                     // relê tudo de tempos em tempos, mesmo sem snapshot novo
 // Selo de atualização: o abastecimento da DISTR é manual (upload no report), então os limites são maiores que os do E-commerce.
 var SELO_OK_MIN = 120, SELO_ATENCAO_MIN = 360;
-var DIAS_RESSUP = 7;                        // últimos dias com registro na tela de Ressuprimento
+var DIAS_RESSUP = 10;                       // últimos dias corridos no gráfico do Ressuprimento
 var SUPABASE_URL = 'https://qaehjplsasumuhszjcnu.supabase.co';
 var SUPABASE_ANON_KEY = 'sb_publishable_NkbzLFHMLhVVJYSKDW9NrA_JWQAnPI9';
 var DOMINIO_LOGIN = '@vulcabras.com';
@@ -269,7 +276,9 @@ function roscaHtml(itens, total, rotTotal){
     '<text x="90" y="94" text-anchor="middle" fill="#E8EBF2" font-size="28" font-weight="800">'+fmt(total)+'</text>'+
     '<text x="90" y="116" text-anchor="middle" fill="#7C8BA8" font-size="13">'+rotTotal+'</text></svg><div class="leg">'+leg+'</div></div>';
 }
-var COR_SEGMENTO = { 'CALÇADO':'#297ADF', 'VESTUÁRIO':'#DFBD41', 'ACESSÓRIO':'#45C645', 'MEIA':'#A77BEA', 'CHINELO':'#2EC4B6', 'CHUTEIRA':'#E8830D', 'SEM FAMÍLIA':'#5B6578' };
+// mesmas cores do report DISTR (COR_SEGMENTO_COMP: Vestuário âmbar, Meia verde, Acessório azul-marinho, Calçado gelo; Sem família laranja)
+var COR_SEGMENTO = { 'VESTUÁRIO':'#F6BD00', 'MEIA':'#45C645', 'ACESSÓRIO':'#2F5DA8', 'CALÇADO':'#93A5B8', 'SEM FAMÍLIA':'#E8830D' };
+function segmentoTela(seg){ return seg === 'CHINELO' || seg === 'CHUTEIRA' ? 'CALÇADO' : (seg || 'SEM FAMÍLIA'); }
 var COR_EXTRA = ['#93A5B8', '#EC4FA0', '#5B7F2B', '#2F5DA8'];
 function corSegmento(seg, i){ return COR_SEGMENTO[seg] || COR_EXTRA[i % COR_EXTRA.length]; }
 function corMaiorSegmento(lista){   // lista de { segmento, pares }: cor do segmento com mais peças
@@ -368,12 +377,17 @@ function nfSegmentoHtml(lista){
 /* ================= TELA R · RESSUPRIMENTO ================= */
 var COR_TURNO = { T01:'#297ADF', T02:'#DFBD41', T03:'#45C645' }, ORDEM_TURNO = ['T01','T02','T03'];
 var COR_RS = '#45C645';
-// Dias do Ressuprimento: os 7 últimos com registro até o dia exibido (hoje ou o escolhido no calendário).
+// Dias do Ressuprimento: os 10 últimos dias CORRIDOS até o dia exibido (hoje ou o escolhido no calendário);
+// dia sem registro aparece zerado. Os cards mostram o último dia com registro.
 function diasRessup(){
-  if (!ressup) return [];
+  if (!ressup) return { dias: [], comb: null, ult: null };
   var comb = RC.combinarEtapaRessup(etapaRessup, ressup.aloc, ressup.ret, [], []);
-  var ate = diaTela();
-  return { comb: comb, dias: RC.diasDoHistorico(comb.historico).filter(function(d){ return d.pecas > 0 && d.dia <= ate; }).slice(-DIAS_RESSUP) };
+  var ate = diaTela(), porDia = {};
+  RC.diasDoHistorico(comb.historico).forEach(function(d){ porDia[d.dia] = d; });
+  var dias = [];
+  for (var k = DIAS_RESSUP - 1; k >= 0; k--) { var d = somaDias(ate, -k); dias.push(porDia[d] || { dia:d, pecas:0, movimentos:0, turnos:{} }); }
+  var ult = Object.keys(porDia).filter(function(d){ return d <= ate && porDia[d].pecas > 0; }).sort().pop();
+  return { comb: comb, dias: dias, ult: ult ? porDia[ult] : null };
 }
 function desenhaChave(){
   var c = document.getElementById('chaveRessup');
@@ -385,46 +399,57 @@ function renderTelaR(){
   desenhaChave();
   if (!ressup) { el.dataset.vazia = '1'; el.innerHTML = '<div class="vazio">Sem Kardex de ressuprimento ainda.</div>'; return; }
   el.dataset.vazia = '';
-  var x = diasRessup(), dias = x.dias, comb = x.comb;
-  if (!dias.length) { el.innerHTML = '<div class="vazio">Sem registro de '+ROT_ETAPA_RESSUP[etapaRessup].toLowerCase()+' até '+ddmm(diaTela())+'.</div>'; return; }
-  var ult = dias[dias.length-1], diaU = ult.dia;
+  var x = diasRessup(), dias = x.dias, comb = x.comb, ult = x.ult;
+  if (!ult) { el.innerHTML = '<div class="vazio">Sem registro de '+ROT_ETAPA_RESSUP[etapaRessup].toLowerCase()+' até '+ddmm(diaTela())+'.</div>'; return; }
+  var diaU = ult.dia;
   var turnoCard = function(t){
     var y = ult.turnos[t] || { pecas:0, movimentos:0 };
     return kpiHtml(t, fmt(y.pecas), qt(y.movimentos)+' movimentos', COR_TURNO[t], null, 'peças');
   };
-  // Rosca: segmentos do último dia
-  var segs = RC.porSegmentoDoHistorico(comb.historico.filter(function(h){ return h.dia === diaU; })).filter(function(s){ return s.pecas > 0; });
+  // Rosca: segmentos do último dia, com Chinelo e Chuteira dentro de Calçados (igual ao report)
+  var porSeg = {};
+  comb.historico.forEach(function(h){ if (h.dia !== diaU) return; var sg = segmentoTela(h.segmento); porSeg[sg] = (porSeg[sg] || 0) + (h.pecas || 0); });
+  var segs = Object.keys(porSeg).filter(function(k){ return porSeg[k] > 0; }).map(function(k){ return { segmento:k, pecas:porSeg[k] }; }).sort(function(a, b){ return b.pecas - a.pecas; });
   var itensRosca = segs.map(function(s, i){ return { n:nomeSegmento(s.segmento), v:s.pecas, cor:corSegmento(s.segmento, i) }; });
-  // Barras dos 7 dias empilhadas por turno, com a média dos dias mostrados
+  // Barras dos 10 dias corridos empilhadas por turno; a média é dos dias com registro
+  var comReg = dias.filter(function(d){ return d.pecas > 0; });
   var maxD = Math.max.apply(null, dias.map(function(d){ return d.pecas; }).concat(1)) * 1.12;
-  var media = Math.round(dias.reduce(function(s, d){ return s + d.pecas; }, 0) / dias.length);
+  var media = comReg.length ? Math.round(comReg.reduce(function(s, d){ return s + d.pecas; }, 0) / comReg.length) : 0;
   var cols = dias.map(function(d){
     var pedacos = ORDEM_TURNO.map(function(t){ var p = (d.turnos[t] || {}).pecas || 0; return p ? '<i style="flex:'+p+' 0 0;background:'+COR_TURNO[t]+'"></i>' : ''; }).join('');
-    return '<div class="col"><div class="pilha" style="height:'+(d.pecas/maxD*100).toFixed(1)+'%"><em>'+fmt(d.pecas)+'</em>'+pedacos+'</div>'+
-      '<div class="rot">'+esc(rotDia(d.dia))+'</div></div>';
+    var p = d.dia.split('-'), sem = new Date(+p[0], +p[1]-1, +p[2]).toLocaleDateString('pt-BR', { weekday:'short' });
+    return '<div class="col"><div class="pilha" style="height:'+(d.pecas/maxD*100).toFixed(1)+'%">'+(d.pecas ? '<em>'+fmt(d.pecas)+'</em>' : '')+pedacos+'</div>'+
+      '<div class="rot"><small>'+esc(sem)+'</small>'+ddmm(d.dia)+'</div></div>';
   }).join('');
   var leg = '<span class="leg-t">'+ORDEM_TURNO.map(function(t){ return '<span><i style="background:'+COR_TURNO[t]+'"></i>'+t+'</span>'; }).join('')+
     '<span><i style="background:none;border-top:2px dashed var(--text);border-radius:0;height:0;width:18px;vertical-align:3px"></i>média '+fmt(media)+'/dia</span></span>';
-  // Top 5 de cada turno no dia exibido (hoje, ou o dia escolhido no calendário), um embaixo do outro, na cor do turno
-  var diaTop = diaTela();
+  // Top 5 de cada turno no último dia em que o turno trabalhou (até o dia exibido), com a data à direita do turno
+  var fontesOps = etapaRessup === 'retirada' ? [ressup.opsRet] : etapaRessup === 'geral' ? [ressup.opsAloc, ressup.opsRet] : [ressup.opsAloc];
   var tops = ORDEM_TURNO.map(function(t){
-    var l = RC.topOperadoresDia(etapaRessup, ressup.opsAloc, ressup.opsRet, diaTop, 5, t);
+    var diasT = {};
+    fontesOps.forEach(function(l){ (l || []).forEach(function(o){ if (RC.normalizarTurnoLegado(o.turno) === t && (+o.pecas || 0) > 0 && o.dia <= diaTela()) diasT[o.dia] = 1; }); });
+    var diaT = Object.keys(diasT).sort().pop();
+    var l = diaT ? RC.topOperadoresDia(etapaRessup, ressup.opsAloc, ressup.opsRet, diaT, 5, t) : [];
     var linhas = l.map(function(o, i){
       return '<div><span class="p">'+(i+1)+'</span><span class="nm">'+esc(o.nome ? nomeCurto(nomeBonito(o.nome)) : o.login)+'</span><b>'+fmt(o.pecas)+'</b></div>'; }).join('');
-    return '<div class="tt5" style="--t:'+COR_TURNO[t]+'"><span class="tn">'+t+'</span>'+(linhas || '<div class="sem">sem registro</div>')+'</div>';
+    return '<div class="tt5" style="--t:'+COR_TURNO[t]+'"><span class="tn">'+t+(diaT ? '<em>'+(diaT === hojeISO() ? 'hoje' : ddmm(diaT))+'</em>' : '')+'</span>'+(linhas || '<div class="sem">sem registro</div>')+'</div>';
   }).join('');
   el.innerHTML =
     '<div class="rs">'+
-      '<div class="rs-cards">'+
-        kpiHtml(ROT_CARD_RESSUP[etapaRessup]+' em '+ddmm(diaU), fmt(ult.pecas), qt(ult.movimentos)+' movimentos · média 7d '+qt(media), COR_RS, null, 'peças')+
-        turnoCard('T01')+turnoCard('T02')+turnoCard('T03')+
+      '<div class="rs-col">'+
+        '<div class="rs-cards">'+
+          kpiHtml(ROT_CARD_RESSUP[etapaRessup]+' em '+ddmm(diaU), fmt(ult.pecas), qt(ult.movimentos)+' movimentos · média/dia '+qt(media), COR_RS, null, 'peças')+
+          turnoCard('T01')+turnoCard('T02')+turnoCard('T03')+
+        '</div>'+
+        '<div class="painel cresce" style="--pc:'+COR_RS+'"><span class="k" style="display:flex;justify-content:space-between;align-items:center">'+
+          '<span>Peças por dia e turno</span>'+leg+'</span>'+
+          '<div class="colunas" style="padding-top:26px">'+cols+'<div class="media" data-frac="'+(media/maxD).toFixed(4)+'"></div></div></div>'+
       '</div>'+
-      '<div class="painel rosca" style="border-top:4px solid '+corMaiorSegmento(segs.map(function(s){ return { segmento:s.segmento, pares:s.pecas }; }))+'"><span class="k">Por segmento · '+ddmm(diaU)+'</span>'+(itensRosca.length ? roscaHtml(itensRosca, ult.pecas, 'peças') : '<div class="semhora">Sem segmento no dia</div>')+'</div>'+
-      '<div class="painel" style="--pc:'+COR_RS+'"><span class="k" style="display:flex;justify-content:space-between;align-items:center">'+
-        '<span>Peças por dia e turno</span>'+leg+'</span>'+
-        '<div class="colunas" style="padding-top:26px">'+cols+'<div class="media" data-frac="'+(media/maxD).toFixed(4)+'"></div></div></div>'+
-      '<div class="painel" style="--pc:'+COR_RS+'"><span class="k">Top 5 por turno · '+(diaTop === hojeISO() ? 'hoje' : ddmm(diaTop))+'</span>'+
-        '<div class="tops"><div class="rolo">'+tops+'</div></div></div>'+
+      '<div class="rs-col">'+
+        '<div class="painel rosca" style="border-top:4px solid '+corMaiorSegmento(segs.map(function(s){ return { segmento:s.segmento, pares:s.pecas }; }))+'"><span class="k">Por segmento · '+ddmm(diaU)+'</span>'+(itensRosca.length ? roscaHtml(itensRosca, ult.pecas, 'peças') : '<div class="semhora">Sem segmento no dia</div>')+'</div>'+
+        '<div class="painel cresce" style="--pc:'+COR_RS+'"><span class="k">Top 5 por turno</span>'+
+          '<div class="tops"><div class="rolo">'+tops+'</div></div></div>'+
+      '</div>'+
     '</div>';
   ajustaMediaColunas(el);
   ligaRolo(el);
@@ -466,8 +491,10 @@ function renderFaixa(){
     if (r.maisAntiga) itens.push('<span class="ti" style="--c:'+COR_ANTIGA+'"><b>PFA mais antiga (NF)</b> <span class="v">'+fmt(r.maisAntiga.dias)+'</span> '+(r.maisAntiga.dias === 1 ? 'dia' : 'dias')+' · PFA '+esc(r.maisAntiga.pfa)+'</span>');
     itens.push('<span class="ti" style="--c:var(--accent-light)"><b>Total em tela</b> <span class="v">'+fmt(r.total.pares)+'</span> peças</span>');
     // total em tela por segmento (antes ficava numa faixa própria dentro da tela)
-    r.segmentos.forEach(function(s, i){
-      itens.push('<span class="ti" style="--c:'+corSegmento(s.segmento, i)+'"><i></i><b>'+esc(nomeSegmento(s.segmento))+' em tela</b> <span class="v">'+fmt(s.pares)+'</span> peças</span>');
+    var segF = {};
+    r.segmentos.forEach(function(s){ var k = segmentoTela(s.segmento); segF[k] = (segF[k] || 0) + s.pares; });
+    Object.keys(segF).sort(function(a, b){ return segF[b] - segF[a]; }).forEach(function(k, i){
+      itens.push('<span class="ti" style="--c:'+corSegmento(k, i)+'"><i></i><b>'+esc(nomeSegmento(k))+' em tela</b> <span class="v">'+fmt(segF[k])+'</span> peças</span>');
     });
     if (r.ajustesEmAberto) itens.push('<span class="ti" style="--c:var(--accent-light)"><b>Ajustes de PFA em aberto</b> <span class="v">'+fmt(r.ajustesEmAberto)+'</span> ag. comercial</span>');
   }
@@ -666,8 +693,9 @@ async function carregaPfas(dia){
   atualizadoEm.pfas = new Date(p.gerado_em);
 }
 async function leOperadores(tabela, dia){
-  var r = await sb.from(tabela).select('dia, turno, login, nome, pecas, movimentos').eq('dia', dia);
-  if (r.error) r = await sb.from(tabela).select('dia, turno, login, nome').eq('dia', dia);   // banco sem migracao_operador_pecas.sql
+  var de = somaDias(dia, -10);
+  var r = await lerTudo(function(){ return sb.from(tabela).select('dia, turno, login, nome, pecas, movimentos').gte('dia', de).lte('dia', dia).order('dia'); });
+  if (r.error) r = await lerTudo(function(){ return sb.from(tabela).select('dia, turno, login, nome').gte('dia', de).lte('dia', dia).order('dia'); });   // banco sem migracao_operador_pecas.sql
   return r.error ? [] : (r.data || []);
 }
 async function carregaRessup(dia){
