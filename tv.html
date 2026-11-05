@@ -92,11 +92,10 @@ body.ocioso,body.ocioso *{cursor:none!important}
 
 /* ---------- cards, painéis e top 5 (mesmos do telão do E-commerce) ---------- */
 /* título sempre no alto do card; número e linha de baixo encostados embaixo */
-.kpi{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 18px;display:grid;grid-template-rows:auto 1fr;gap:2px;border-top:4px solid var(--kc,var(--border));min-width:0;min-height:0}
+.kpi{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 18px;display:grid;grid-template-rows:auto 1fr auto;gap:2px;border-top:4px solid var(--kc,var(--border));min-width:0;min-height:0;text-align:left}
 .kpi .k{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);font-weight:700}
-/* informação principal centralizada no espaço abaixo do título */
-.kpi .m{align-self:center;display:grid;gap:4px;justify-items:start;text-align:left;min-width:0;width:100%}
-.kpi .v{font-size:44px;font-weight:800;line-height:1;color:var(--vc,var(--text));white-space:nowrap}
+/* título no alto, número centralizado na altura, linha de baixo encostada no canto inferior esquerdo */
+.kpi .v{font-size:44px;font-weight:800;line-height:1;color:var(--vc,var(--text));white-space:nowrap;align-self:center}
 .kpi .v .dt{margin-left:16px;font-size:34px;color:var(--amber)}
 .kpi .v small{font-size:19px;font-weight:700;color:var(--text-muted);margin-left:8px}
 .kpi .s{font-size:19px;color:var(--text-muted);white-space:nowrap;overflow:hidden;max-width:100%}.kpi .s b{color:var(--vc,var(--kc,var(--text)));font-weight:800}
@@ -162,10 +161,10 @@ body.ocioso,body.ocioso *{cursor:none!important}
 .rs-cards{display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:14px;height:140px;flex:none}
 .rs .kpi .v{font-size:38px}
 .rs .painel.rosca{padding:12px 16px;gap:6px;height:240px;flex:none}
-/* rosca em cima e a legenda (2 colunas de 2) embaixo, usando a largura toda do card */
-.rs .painel.rosca .pizza{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto;justify-items:center;gap:10px}
-.rs .painel.rosca .pizza svg{max-height:116px}
-.rs .painel.rosca .pizza .leg{justify-content:center;row-gap:8px;column-gap:28px}
+/* rosca grande à esquerda e a legenda numa coluna só à direita */
+.rs .painel.rosca .pizza{grid-template-columns:auto 1fr;gap:22px;align-items:center}
+.rs .painel.rosca .pizza svg{max-height:176px}
+.rs .painel.rosca .pizza .leg{grid-template-columns:1fr;row-gap:12px;justify-content:start}
 /* Top 5 por turno: três blocos empilhados, cada um na cor do turno */
 /* rola de baixo para cima em loop contínuo (conteúdo duplicado, sobe metade da altura e recomeça) */
 .tops{overflow:hidden;min-height:0;position:relative}
@@ -249,7 +248,7 @@ function rotDia(iso){ var p = iso.split('-'), d = new Date(+p[0], +p[1]-1, +p[2]
 function cssVar(nome){ return 'var('+nome+')'; }
 function qt(n){ return '<b>'+fmt(n)+'</b>'; }
 // O número segue a cor da barra de destaque (kc) quando não vem cor própria (vc). un = unidade ao lado do número.
-function kpiHtml(rot, valor, sub, kc, vc, un, extra){ vc = vc || kc; return '<div class="kpi" style="'+(kc?'--kc:'+kc+';':'')+(vc?'--vc:'+vc:'')+'"><span class="k">'+rot+'</span><div class="m"><span class="v">'+valor+(un?'<small>'+un+'</small>':'')+(extra||'')+'</span><span class="s">'+sub+'</span></div></div>'; }
+function kpiHtml(rot, valor, sub, kc, vc, un, extra){ vc = vc || kc; return '<div class="kpi" style="'+(kc?'--kc:'+kc+';':'')+(vc?'--vc:'+vc:'')+'"><span class="k">'+rot+'</span><span class="v">'+valor+(un?'<small>'+un+'</small>':'')+(extra||'')+'</span><span class="s">'+sub+'</span></div>'; }
 function top5Html(lista, cor, vazio){
   if (!lista.length) return '<div class="semhora">'+vazio+'</div>';
   var INTENS = [1, .8, .62, .46, .32];   // intensidade da cor pela posição
