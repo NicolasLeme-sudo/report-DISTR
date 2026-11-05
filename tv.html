@@ -172,11 +172,10 @@ body.ocioso,body.ocioso *{cursor:none!important}
 .tops .rolo.anda{animation:sobe var(--dur,30s) linear infinite}
 @keyframes sobe{to{transform:translateY(-50%)}}
 @media (prefers-reduced-motion:reduce){.tops .rolo.anda{animation:none}}
-.tt5{display:grid;align-content:start;gap:1px}
-.tt5 .tn{display:flex;justify-content:space-between;font-size:12px;font-weight:800;letter-spacing:.08em;color:var(--t);border-bottom:2px solid var(--t);padding-bottom:2px;margin-bottom:2px}
+.tt5{display:grid;align-content:start;gap:8px}
+.tt5 .tn{display:flex;justify-content:space-between;font-size:13px;font-weight:800;letter-spacing:.08em;color:var(--t);border-bottom:2px solid var(--t);padding-bottom:3px}
 .tt5 .tn em{font-style:normal;letter-spacing:0;font-weight:700}
-.tt5 div{display:grid;grid-template-columns:20px 1fr auto;gap:8px;align-items:center;font-size:16px;line-height:1.35}
-.tt5 .p{font-weight:800;color:var(--t)}.tt5 b{color:var(--t);font-size:17px}
+/* linhas dos operadores: .top5 (mesmo desenho do telão do E-commerce) */
 .tt5 .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tt5 .sem{display:block;color:var(--text-muted);font-size:13px}
 
@@ -429,9 +428,10 @@ function renderTelaR(){
     fontesOps.forEach(function(l){ (l || []).forEach(function(o){ if (RC.normalizarTurnoLegado(o.turno) === t && (+o.pecas || 0) > 0 && o.dia <= diaTela()) diasT[o.dia] = 1; }); });
     var diaT = Object.keys(diasT).sort().pop();
     var l = diaT ? RC.topOperadoresDia(etapaRessup, ressup.opsAloc, ressup.opsRet, diaT, 5, t) : [];
-    var linhas = l.map(function(o, i){
-      return '<div><span class="p">'+(i+1)+'</span><span class="nm">'+esc(o.nome ? nomeCurto(nomeBonito(o.nome)) : o.login)+'</span><b>'+fmt(o.pecas)+'</b></div>'; }).join('');
-    return '<div class="tt5" style="--t:'+COR_TURNO[t]+'"><span class="tn">'+t+(diaT ? '<em>'+(diaT === hojeISO() ? 'hoje' : ddmm(diaT))+'</em>' : '')+'</span>'+(linhas || '<div class="sem">sem registro</div>')+'</div>';
+    // mesmo desenho do Top 5 do telão do E-commerce (top5Html): linha com divisória, cor do turno esmaecendo do 1º ao 5º
+    var linhas = l.length ? '<div class="top5">'+l.map(function(o, i){ var st = ' style="color:'+COR_TURNO[t]+';opacity:'+[1, .8, .62, .46, .32][i]+'"';
+      return '<div><span class="p"'+st+'>'+(i+1)+'</span><span class="nm">'+esc(o.nome ? nomeCurto(nomeBonito(o.nome)) : o.login)+'</span><b'+st+'>'+fmt(o.pecas)+'</b></div>'; }).join('')+'</div>' : '';
+    return '<div class="tt5" style="--t:'+COR_TURNO[t]+'"><span class="tn">'+t+(diaT ? '<em>'+(diaT === hojeISO() ? 'hoje' : ddmm(diaT))+'</em>' : '')+'</span>'+(linhas || '<span class="sem">sem registro</span>')+'</div>';
   }).join('');
   el.innerHTML =
     '<div class="rs">'+
@@ -486,6 +486,11 @@ function renderFaixa(){
   var itens = [], r = resumoSI, em = ehHoje() ? '' : ' em '+ddmm(diaTela());
   if (r && r.total.pfas) {
     itens.push('<span class="ti" style="--c:'+COR_PEND+'"><b>Material pendente'+em+'</b> <span class="v">'+fmt(r.pendente.pares)+'</span> peças</span>');
+    // as duas etapas que ficam fora do Material pendente e do funil
+    r.etapas.forEach(function(e){
+      if (e.etapa === 'Nao disp. picking') itens.push('<span class="ti" style="--c:'+cssVar(e.cor)+'"><b>Não disp. picking</b> <span class="v">'+fmt(e.pares)+'</span> peças</span>');
+      if (e.etapa === SI.ETAPA_LIDA) itens.push('<span class="ti" style="--c:'+cssVar(e.cor)+'"><b>Ag. embarque (lido na esteira)</b> <span class="v">'+fmt(e.pares)+'</span> peças</span>');
+    });
     itens.push('<span class="ti" style="--c:'+COR_NF+'"><b>NF emitida · ag. coleta</b> <span class="v">'+fmt(r.nfAgColeta.pares)+'</span> peças</span>');
     if (r.maisAntiga) itens.push('<span class="ti" style="--c:'+COR_ANTIGA+'"><b>PFA mais antiga (NF)</b> <span class="v">'+fmt(r.maisAntiga.dias)+'</span> '+(r.maisAntiga.dias === 1 ? 'dia' : 'dias')+' · PFA '+esc(r.maisAntiga.pfa)+'</span>');
     itens.push('<span class="ti" style="--c:var(--accent-light)"><b>Total em tela</b> <span class="v">'+fmt(r.total.pares)+'</span> peças</span>');
