@@ -1,0 +1,11 @@
+{
+  "name": "Telão · DISTR",
+  "short_name": "Telão DISTR",
+  "start_url": "/tv",
+  "scope": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0F1A33",
+  "theme_color": "#0F1A33",
+  "icons": [{ "src": "/logo-mark.png", "sizes": "378x359", "type": "image/png", "purpose": "any" }]
+}
