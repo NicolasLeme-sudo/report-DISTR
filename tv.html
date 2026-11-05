@@ -190,6 +190,8 @@ body.ocioso,body.ocioso *{cursor:none!important}
 .ti i{width:11px;height:11px;border-radius:50%;background:var(--c)}
 .ti .v{color:var(--c,var(--accent-light));font-weight:800}
 .ti b{color:var(--text-muted);font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase}
+.ti.ult::after,.ti.sep::after{display:none}
+.ti.sep{font-size:24px;font-weight:300;color:var(--text-muted);padding-right:22px}
 @keyframes loopa{to{transform:translateX(-50%)}}
 .selo{font-weight:700}.selo.ok{color:var(--olive)}.selo.atencao{color:var(--amber)}.selo.velho{color:var(--red)}
 
@@ -314,7 +316,7 @@ function montaLoop(html){
 }
 
 /* ================= DADOS EM MEMÓRIA ================= */
-var resumoSI = null, ressup = null, atualizadoEm = {}, falhou = false;
+var resumoSI = null, ressup = null, atualizadoEm = {}, falhou = false, nomesAtivos = {};
 var etapaRessup = (function(){
   var q = Q.get('ressup'); if (q === 'soma') q = 'geral';
   if (['alocacao','retirada','geral'].indexOf(q) !== -1) return q;
@@ -430,7 +432,8 @@ function renderTelaR(){
     var l = diaT ? RC.topOperadoresDia(etapaRessup, ressup.opsAloc, ressup.opsRet, diaT, 5, t) : [];
     // mesmo desenho do Top 5 do telão do E-commerce (top5Html): linha com divisória, cor do turno esmaecendo do 1º ao 5º
     var linhas = l.length ? '<div class="top5">'+l.map(function(o, i){ var st = ' style="color:'+COR_TURNO[t]+';opacity:'+[1, .8, .62, .46, .32][i]+'"';
-      return '<div><span class="p"'+st+'>'+(i+1)+'</span><span class="nm">'+esc(o.nome ? nomeCurto(nomeBonito(o.nome)) : o.login)+'</span><b'+st+'>'+fmt(o.pecas)+'</b></div>'; }).join('')+'</div>' : '';
+      var nome = nomesAtivos[String(o.login).toUpperCase()] || o.nome;   // nome completo da base de ativos; sem cadastro, o do Kardex
+      return '<div><span class="p"'+st+'>'+(i+1)+'</span><span class="nm">'+esc(nome ? nomeCurto(nomeBonito(nome)) : o.login)+'</span><b'+st+'>'+fmt(o.pecas)+'</b></div>'; }).join('')+'</div>' : '';
     return '<div class="tt5" style="--t:'+COR_TURNO[t]+'"><span class="tn">'+t+(diaT ? '<em>'+(diaT === hojeISO() ? 'hoje' : ddmm(diaT))+'</em>' : '')+'</span>'+(linhas || '<span class="sem">sem registro</span>')+'</div>';
   }).join('');
   el.innerHTML =
@@ -483,26 +486,24 @@ document.getElementById('chaveRessup').addEventListener('click', function(e){ va
 
 /* ================= FAIXA DE BAIXO (totais em loop) ================= */
 function renderFaixa(){
-  var itens = [], r = resumoSI, em = ehHoje() ? '' : ' em '+ddmm(diaTela());
-  if (r && r.total.pfas) {
-    itens.push('<span class="ti" style="--c:'+COR_PEND+'"><b>Material pendente'+em+'</b> <span class="v">'+fmt(r.pendente.pares)+'</span> peças</span>');
-    // as duas etapas que ficam fora do Material pendente e do funil
-    r.etapas.forEach(function(e){
-      if (e.etapa === 'Nao disp. picking') itens.push('<span class="ti" style="--c:'+cssVar(e.cor)+'"><b>Não disp. picking</b> <span class="v">'+fmt(e.pares)+'</span> peças</span>');
-      if (e.etapa === SI.ETAPA_LIDA) itens.push('<span class="ti" style="--c:'+cssVar(e.cor)+'"><b>Ag. embarque (lido na esteira)</b> <span class="v">'+fmt(e.pares)+'</span> peças</span>');
-    });
-    itens.push('<span class="ti" style="--c:'+COR_NF+'"><b>NF emitida · ag. coleta</b> <span class="v">'+fmt(r.nfAgColeta.pares)+'</span> peças</span>');
-    if (r.maisAntiga) itens.push('<span class="ti" style="--c:'+COR_ANTIGA+'"><b>PFA mais antiga (NF)</b> <span class="v">'+fmt(r.maisAntiga.dias)+'</span> '+(r.maisAntiga.dias === 1 ? 'dia' : 'dias')+' · PFA '+esc(r.maisAntiga.pfa)+'</span>');
-    itens.push('<span class="ti" style="--c:var(--accent-light)"><b>Total em tela</b> <span class="v">'+fmt(r.total.pares)+'</span> peças</span>');
-    // total em tela por segmento (antes ficava numa faixa própria dentro da tela)
-    var segF = {};
-    r.segmentos.forEach(function(s){ var k = segmentoTela(s.segmento); segF[k] = (segF[k] || 0) + s.pares; });
-    Object.keys(segF).sort(function(a, b){ return segF[b] - segF[a]; }).forEach(function(k, i){
-      itens.push('<span class="ti" style="--c:'+corSegmento(k, i)+'"><i></i><b>'+esc(nomeSegmento(k))+' em tela</b> <span class="v">'+fmt(segF[k])+'</span> peças</span>');
-    });
-    if (r.ajustesEmAberto) itens.push('<span class="ti" style="--c:var(--accent-light)"><b>Ajustes de PFA em aberto</b> <span class="v">'+fmt(r.ajustesEmAberto)+'</span> ag. comercial</span>');
-  }
-  if (itens.length) montaLoop(itens.join(''));
+  // Grupos separados por "|": [7 etapas + Total pendente] | [em tela por segmento] | [NF ag. coleta, PFA mais antiga, ajustes] |
+  var r = resumoSI, sep = '<span class="ti sep">|</span>';
+  if (!r || !r.total.pfas) return;
+  var g1 = r.etapas.map(function(e){
+    return '<span class="ti" style="--c:'+cssVar(e.cor)+'"><b>'+esc(e.rotulo)+'</b> <span class="v">'+fmt(e.pares)+'</span> peças</span>';
+  });
+  g1.push('<span class="ti" style="--c:var(--accent-light)"><b>Total pendente</b> <span class="v">'+fmt(r.total.pares)+'</span> peças</span>');
+  var segF = {}, g2 = [];
+  r.segmentos.forEach(function(s){ var k = segmentoTela(s.segmento); segF[k] = (segF[k] || 0) + s.pares; });
+  Object.keys(segF).sort(function(a, b){ return segF[b] - segF[a]; }).forEach(function(k, i){
+    g2.push('<span class="ti" style="--c:'+corSegmento(k, i)+'"><i></i><b>'+esc(nomeSegmento(k))+' em tela</b> <span class="v">'+fmt(segF[k])+'</span> peças</span>');
+  });
+  var g3 = ['<span class="ti" style="--c:'+COR_NF+'"><b>NF emitida · ag. coleta</b> <span class="v">'+fmt(r.nfAgColeta.pares)+'</span> peças</span>'];
+  if (r.maisAntiga) g3.push('<span class="ti" style="--c:'+COR_ANTIGA+'"><b>PFA mais antiga (NF)</b> <span class="v">'+fmt(r.maisAntiga.dias)+'</span> '+(r.maisAntiga.dias === 1 ? 'dia' : 'dias')+' · PFA '+esc(r.maisAntiga.pfa)+'</span>');
+  if (r.ajustesEmAberto) g3.push('<span class="ti" style="--c:var(--accent-light)"><b>Ajustes de PFA em aberto</b> <span class="v">'+fmt(r.ajustesEmAberto)+'</span> ag. comercial</span>');
+  // o último item de cada grupo fica sem o pontinho: quem separa é o "|"
+  var fecha = function(g){ if (g.length) g[g.length-1] = g[g.length-1].replace('class="ti"', 'class="ti ult"'); return g.join('') + sep; };
+  montaLoop(fecha(g1) + fecha(g2) + fecha(g3));
 }
 
 /* ================= GIRO DAS TELAS ================= */
@@ -710,7 +711,9 @@ async function carregaRessup(dia){
     leOperadores('ressuprimento_operador_diario', dia),
     leOperadores('ressuprimento_retirada_operador', dia),
     sb.from('dashboard_snapshots').select('gerado_em').eq('pagina', 'ressuprimento_mov').order('gerado_em', { ascending:false }).limit(1),
+    lerTudo(function(){ return sb.from('dim_colaboradores_turno').select('login, nome').order('login'); }),   // base de ativos: nome completo
   ]);
+  if (!r[5].error) { nomesAtivos = {}; (r[5].data || []).forEach(function(c){ if (c.login && c.nome) nomesAtivos[String(c.login).toUpperCase()] = c.nome; }); }
   if (r[0].error) throw r[0].error;
   var snap = !r[4].error && r[4].data && r[4].data[0];
   ressup = { aloc: r[0].data || [], ret: r[1].error ? [] : (r[1].data || []), opsAloc: r[2], opsRet: r[3] };
