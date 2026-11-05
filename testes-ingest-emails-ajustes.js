@@ -121,13 +121,40 @@ ok(vd[0].ja_lancado && !vd[0].corrige_tipo, 'mesmo tipo já gravado continua "j�
 console.log('\n=== só vale a instrução da Simoni (gerente) — 01/10/2026 ===');
 const instrErika = E.interpretarEmailAjuste({ assunto: 'RES: NFs com divergência', remetente: 'Erika Domingues Leme', data: d, corpo: comNf });
 ok(instrErika.every(function (l) { return l.tipo === null; }), 'instrução escrita pela Erika (assistente) não autoriza nada');
-ok(/só vale o retorno da Simoni/.test(instrErika[0].status), '… e o status explica por quê');
+ok(/só vale o retorno da Simoni ou da Camila/.test(instrErika[0].status), '… e o status explica por quê');
 const citada = ['Ok, vou verificar', 'De: Simoni Maria Feiten', 'Enviada em: ontem', 'NF', 'INSTRUÇÃO', '222395', 'DEVOLVER', 'De: Erika', 'NF', 'INSTRUÇÃO', '222400', 'EMBARCAR'].join('\n');
 const ic = E.extrairInstrucoes(citada.split('\n'), 'Erika Domingues Leme');
 eq(ic.get('222395'), 'DEVOLVER', 'resposta da Simoni citada mais abaixo no e-mail continua valendo (autor = "De:" acima da linha)');
 eq(ic.get('222400'), undefined, '… mas a instrução da Erika, no mesmo e-mail, não vale');
 eq(E.extrairInstrucoes(['Esta nota devolver, 222395.', 'De: Simoni'], 'Simoni Maria Feiten').get('222395'), 'DEVOLVER', 'remetente Simoni: texto livre vale');
-eq(E.extrairInstrucoes(['Esta nota devolver, 222395.', 'De: Simoni'], 'Camila Ferreira').get('222395'), undefined, 'remetente Camila: não vale');
+eq(E.extrairInstrucoes(['Esta nota devolver, 222395.', 'De: Simoni'], 'Camila Ferreira').get('222395'), 'DEVOLVER', 'remetente Camila Ferreira: vale (04/11/2026)');
+const instrCamila = E.interpretarEmailAjuste({ assunto: 'RES: NFs com divergência', remetente: 'Camila Ferreira', data: d, corpo: comNf });
+['Camila Ferreira', 'Ferreira, Camila', 'Camila Souza Ferreira', 'CAMILA FERREIRA <camila.ferreira@vulcabras.com>'].forEach(function (nome) {
+  eq(E.extrairInstrucoes(['Esta nota devolver, 222395.', 'De: X'], nome).get('222395'), 'DEVOLVER', 'Camila com nome "' + nome.replace(' ', '[nbsp]') + '": vale');
+});
+eq(E.extrairInstrucoes(['Esta nota devolver, 222395.', 'De: X'], 'Camila Santos').get('222395'), undefined, 'outra Camila (sem Ferreira): não vale');
+eq(E.extrairInstrucoes(['NF', 'INSTRUÇÃO', '222395', 'EMBARCAR'], 'Erika').get('222395'), undefined, '… e a Erika continua sem autorizar');
+eq(E.extrairInstrucoes(['Ok', 'De: Camila Ferreira <c@v.com>', 'NF', 'INSTRUÇÃO', '222395', 'EMBARCAR'], 'Erika').get('222395'), 'EMBARCAR', 'resposta da Camila citada ("De:" com espaço especial) vale');
+ok(instrCamila.some(function (l) { return l.tipo !== null; }), 'tabela de instrução escrita pela Camila Ferreira autoriza');
+
+
+console.log('\n=== 04/11/2026: Camila e Simoni autorizam em texto sem NF, e tabela curta com INSTRUÇÃO no fim ===');
+const quadroErika = ['De: Erika Domingues Leme', 'Camila, posso enviar essas NFs com divergência ?', 'NF', 'PFA', 'CLIENTE', 'SITUAÇÃO', 'COD. REP',
+  '224672', '250956', 'CL 83279 AMAZON', 'FALTA PARCIAL', '711', '224660', '250958', 'CL 83279 AMAZON', 'FALTA PARCIAL', '711'];
+eq(E.extrairInstrucoes(['Olá, boa tarde. ', 'Podem seguir com o embarque, por favor.'].concat(quadroErika), 'Camila Ferreira').get('*'), 'EMBARCAR', '"Podem seguir com o embarque" (sem nº de NF) vale para o quadro todo');
+eq(E.extrairInstrucoes(['Boa tarde', 'Nicolas, favor devolver todas as notas'].concat(quadroErika), 'Simoni Maria Feiten').get('*'), 'DEVOLVER', '"favor devolver todas as notas" → DEVOLVER para todas');
+eq(E.extrairInstrucoes(['Olá', 'Estou verificando.. por favor, aguardem!'].concat(quadroErika), 'Camila Ferreira').size, 0, '"estou verificando, aguardem" não autoriza');
+eq(E.extrairInstrucoes(['Olá', 'Não pode embarcar ainda.'].concat(quadroErika), 'Camila Ferreira').size, 0, '"não pode embarcar" não autoriza');
+eq(E.extrairInstrucoes(['Pode embarcar as notas'].concat(quadroErika), 'Erika Domingues Leme').size, 0, 'frase geral da Erika continua sem valer');
+const iDemais = E.extrairInstrucoes(['Boa tarde', 'Estas duas notas embarcar: 224672.', 'As demais, devolver.'].concat(quadroErika), 'Simoni Maria Feiten');
+eq([iDemais.get('224672'), iDemais.get('*')], ['EMBARCAR', 'DEVOLVER'], '"As demais, devolver" (com vírgula) vira o padrão');
+const curta = ['Olá', 'Segue instrução das que faltavam.', 'NF', 'PFA', 'CLIENTE', 'ENC', 'TAM', 'QUANT. FALTANTE', 'INSTRUÇÃO',
+  '224672', '250956', 'CL 83279 AMAZON', '985064', 'M', '7', 'EMBARCAR',
+  '220836', '246351', 'CL 46022 MANDRAKE', '955860', '4-G', '2', 'DEVOLVER',
+  '220836', '246351', 'CL 46022 MANDRAKE', '955860', '5-GG', '2',
+  '224335', '250953', 'CL 80971 VULCABRAS', '984926', 'G', '12', 'AGUARDAR', 'De: Erika'];
+const iCurta = E.extrairInstrucoes(curta, 'Simoni Maria Feiten');
+eq([iCurta.get('224672'), iCurta.get('220836'), iCurta.get('224335'), iCurta.get('*')], ['EMBARCAR', 'DEVOLVER', undefined, undefined], 'tabela curta: instrução no fim do registro; AGUARDAR não autoriza; "Segue instrução" não vira padrão');
 
 
 console.log('\n=== 02/10/2026: tabela COMPLETA com a coluna de instrução depois do COD. REP (só na 1ª linha de cada NF) ===');

@@ -210,6 +210,8 @@ eq(snapBaixa.total.pecas_diretas, 5, 'parte da retirada que foi direto pro Picki
 eq(snapBaixa.por_dia_retirada.map(function (d) { return [d.dia, d.pecas]; }), [['2026-10-19', 42], ['2026-10-20', 5]], 'retirada conta no dia de quem desceu');
 eq(snapBaixa.historico_retirada.reduce(function (t, h) { return t + h.pecas; }, 0) + snapBaixa.total.pecas_ressupridas, 64,
   'geral = 47 retiradas + 17 alocadas (soma simples)');
+eq(snapBaixa.historico_retirada_operador.map(function (o) { return [o.dia, o.login, o.pecas]; }).sort(),
+  [['2026-10-19', 'EX3', 42], ['2026-10-20', 'EX1', 5]].sort(), 'retirada por operador no dia traz as peças (Top 5 do telão)');
 
 /* ------------------------------------------------------------------ */
 console.log('\n=== fila em andamento: rua 98 é staging de RECEBIMENTO, não fila de ressuprimento ===');
@@ -284,6 +286,10 @@ eq(snapDias.historico_diario_operador.length, 3, '3 combinações distintas de d
 ok(!!operadorPorChave['2026-08-10|T01|EX1'], 'EX1 no dia 10 turno T01');
 ok(!!operadorPorChave['2026-08-10|T02|EX2'], 'EX2 no dia 10 turno T02');
 ok(!!operadorPorChave['2026-08-11|T03|EX1'], 'EX1 de novo no dia 11 turno T03 (login repetido, dia diferente = outra linha)');
+// Peças e movimentos por operador no dia (05/11/2026): Top 5 do telão DISTR
+eq([operadorPorChave['2026-08-10|T01|EX1'].pecas, operadorPorChave['2026-08-10|T02|EX2'].pecas, operadorPorChave['2026-08-11|T03|EX1'].pecas],
+  [10, 20, 30], 'cada linha de operador traz as peças do dia+turno');
+eq(operadorPorChave['2026-08-10|T01|EX1'].movimentos, 1, '… e os movimentos');
 
 /* ------------------------------------------------------------------ */
 console.log('\n=== turno real do colaborador (dim_colaboradores_turno) vence o chute por horário ===');
@@ -311,6 +317,42 @@ eq(semColaborador.resolucao_turno.sem_cadastro.length, 2, 'EX1 e EX2 aparecem na
 const ex1SemCadastro = semColaborador.resolucao_turno.sem_cadastro.find(function (m) { return m.login === 'EX1'; });
 eq(ex1SemCadastro.dividido_entre_turnos, true, 'EX1 caiu em T01 (08:00) e T03 (03:00) pelo horário — chute dividido entre dois turnos, o caso que o cadastro real resolve');
 eq(ex1SemCadastro.turnos_chutados, 'T01/T03', 'os dois turnos chutados aparecem, em ordem');
+
+/* ------------------------------------------------------------------ */
+console.log('\n=== dia de produção: T02 depois da meia-noite = dia anterior; T03 inteiro no dia em que termina ===');
+(function () {
+  const arq = [
+    'VULSP|MOVIMENTOS|de:10/08/2026|ate:12/08/2026', CAB,
+    // T01 normal no dia 10
+    linha('E1', 'PTO', '40', '10/08/26 09:00', 'TL-', 'S1', '5,000', ' 02,08,001', 'W1', 'A1', 'T1'),
+    linha('E1', 'PTO', '40', '10/08/26 09:00', 'TL+', 'S1', '5,000', ' 02,01,001', 'W1', 'A1', 'T1'),
+    // T02 cadastrado às 00:10 do dia 11 -> dia 10
+    linha('E2', 'PTO', '40', '11/08/26 00:10', 'TL-', 'S2', '7,000', ' 02,08,002', 'W2', 'B2', 'T2'),
+    linha('E2', 'PTO', '40', '11/08/26 00:10', 'TL+', 'S2', '7,000', ' 02,01,002', 'W2', 'B2', 'T2'),
+    // T03 cadastrado às 22:00 do dia 10 e 03:00 do dia 11 -> os dois no dia 11
+    linha('E3', 'PTO', '40', '10/08/26 22:00', 'TL-', 'S3', '11,000', ' 02,08,003', 'W3', 'C3', 'T3'),
+    linha('E3', 'PTO', '40', '10/08/26 22:00', 'TL+', 'S3', '11,000', ' 02,01,003', 'W3', 'C3', 'T3'),
+    linha('E4', 'PTO', '40', '11/08/26 03:00', 'TL-', 'S4', '13,000', ' 02,08,004', 'W4', 'C3', 'T3'),
+    linha('E4', 'PTO', '40', '11/08/26 03:00', 'TL+', 'S4', '13,000', ' 02,01,004', 'W4', 'C3', 'T3'),
+    // borda: T03 da madrugada do 1º dia (falta a noite do dia 09) e T03 da noite do último dia (vira dia 13) não gravam
+    linha('E5', 'PTO', '40', '10/08/26 02:00', 'TL-', 'S5', '17,000', ' 02,08,005', 'W5', 'C3', 'T3'),
+    linha('E5', 'PTO', '40', '10/08/26 02:00', 'TL+', 'S5', '17,000', ' 02,01,005', 'W5', 'C3', 'T3'),
+    linha('E6', 'PTO', '40', '12/08/26 21:00', 'TL-', 'S6', '19,000', ' 02,08,006', 'W6', 'C3', 'T3'),
+    linha('E6', 'PTO', '40', '12/08/26 21:00', 'TL+', 'S6', '19,000', ' 02,01,006', 'W6', 'C3', 'T3'),
+    // borda: T02 às 00:05 do 1º dia vira dia 09, fora do arquivo
+    linha('E7', 'PTO', '40', '10/08/26 00:05', 'TL-', 'S7', '23,000', ' 02,08,007', 'W7', 'B2', 'T2'),
+    linha('E7', 'PTO', '40', '10/08/26 00:05', 'TL+', 'S7', '23,000', ' 02,01,007', 'W7', 'B2', 'T2'),
+  ].join('\r\n');
+  const mapa = new Map([['A1', 'T01'], ['B2', 'T02'], ['C3', 'T03']]);
+  const sp = ctx.construirSnapshotMovimentacoes(ctx.parsearKardex(arq), { arquivo: 't.txt' }, new Map(), new Map(), [], mapa);
+  const porDia = {}; sp.historico_diario.forEach(function (h) { porDia[h.dia + '|' + h.turno] = (porDia[h.dia + '|' + h.turno] || 0) + h.pecas; });
+  eq(porDia, { '2026-08-10|T01': 5, '2026-08-10|T02': 7, '2026-08-11|T03': 24 }, 'T02 00:10 no dia 10; T03 22:00 do dia 10 + 03:00 do dia 11 no dia 11; bordas fora');
+  eq(sp.fora_do_periodo, { pecas: 17 + 19 + 23, movimentos: 3 }, 'turno da noite só em parte no arquivo fica fora e é contado');
+  eq(sp.periodo_gravado, { de: '2026-08-11', ate: '2026-08-12' }, 'limpa e regrava do 2º dia ao último (o T03 do 1º dia não está inteiro no arquivo)');
+  eq(ctx.diaDeProducao('2026-08-11', 10, 'T02'), '2026-08-10', 'diaDeProducao: T02 00:10 -> dia anterior');
+  eq(ctx.diaDeProducao('2026-08-31', 1300, 'T03'), '2026-09-01', 'diaDeProducao: T03 21:40 -> dia seguinte (virada do mês)');
+  eq(ctx.diaDeProducao('2026-08-11', 1300, 'T02'), '2026-08-11', 'diaDeProducao: T02 da noite fica no dia');
+})();
 
 /* ------------------------------------------------------------------ */
 console.log('\n=== cabeçalho com coluna renomeada falha nomeando a coluna ===');

@@ -134,6 +134,7 @@ html { overflow-x: hidden; }
 .login-box {
   width: 320px; background: var(--bg-card); border: 1px solid var(--border);
   border-radius: 14px; padding: 36px 32px; text-align: center; box-shadow: var(--shadow);
+  line-height: normal; /* mesmo tamanho de cartão dos outros sites */
 }
 .login-logo { width: 52px; height: 52px; object-fit: contain; margin-bottom: 14px; }
 .login-box h1 { font-size: 18px; margin: 0 0 2px; color: var(--text); }
@@ -152,6 +153,7 @@ html { overflow-x: hidden; }
 .btn:hover { filter: brightness(1.1); }
 .btn:disabled { opacity: .5; cursor: default; }
 .erro { color: var(--red); font-size: 12px; margin-top: 10px; min-height: 16px; }
+.login-box .erro { min-height: 14px; }
 
 /* ============================================================
    3) LAYOUT: SIDEBAR + TOPBAR + CONTEÚDO
@@ -163,8 +165,8 @@ html { overflow-x: hidden; }
    (.sidebar-brand/.menu-item/.icone/.badge-*), de propósito: as duas bases
    ficam copiáveis uma da outra sem precisar traduzir nada. */
 .sidebar {
-  position: fixed; left: 0; top: 0; bottom: 0; width: 260px;
-  background: var(--bg-sidebar); border-right: 1px solid var(--border);
+  position: fixed; left: 0; top: 0; bottom: 0; width: 220px;
+  background: var(--bg-sidebar); border-right: 1px solid rgba(255,255,255,.06);
   display: flex; flex-direction: column; padding: 0; overflow-y: auto; z-index: 20;
 }
 .sidebar-brand {
@@ -180,12 +182,12 @@ html { overflow-x: hidden; }
 .sidebar-brand .sub  { font-size: 10.5px; color: #7C9AB8; margin-top: 2px; }
 .sidebar-section-label {
   font-size: 9.5px; font-weight: 700; letter-spacing: .8px;
-  text-transform: uppercase; color: #4A6080; padding: 16px 18px 6px;
+  text-transform: uppercase; color: #4A6080; padding: 16px 18px 6px; line-height: 14px;
 }
 .menu-item {
   display: flex; align-items: center; gap: 10px; padding: 9px 18px; cursor: pointer;
   font-size: 13px; font-weight: 500; color: #9BAAC4; border-left: 3px solid transparent;
-  transition: background .15s, color .15s; text-decoration: none; user-select: none;
+  transition: background .15s, color .15s; text-decoration: none; user-select: none; line-height: 20px;
 }
 .menu-item:hover { background: rgba(255,255,255,.05); color: #fff; }
 .menu-item.ativo {
@@ -202,13 +204,13 @@ html { overflow-x: hidden; }
 }
 
 .topbar {
-  position: fixed; left: 260px; right: 0; top: 0; height: 52px;
+  position: fixed; left: 220px; right: 0; top: 0; height: 60px;
   background: var(--bg-card); border-bottom: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 22px; z-index: 15;
+  padding: 0 24px; gap: 16px; z-index: 15; box-shadow: var(--shadow);
 }
-.topbar-titulo { font-size: 14px; font-weight: 700; flex: none; }
-.topbar-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.topbar-titulo { font-size: 16px; font-weight: 700; flex: none; line-height: 1.25; }
+.topbar-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; line-height: 1.25; }
 /* Escondido por padrão — só fica visível (classe .ativa, alternada em
    mostrarSecao()) na seção Fluxo de Processos. O <input> em si é criado UMA
    vez (DistrFluxo, na primeira visita à seção) e nunca destruído: só
@@ -237,7 +239,7 @@ html { overflow-x: hidden; }
   border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-label); cursor: pointer; }
 .btn-icone-exp:hover { border-color: var(--accent); color: var(--text); }
 
-.conteudo { margin-left: 260px; padding: 70px 22px 40px; }
+.conteudo { margin-left: 220px; padding: 78px 22px 40px; }
 .secao { display: none; }
 .secao.ativa { display: block; }
 
@@ -903,7 +905,7 @@ tr.total > th, tr.total > td {
    pelo JS medindo de verdade onde a área de conteúdo começa NESTA tela —
    não dá pra usar o truque genérico de "breakout" (margin-left:calc(50% -
    vw/2)) porque ele assume a página inteira centralizada, sem sidebar.
-   Com a sidebar fixa de 260px a página não é simétrica: aquele cálculo
+   Com a sidebar fixa de 220px a página não é simétrica: aquele cálculo
    centralizava o diagrama relativo à LARGURA TOTAL da janela (sidebar
    incluída), sobrando ~130px de sidebar de um lado sem nada do outro —
    bug relatado como "os fluxos não estão centralizados". margin-left aqui
@@ -1176,7 +1178,7 @@ tr.total > th, tr.total > td {
 #dfRoot .df-aviso.df-erro { border-color: var(--df-red); color: var(--df-red); }
 
 /* botão "Editar fluxo" (admin) — flutuante para permanecer visível ao scrollar */
-#dfRoot .df-editbtn { position: fixed; right: 22px; top: 70px; z-index: 100;
+#dfRoot .df-editbtn { position: fixed; right: 22px; top: 78px; z-index: 100;
  background: var(--df-card-2); border: 1px solid var(--df-gold);
  color: var(--df-gold); border-radius: 999px; padding: 8px 16px; font: inherit; font-size: 12.5px; font-weight: 700;
  cursor: pointer; }
@@ -1303,7 +1305,6 @@ tr.total > th, tr.total > td {
     <div class="sidebar-section-label">Gestão</div>
     <div class="menu-item ativo" id="menuEstoque" onclick="mostrarSecao('estoque')">
       <span class="icone">⚖️</span> Balanço de Estoque
-      <span class="badge-admin">Gestão</span>
     </div>
 
     <div class="sidebar-section-label">Processos</div>
@@ -1676,6 +1677,8 @@ tr.total > th, tr.total > td {
 <script src="ingest-movimentacoes.js"></script>
 <script src="ingest-colaboradores.js"></script>
 <script src="ingest-pfas.js"></script>
+<script src="start-inicial-calc.js"></script>
+<script src="ressuprimento-calc.js"></script>
 <script src="embarque.js"></script>
 <script src="planta3d-distr.js"></script>
 <script src="ingest-emails-ajustes.js"></script>
@@ -3426,28 +3429,10 @@ async function carregarHistoricoRessuprimento() {
    Picking); "Geral" = soma simples das duas (retirada + alocação — pedido do usuário, 21/10/2026). O resto da tela (KPIs, gráfico, tabela, composição, operadores) lê o recorte escolhido. */
 let etapaRessup = 'alocacao';
 let histAlocacaoBruto = [], histRetiradaBruto = [], opsAlocacaoBruto = [], opsRetiradaBruto = [], retiradaDisponivel = false;
-function aplicarEtapaRessup() {
-  if (etapaRessup === 'retirada') {
-    historicoRessuprimento = histRetiradaBruto.map(function (h) { return { dia: h.dia, segmento: h.segmento, turno: h.turno, pecas: h.pecas, movimentos: h.movimentos }; });
-    historicoOperadorRessuprimento = opsRetiradaBruto;
-  } else if (etapaRessup === 'geral') {
-    const porChave = new Map();
-    const somar = function (h, sinal, pecas, movs) {
-      const k = h.dia + '|' + h.segmento + '|' + h.turno;
-      if (!porChave.has(k)) porChave.set(k, { dia: h.dia, segmento: h.segmento, turno: h.turno, pecas: 0, movimentos: 0 });
-      const x = porChave.get(k); x.pecas += sinal * (Number(pecas) || 0); x.movimentos += sinal * (Number(movs) || 0);
-    };
-    histAlocacaoBruto.forEach(function (h) { somar(h, 1, h.pecas, h.movimentos); });
-    histRetiradaBruto.forEach(function (h) { somar(h, 1, h.pecas, h.movimentos); });
-    historicoRessuprimento = Array.from(porChave.values()).filter(function (x) { return x.pecas > 0 || x.movimentos > 0; });
-    const vistos = new Set();
-    historicoOperadorRessuprimento = opsAlocacaoBruto.concat(opsRetiradaBruto).filter(function (o) {
-      const k = o.dia + '|' + o.turno + '|' + o.login; if (vistos.has(k)) return false; vistos.add(k); return true;
-    });
-  } else {
-    historicoRessuprimento = histAlocacaoBruto;
-    historicoOperadorRessuprimento = opsAlocacaoBruto;
-  }
+function aplicarEtapaRessup() {   // combinação em ressuprimento-calc.js (compartilhada com o telão)
+  const r = window.RessupCalc.combinarEtapaRessup(etapaRessup, histAlocacaoBruto, histRetiradaBruto, opsAlocacaoBruto, opsRetiradaBruto);
+  historicoRessuprimento = r.historico;
+  historicoOperadorRessuprimento = r.operadores;
 }
 function alternarEtapaRessup(etapa) {
   etapaRessup = etapa;
@@ -3533,193 +3518,16 @@ let filtroTextoPfa = '';
 let limitePfa = 100;
 let ordemPfa = { campo: 'dias', direcao: 'desc' };
 
-/* Etapas na ordem da operação, numeradas (pedido do usuário, 24/09/2026).
-   "Material em personalizacao" NÃO vem do arquivo: é a PFA em "Leitura
-   expedicao" de cliente que personaliza (lista em Admin › Abastecimento),
-   reclassificada na tela — ver aplicarEtapaPersona. */
-const ETAPA_PERSONA = 'Material em personalizacao';
-/* "Lido na esteira" (29/09/2026, regra do usuário): PFA em Leitura expedição
-   que NÃO está no Analítico (lá só fica volume que ainda falta passar na
-   esteira) e NÃO está nas NFs Embarcadas (embarcada já sai do Pendentes) =
-   todos os volumes lidos, esperando o embarque. É a conferência "completa". */
-const ETAPA_LIDA = 'Lido na esteira';
-const ORDEM_ETAPA_TELA = ['Nao disp. picking', 'Disp. p/ picking', 'Em picking', 'Gerar Nota Fiscal', ETAPA_PERSONA, 'Leitura expedicao', ETAPA_LIDA];
-const ROT_ETAPA_PFA = {
-  'Nao disp. picking': '00 - Não Disp. Picking',
-  'Disp. p/ picking': '01 - Disp. p/ Picking',
-  'Em picking': '02 - Em Picking',
-  'Gerar Nota Fiscal': '03 - Gerar Nota Fiscal',
-  'Material em personalizacao': '04 - Material em Personalização',
-  'Leitura expedicao': '05 - Leitura Expedição',
-  'Lido na esteira': '06 - Lido na Esteira (Ag. Embarque)',
-};
-
-/* ---------- Clientes que personalizam ----------
-   Lista padrão = planilha "Base de Clientes que personalizam DISTR" + 8 nomes
-   sem razão social (24/09/2026). A lista em uso vem da tabela
-   dim_clientes_persona (mesma carga inicial); esta constante só vale se a
-   tabela não responder.
-   Casamento: nome do cliente da PFA, sem acento/pontuação, CONTÉM o nome da
-   lista como palavras inteiras (então "FLAMBOYAN" pega a razão social que
-   tiver FLAMBOYAN). Linha "N" com o nome exato força não-persona. */
-const CLIENTES_PERSONA_PADRAO = [
-  ["ABYS MODAS LTDA", "S"],
-  ["ADELINA MODAS LTDA", "S"],
-  ["ALF COMERCIO DE CALCADOS LTDA", "S"],
-  ["ALM COMERCIAL DE CALCADOS LTDA", "S"],
-  ["AMAZON SERVICOS DE VAREJO DO BRASIL LTDA.", "N"],
-  ["BADAN ARTIGOS ESPORTIVOS LTDA", "S"],
-  ["BIG BELEM CALCADOS LTDA", "S"],
-  ["BISOL CALCADOS E ARTIGOS ESPORTIVOS LTDA - EPP", "S"],
-  ["CAL CENTER COM DE CALC LTDA", "S"],
-  ["CAL-CENTER COMERCIO DE CALCADOS LTDA", "S"],
-  ["CALZADOS ROGER S.A.", "S"],
-  ["CASA BAYARD ARTIGOS PARA ESPORTES LTDA", "N"],
-  ["CASA SORAYA LTDA.", "S"],
-  ["CHRIS INDUSTRIA E COMERCIO DE CONFECCOES LTDA", "S"],
-  ["DEP COMERCIO DE CALCADOS LTDA", "S"],
-  ["DF WORK COMERCIO DE CALCADOS LTDA", "S"],
-  ["DJP COMERCIAL DE CALCADOS LTDA", "S"],
-  ["DREBES & CIA LTDA", "S"],
-  ["DS LOG COMERCIO DE CALCADOS LTDA", "S"],
-  ["DS.COM.BR COMERCIO DE CALCADOS LTDA", "S"],
-  ["DSR COML DE CALCADOS LTDA", "S"],
-  ["EBAZAR.COM.BR. LTDA", "N"],
-  ["ECLIPSE COM.DE CALCADOS LTDA", "S"],
-  ["ECLIPSE COMERCIO DE CALCADOS LTDA", "S"],
-  ["ELDA COMERCIAL CALCADOS LTDA", "S"],
-  ["ELI COMERCIO DE CALCADOS LTDA", "S"],
-  ["ESTRATEGIA CALCADOS LTDA", "S"],
-  ["EUZIMAR A. NOBRE", "S"],
-  ["FCO COMERCIAL DE CALCADOS LTDA", "S"],
-  ["FF.COM ESPORTES LTDA", "S"],
-  ["FLYTE COM CALC LTDA", "S"],
-  ["FORMOSA SUPERMERCADOS E MAGAZINE LTDA", "N"],
-  ["FRANK SILVESTRIN DE SOUZA", "S"],
-  ["GERALDO ALEXANDRE JANUARIO FALDAO EPP", "S"],
-  ["ISA COMERCIAL DE CALCADOS LTDA", "S"],
-  ["JQG COMERCIAL DE CALCADOS LTDA", "S"],
-  ["JSP COMERCIAL DE CALCADOS LTDA", "S"],
-  ["JULI COMERCIO DE CALCADOS LTDA", "S"],
-  ["KAREN COMERCIAL DE CALCADOS LTDA", "S"],
-  ["KENIAK COM DE CALC LTDA", "S"],
-  ["KYRALY COM CALC LTDA", "S"],
-  ["LFM COMERCIAL DE CALCADOS LTDA", "S"],
-  ["LIDER COMERCIO E INDUSTRIA LTDA", "S"],
-  ["LINDA COMERCIAL DE CALCADOS LTDA", "S"],
-  ["LNJC COMERCIO DA MODA LTDA", "S"],
-  ["LOJA VINTE E NOVE LTDA", "S"],
-  ["LOJAS AVENIDA S.A", "S"],
-  ["LUIS FELIPE CAGLIARI DE SOUZA", "S"],
-  ["LUIZA CALCADOS LTDA", "S"],
-  ["M MODAS LTDA", "S"],
-  ["MARJA COMERCIO DE CALCADOS LTDA", "S"],
-  ["MARJOV COMERCIO DE ROUPAS E CALCADOS LTDA", "S"],
-  ["MM PAPELARIA PROMISSAO LTDA", "S"],
-  ["MN COMERCIO DE CALCADOS LTDA - ME", "S"],
-  ["MRM COMERCIAL DE CALCADOS LTDA", "S"],
-  ["NACIONAL BREVES COMERCIO DE CALCADOS LTDA", "N"],
-  ["NACIONAL CASTANHAL COMERCIO DE CALCADOS LTDA", "N"],
-  ["NACIONAL MOJU COMERCIO DE CALCADOS LTDA", "N"],
-  ["NACIONAL MOJU II COMERCIO DE CALCADOS", "N"],
-  ["ONE CALCADOS LTDA", "S"],
-  ["OSANA ANA DE LIRA GARRIDO ME", "S"],
-  ["PINHEIRO TECIDOS LTDA", "S"],
-  ["PITTOL CALCADOS LTDA", "S"],
-  ["PIUMA CALCADOS LTDA", "S"],
-  ["PK COMERCIAL DE CALCADOS LTDA", "S"],
-  ["QUEIROZ COMERCIAL DE CALCADOS LTDA", "S"],
-  ["R MILET COMERCIO DE CALCADOS LTDA", "S"],
-  ["RED COMERCIAL DE CALCADOS LTDA", "S"],
-  ["REGIONAL ALENQUER COMERCIO DE CALCADOS LTDA", "S"],
-  ["REGIONAL ITAITUBA COMERCIO DE CALCADOS LTDA", "S"],
-  ["REGIONAL JURITI COMERCIO DE CALCADOS LTDA", "S"],
-  ["REGIONAL ORIXIMINA COMERCIO DE CALCADOS LTDA", "S"],
-  ["REGIONAL VIGIA COMERCIO DE CALCADOS LTDA", "S"],
-  ["REGIS COMERCIO DE CALCADOS LTDA", "S"],
-  ["S.SALLUM LTDA", "S"],
-  ["SBF COMERCIO DE PRODUTOS ESPORTIVOS S.A.", "N"],
-  ["SNICKER COM CALC LTDA", "S"],
-  ["SNICKER COMERCIO DE CALCADOS LTDA", "S"],
-  ["T.A.N. MOUTINHO COMERCIO", "S"],
-  ["TK COMERCIAL DE CALCADOS LTDA", "S"],
-  ["TOBELLI COMERCIO DE CALCADOS LTDA", "S"],
-  ["TOP COMERCIO DE CALCADOS LTDA", "S"],
-  ["TWO FRIENDS COMERCIO DE CALCADOS E CONFECCOES LTDA", "S"],
-  ["UBS COMERCIAL DE CALCADOS LTDA", "S"],
-  ["ULTRA 1 ONLINE LTDA", "S"],
-  ["VECTRA COMERCIO DE CALCADOS LTDA", "S"],
-  ["VIANA COMERCIO DE CALCADOS LTDA", "S"],
-  ["FLAMBOYAN", "S"],
-  ["CALCENTER", "S"],
-  ["LÍDER", "S"],
-  ["POLICE", "S"],
-  ["ZAPEC", "S"],
-  ["CALZADOS ROGER", "S"],
-  ["ABYS", "S"],
-  ["OSCAR E ABYS", "S"]
-];
-let clientesPersona = CLIENTES_PERSONA_PADRAO.map(function (r) { return { nome: r[0], personalizavel: r[1] === 'S' }; });
+/* Etapas, clientes que personalizam, aplicarEtapaPersona e cores do funil/FIFO moram em
+   start-inicial-calc.js (05/11/2026), compartilhado com o telão (tv.html) — mesma regra nos dois. */
+const SI_CALC = window.StartInicialCalc;
+const ETAPA_PERSONA = SI_CALC.ETAPA_PERSONA, ETAPA_LIDA = SI_CALC.ETAPA_LIDA, ORDEM_ETAPA_TELA = SI_CALC.ORDEM_ETAPA_TELA, ROT_ETAPA_PFA = SI_CALC.ROT_ETAPA_PFA;
+const CLIENTES_PERSONA_PADRAO = SI_CALC.CLIENTES_PERSONA_PADRAO;
+let clientesPersona = SI_CALC.listaPadraoPersona();
 let origemClientesPersona = 'padrão do sistema';
-function normalizarNomeCliente(t) {
-  return ' ' + String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
-    .replace(/[^A-Z0-9]+/g, ' ').trim() + ' ';
-}
-function ehClientePersona(nome) {
-  const n = normalizarNomeCliente(nome);
-  if (n.trim() === '') return false;
-  let casou = false;
-  for (let i = 0; i < clientesPersona.length; i++) {
-    const c = clientesPersona[i], k = normalizarNomeCliente(c.nome);
-    if (k.trim() === '') continue;
-    if (!c.personalizavel) { if (k === n) return false; continue; }
-    if (n.indexOf(k) !== -1) casou = true;
-  }
-  return casou;
-}
-/* Reclassifica Leitura expedição -> Material em personalização pelos
-   clientes da lista e põe as etapas na ordem da tela. Idempotente: guarda a
-   situação do arquivo em situacao_arquivo e sempre parte dela. */
-function aplicarEtapaPersona(p) {
-  if (!p) return;
-  // Data da NF de cada PFA (a mais antiga no Analítico/aguardando coleta) —
-  // coluna "Data NF" da tabela e filtro "NF Emitida?" (24/09/2026).
-  const notaPfa = new Map();
-  (p.aguardando_coleta || []).forEach(function (r) {
-    if (!r.data_nota) return;
-    const atual = notaPfa.get(r.pfa);
-    if (!atual || r.data_nota < atual) notaPfa.set(r.pfa, r.data_nota);
-  });
-  // Pendentes (NOTA FISCAL + DT. NF) é a fonte principal; Analítico cobre
-  // snapshot antigo / PFA sem data no Pendentes (mescla, 24/09/2026).
-  (p.pendentes || []).forEach(function (r) {
-    r.data_nota = r.data_nota_pendentes || notaPfa.get(r.pfa) || null;
-    r.fonte_nota = r.data_nota_pendentes ? 'pendentes' : (r.data_nota ? 'analitico' : null);
-  });
-  // Snapshot processado antes de 24/09/2026 leu o Analítico ao contrário
-  // (volume no arquivo = lido; na verdade é o que AINDA NÃO passou na
-  // esteira). conferencia_lidos desses snapshots é a contagem de pendentes —
-  // reconverte aqui pra tela ficar certa sem precisar reprocessar.
-  if (p.conferencia_regra !== window.REGRA_CONFERENCIA && window.statusConferenciaPorPendentes) {
-    (p.pendentes || []).forEach(function (r) {
-      const c = window.statusConferenciaPorPendentes(r.situacao_arquivo || r.situacao, r.conferencia_total,
-        r.conferencia_lidos, r.dias_na_etapa);
-      r.conferencia = c.status; r.conferencia_lidos = c.volumes_lidos; r.conferencia_total = c.volumes_total;
-    });
-    p.conferencia_regra = window.REGRA_CONFERENCIA;
-  }
-  (p.pendentes || []).forEach(function (r) {
-    if (r.situacao_arquivo === undefined) r.situacao_arquivo = r.situacao;
-    // Cliente que personaliza vence o "Lido na esteira": o material vai pra
-    // personalização mesmo com todos os volumes lidos (27/10/2026).
-    r.situacao = r.situacao_arquivo !== 'Leitura expedicao' ? r.situacao_arquivo
-      : ehClientePersona(r.cliente_nome) ? ETAPA_PERSONA
-      : r.conferencia === 'completa' ? ETAPA_LIDA
-      : r.situacao_arquivo;
-  });
-  const extras = (p.etapas || []).filter(function (e) { return ORDEM_ETAPA_TELA.indexOf(e) === -1; });
-  p.etapas = ORDEM_ETAPA_TELA.concat(extras);
-}
+const normalizarNomeCliente = SI_CALC.normalizarNomeCliente;
+function ehClientePersona(nome) { return SI_CALC.ehClientePersona(nome, clientesPersona); }
+function aplicarEtapaPersona(p) { SI_CALC.aplicarEtapaPersona(p, clientesPersona); }
 function rotEtapaPfa(e) { return ROT_ETAPA_PFA[e] || e || '—'; }
 
 /* Dois cards de KPI (pedido da operação 10/09/2026), cada um com seu recorte
@@ -3733,19 +3541,7 @@ function rotEtapaPfa(e) { return ROT_ETAPA_PFA[e] || e || '—'; }
 const ETAPAS_AG_FORMACAO = ['Nao disp. picking', 'Disp. p/ picking'];
 const ETAPAS_FLUXO_COLETA = ['Em picking'];
 
-/* Cor da etapa no funil: não é semáforo de "ruim", é posição no fluxo — o
-   material anda da esquerda (ainda nem liberado) pra direita (só falta a
-   nota). Vermelho fica reservado pro fim da fila, que é onde parar dói mais. */
-const COR_ETAPA_PFA = {
-  'Nao disp. picking': '--red',
-  'Disp. p/ picking': '--gelo',
-  'Em picking': '--verde-escuro',
-  'Gerar Nota Fiscal': '--laranja',
-  'Material em personalizacao': '--amber',
-  'Leitura expedicao': '--accent',
-  'Lido na esteira': '--roxo',
-};
-const COR_FAIXA_FIFO = { '0-2': '--olive', '3-5': '--verde-musgo', '6-10': '--amber', '11+': '--red' };
+const COR_ETAPA_PFA = SI_CALC.COR_ETAPA_PFA, COR_FAIXA_FIFO = SI_CALC.COR_FAIXA_FIFO;   // start-inicial-calc.js
 
 /* Os 4 estados de conferência. "Parcial" só vira alarme depois de 3 dias
    parada na etapa (DIAS_PARCIAL_RASTREIO no ingest): a operação confirmou que
@@ -5999,24 +5795,11 @@ function movimentosDoDia(d) {
    colunas). Mesmo destino que o fallback por horário já dava a essa janela:
    vira T02. Nunca migrado no banco (dado histórico não mexido), só na
    leitura. */
-function normalizarTurnoLegado(turno) {
-  return turno === 'T02_T03' ? 'T02' : turno;
-}
+function normalizarTurnoLegado(turno) { return window.RessupCalc.normalizarTurnoLegado(turno); }   // ressuprimento-calc.js
 
 /* Colapsa o histórico bruto (uma linha por dia+segmento+turno) no mesmo
    formato que a tela já sabe desenhar — dia -> {pecas, movimentos, turnos}. */
-function diasDoHistorico(linhas) {
-  const porDia = new Map();
-  linhas.forEach(function (h) {
-    const turno = normalizarTurnoLegado(h.turno);
-    if (!porDia.has(h.dia)) porDia.set(h.dia, { dia: h.dia, pecas: 0, movimentos: 0, turnos: {} });
-    const d = porDia.get(h.dia);
-    d.pecas += h.pecas; d.movimentos += h.movimentos;
-    if (!d.turnos[turno]) d.turnos[turno] = { pecas: 0, movimentos: 0 };
-    d.turnos[turno].pecas += h.pecas; d.turnos[turno].movimentos += h.movimentos;
-  });
-  return Array.from(porDia.values()).sort(function (a, b) { return a.dia < b.dia ? -1 : 1; });
-}
+function diasDoHistorico(linhas) { return window.RessupCalc.diasDoHistorico(linhas); }   // ressuprimento-calc.js
 /* Anexa `.operadores` (contagem distinta de login) em cada item de `dias`,
    a partir do histórico de operadores (ressuprimento_operador_diario) —
    respeita o filtro de turno passado (não segmento: login não pertence a
@@ -6047,23 +5830,8 @@ function anexarOperadoresPorDia(dias, filtroTurnoSet) {
   });
   return todosOperadores.size;
 }
-function porTurnoDoHistorico(linhas) {
-  const mapa = new Map();
-  linhas.forEach(function (h) {
-    const turno = normalizarTurnoLegado(h.turno);
-    if (!mapa.has(turno)) mapa.set(turno, { turno: turno, pecas: 0, movimentos: 0 });
-    const t = mapa.get(turno); t.pecas += h.pecas; t.movimentos += h.movimentos;
-  });
-  return Array.from(mapa.values()).sort(function (a, b) { return b.pecas - a.pecas; });
-}
-function porSegmentoDoHistorico(linhas) {
-  const mapa = new Map();
-  linhas.forEach(function (h) {
-    if (!mapa.has(h.segmento)) mapa.set(h.segmento, { segmento: h.segmento, pecas: 0, movimentos: 0 });
-    const s = mapa.get(h.segmento); s.pecas += h.pecas; s.movimentos += h.movimentos;
-  });
-  return Array.from(mapa.values()).sort(function (a, b) { return b.pecas - a.pecas; });
-}
+function porTurnoDoHistorico(linhas) { return window.RessupCalc.porTurnoDoHistorico(linhas); }   // ressuprimento-calc.js
+function porSegmentoDoHistorico(linhas) { return window.RessupCalc.porSegmentoDoHistorico(linhas); }   // ressuprimento-calc.js
 function alterarIntervaloHistorico(campo, valor) {
   if (campo === 'de') filtroHistDe = valor; else filtroHistAte = valor;
   Promise.all([carregarHistoricoRessuprimento(), carregarHistoricoFamiliaRessuprimento(), carregarHistoricoOperadorRessuprimento()]).then(renderizarRessuprimento);
@@ -7345,7 +7113,7 @@ document.getElementById('inputEmailsAjustes').addEventListener('change', async f
           const aguardandoComercial = !!(l.nf && !l.tipo && (categoriaEmailAtual === 'faltante' || l.email_tem_instrucao));
           return Object.assign(l, { _arquivo: arquivos[i].name, _ordem: i, _categoria: categoriaEmailAtual,
             tipo: aguardandoComercial ? null : (temInstrucao ? l.tipo : cat.tipo(l)),
-            status: aguardandoComercial ? l.status + (l.email_tem_instrucao ? ' (o e-mail tem EMBARCAR/DEVOLVER, mas não para esta NF — conferir)' : ' (e-mail sem EMBARCAR/DEVOLVER da Simoni)')
+            status: aguardandoComercial ? l.status + (l.email_tem_instrucao ? ' (o e-mail tem EMBARCAR/DEVOLVER, mas não para esta NF — conferir)' : ' (e-mail sem EMBARCAR/DEVOLVER da Simoni ou da Camila)')
               : (temInstrucao ? l.status + ' (instrução no e-mail)' : cat.status(l)) });
         });
         if (!linhas.length) falhas.push(arquivos[i].name + ' (nenhuma tabela de divergência reconhecida)');
@@ -7373,7 +7141,12 @@ async function revalidarEmailsAjustes(forcarSnapshot) {
       .order('gerado_em', { ascending: false }).limit(1);
     snap = r.data && r.data[0] ? r.data[0].payload : null;
   }
+  // Instrução escolhida na tela vale só depois da consolidação: volta cada linha ao que veio do e-mail.
+  listas.forEach(function (lista) { lista.forEach(function (l) {
+    if (l._statusOriginal !== undefined) { l.tipo = null; l.status = l._statusOriginal; }
+  }); });
   const consolidadas = window.consolidarLinhasEmails(listas);
+  aplicarInstrucaoNaTela(consolidadas);
   // NF de PFA que já saiu do Pendentes (expedida) vem do histórico de
   // Pendentes no banco — sem isso dava "PFA sem NF no sistema".
   let historicoNf = [];
@@ -7387,8 +7160,31 @@ async function revalidarEmailsAjustes(forcarSnapshot) {
   linhasEmailsAjustes = window.validarLinhasEmail(consolidadas, snap, historicoNf);
   renderizarEmailsAjustes(falhas, !snap);
 }
+/* Instrução escolhida na tela (04/11/2026): quando o comercial manda EMBARCAR/DEVOLVER
+   como imagem (print da planilha), a linha "Sem instrução" ganha um seletor. A escolha
+   vale para a NF inteira e pode ser desfeita (volta para "Sem instrução"). */
+const instrucaoNaTela = {}; // nf -> 'BO_POS_NF' | 'AD_DEVOLUCAO'
+function aplicarInstrucaoNaTela(L) {
+  L.forEach(function (l) {
+    if (!l.nf || (l.tipo && l._statusOriginal === undefined)) return; // já tem instrução do e-mail
+    if (l._statusOriginal === undefined) l._statusOriginal = l.status;
+    const t = instrucaoNaTela[l.nf] || null;
+    l.tipo = t;
+    l.status = t ? (t === 'BO_POS_NF' ? 'Embarcar' : 'Devolver') + ' — escolhido na tela (instrução fora do texto do e-mail)' : l._statusOriginal;
+  });
+}
+async function escolherInstrucaoNf(nf, tipo) {
+  if (tipo) instrucaoNaTela[nf] = tipo; else delete instrucaoNaTela[nf];
+  const rolagem = document.querySelector('#resultadoEmailsAjustes .tabela-rolavel');
+  const topo = rolagem ? rolagem.scrollTop : 0, janela = window.scrollY;
+  await revalidarEmailsAjustes();
+  const nova = document.querySelector('#resultadoEmailsAjustes .tabela-rolavel');
+  if (nova) nova.scrollTop = topo;
+  window.scrollTo(0, janela);
+}
 function limparEmailsAjustes() {
   mensagemGravarEmails = null;
+  Object.keys(instrucaoNaTela).forEach(function (nf) { delete instrucaoNaTela[nf]; });
   Object.keys(listasEmailPorCategoria).forEach(function (c) { delete listasEmailPorCategoria[c]; });
   document.querySelectorAll('.dz-email-cont').forEach(function (el) { el.textContent = ''; });
   linhasEmailsAjustes = [];
@@ -7405,7 +7201,13 @@ function renderizarEmailsAjustes(falhas, semSnapshot) {
   const linhasHtml = L.map(function (l) {
     const cor = l.alertas.length ? 'var(--red)' : !l.tipo ? 'var(--amber)' : l.ja_lancado ? 'var(--text-muted)' : 'var(--olive)';
     return '<tr>' +
-      '<td class="centro" style="color:' + cor + ';font-weight:600">' + escapar(l.tipo ? (ROT_TIPO_AJUSTE[l.tipo] || l.tipo) : 'Sem instrução') + '</td>' +
+      '<td class="centro" style="color:' + cor + ';font-weight:600">' + (l._statusOriginal !== undefined
+        ? '<select onchange="escolherInstrucaoNf(this.dataset.nf, this.value)" data-nf="' + escapar(l.nf) + '" title="Vale para todas as linhas da NF ' + escapar(l.nf) + '"' +
+            ' style="font:inherit;font-size:12px;color:inherit;background:var(--bg-card, transparent);border:1px solid currentColor;border-radius:6px;padding:2px 4px">' +
+            '<option value=""' + (l.tipo ? '' : ' selected') + '>Sem instrução</option>' +
+            '<option value="BO_POS_NF"' + (l.tipo === 'BO_POS_NF' ? ' selected' : '') + '>Embarcar</option>' +
+            '<option value="AD_DEVOLUCAO"' + (l.tipo === 'AD_DEVOLUCAO' ? ' selected' : '') + '>Devolver</option></select>'
+        : escapar(l.tipo ? (ROT_TIPO_AJUSTE[l.tipo] || l.tipo) : 'Sem instrução')) + '</td>' +
       '<td class="centro">' + escapar(l.nf || '—') + '</td><th class="centro">' + escapar(l.pfa) + '</th>' +
       '<td class="centro">' + escapar(l.artigo) + '</td><td class="centro">' + escapar(l.cor + ' ' + l.tam) + '</td>' +
       '<td>' + fmtInt(l.qtde_total_pedido || 0) + '</td><td>' + fmtInt(l.qtde_faltante || 0) + '</td>' +

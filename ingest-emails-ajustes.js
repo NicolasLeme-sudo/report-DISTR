@@ -27,7 +27,8 @@
 
 const RE_6DIG = /^\d{6}$/;
 const RE_SITUACAO = /^\s*FALTA\s+(TOTAL|PARCIAL)\b/i;
-const RE_INSTRUCAO = /^\s*(EMBARCAR|DEVOLVER|DEVOLU[CÇ][AÃ]O|CANCELAR|ENVIAR)\b/i;
+// DEVOL* aceita DEVOLUÇÃO e erro de digitação ("DEVOLVDER" da Simoni, 04/11/2026)
+const RE_INSTRUCAO = /^\s*(EMBARCAR|DEVOL[A-ZÇÃ]*|CANCELAR|ENVIAR)\b/i;
 
 function decodificarUtf16(bytes) {
   const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -114,14 +115,23 @@ function extrairRegistrosDivergencia(linhas, comNf) {
 
 /* Tabela de instrução do comercial: NF|PFA|CLIENTE|SITUAÇÃO|COD. REP|INSTRUÇÃO
    (a INSTRUÇÃO pode vir só na 1ª linha de uma NF repetida). */
-/* Quem autoriza envio com falta / devolução é a GERENTE (Simoni, 01/10/2026): só vale
-   instrução EMBARCAR/DEVOLVER escrita por ela. O autor de cada trecho é o remetente do
+/* Quem autoriza envio com falta / devolução: a GERENTE Simoni (01/10/2026) e a Camila
+   Ferreira (04/11/2026). Só vale instrução EMBARCAR/DEVOLVER escrita por uma delas. O autor de cada trecho é o remetente do
    .msg (mensagem mais nova, em cima) ou o "De:" mais próximo acima da linha, nas
    mensagens citadas. Instrução de outra pessoa (ex.: a própria assistente) é ignorada. */
-const AUTORIZADORES_ENVIO_COM_FALTA = ['simoni'];
+// Cada autorizador = palavras que precisam estar TODAS no nome, em qualquer ordem
+// ("Ferreira, Camila", nome do meio). O Outlook às vezes grava o nome com espaço
+// não quebrável (U+00A0) ou caractere invisível: o nome é normalizado antes.
+const AUTORIZADORES_ENVIO_COM_FALTA = ['simoni', 'camila ferreira'];
+function normalizarNome(nome) {
+  return String(nome || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[\u200b-\u200f\u2060\ufeff\u0000]/g, '').toLowerCase().replace(/[^a-z]+/g, ' ').trim();
+}
 function autorPodeAutorizar(nome) {
-  const n = String(nome || '').toLowerCase();
-  return AUTORIZADORES_ENVIO_COM_FALTA.some(function (a) { return n.indexOf(a) !== -1; });
+  const palavras = ' ' + normalizarNome(nome) + ' ';
+  return AUTORIZADORES_ENVIO_COM_FALTA.some(function (a) {
+    return a.split(' ').every(function (p) { return palavras.indexOf(' ' + p + ' ') !== -1; });
+  });
 }
 function extrairInstrucoes(linhas, remetente) {
   const out = new Map(); // nf -> { inst, pos }
@@ -152,6 +162,22 @@ function extrairInstrucoes(linhas, remetente) {
     const talvez = (linhas[i + 5] || '').trim();
     if (RE_INSTRUCAO.test(talvez)) guardar(nf, normalizar(talvez), i);
   }
+  /* TABELA COM COLUNA INSTRUÇÃO em qualquer posição (04/11/2026): a Simoni também responde
+     NF | PFA | CLIENTE | ENC | TAM | QUANT. FALTANTE | INSTRUÇÃO. Cada registro (NF, PFA,
+     "CL ...") recebe o EMBARCAR/DEVOLVER que vier antes do próximo registro; linha sem
+     instrução (célula mesclada) herda a da NF. Só em e-mail com o cabeçalho INSTRUÇÃO. */
+  const inicioRegistro = function (k) {
+    return RE_6DIG.test((linhas[k] || '').trim()) && RE_6DIG.test((linhas[k + 1] || '').trim()) && /^CL[\s-]/i.test((linhas[k + 2] || '').trim());
+  };
+  if (linhas.some(function (l) { return /^\s*INSTRU[CÇ][AÃ]O\s*$/i.test(l); })) {
+    for (let i = 0; i + 2 < linhas.length; i++) {
+      if (!inicioRegistro(i)) continue;
+      for (let j = i + 3; j < Math.min(linhas.length, i + 22); j++) {
+        if (inicioRegistro(j) || /^\s*De:\s/i.test(linhas[j]) || /^\s*NF\s*$/i.test(linhas[j])) break;
+        if (RE_INSTRUCAO.test(linhas[j])) { guardar(linhas[i].trim(), normalizar(linhas[j].trim()), i); break; }
+      }
+    }
+  }
   /* TABELA COMPLETA com a coluna de instrução (02/10/2026): a gerente devolve o
      quadro inteiro de divergência com EMBARCAR/DEVOLVER depois do COD. REP, só na
      1ª linha de cada NF (célula mesclada) — as outras linhas da mesma NF herdam.
@@ -179,32 +205,56 @@ function extrairInstrucoes(linhas, remetente) {
       break;
     }
   }
-  /* TEXTO LIVRE da mensagem mais nova (30/09/2026): "Esta nota devolver, 222395.
-     As demais embarcar." — sem tabela. Só vale o que está ACIMA do primeiro "De:"
-     (ou do 1º cabeçalho de tabela); pergunta ("posso enviar…?") não é instrução.
-     Cada NF citada recebe o verbo mais próximo; "demais/restantes/outras" +
-     verbo vira a instrução padrão das NFs não citadas (chave '*'). */
-  let fimTopo = linhas.findIndex(function (l) { return /^\s*De:\s/i.test(l) || /^\s*NF\s*$/i.test(l); });
-  if (fimTopo === -1) fimTopo = 0; // sem "De:" nem tabela: não arrisca ler texto livre
+  /* TEXTO LIVRE (30/09/2026): "Esta nota devolver, 222395. As demais embarcar." — sem
+     tabela. Pergunta ("posso enviar…?") e negação ("não embarcar") não são instrução.
+     Cada NF citada recebe o verbo mais próximo; "demais/restantes/outras" + verbo vira a
+     instrução padrão das NFs não citadas (chave '*').
+     Frase SEM nº de NF ("Podem seguir com o embarque, por favor", "Pode embarcar as notas")
+     é autorização geral do quadro: só vale se o e-mail não trouxer instrução por NF (04/11/2026). */
   const RE_VERBO = /\b(devolver|devolu[cç][aã]o|devolva|cancelar|cancele|embarcar|embarque|enviar|envie)\b/gi;
   const normVerbo = function (v) { return /^(devol|cancel)/i.test(v) ? 'DEVOLVER' : 'EMBARCAR'; };
-  linhas.slice(0, fimTopo).join('\n').split(/[.!;\n]+/).forEach(function (frase) {
-    if (frase.indexOf('?') !== -1) return;
-    const verbos = [];
-    let m;
-    RE_VERBO.lastIndex = 0;
-    while ((m = RE_VERBO.exec(frase))) verbos.push({ i: m.index, inst: normVerbo(m[1]), padrao: /(demais|restantes?|outras?|todas?|todos|resto)[^,]{0,15}$/i.test(frase.slice(Math.max(0, m.index - 20), m.index)) });
-    if (!verbos.length) return;
-    verbos.filter(function (v) { return v.padrao; }).forEach(function (v) { guardar('*', v.inst, -1); });
-    const diretos = verbos.filter(function (v) { return !v.padrao; });
-    if (!diretos.length) return;
-    const reNf = /\b\d{6}\b/g;
-    while ((m = reNf.exec(frase))) {
-      let melhor = diretos[0];
-      diretos.forEach(function (v) { if (Math.abs(v.i - m.index) < Math.abs(melhor.i - m.index)) melhor = v; });
-      guardar(m[0], melhor.inst, -1);
-    }
+  const gerais = [];
+  const lerTextoLivre = function (ini, fim, pos) {
+    linhas.slice(ini, fim).join('\n').split(/[.!;\n]+/).forEach(function (frase) {
+      if (frase.indexOf('?') !== -1) return;
+      const verbos = [];
+      let m;
+      RE_VERBO.lastIndex = 0;
+      while ((m = RE_VERBO.exec(frase))) {
+        if (/\bn[aã]o\b[^,]{0,25}$/i.test(frase.slice(Math.max(0, m.index - 30), m.index))) continue;
+        verbos.push({ i: m.index, inst: normVerbo(m[1]), padrao: /(demais|restantes?|outras?|todas?|todos|resto)[^.]{0,15}$/i.test(frase.slice(Math.max(0, m.index - 20), m.index)) });
+      }
+      if (!verbos.length) return;
+      verbos.filter(function (v) { return v.padrao; }).forEach(function (v) { guardar('*', v.inst, pos); });
+      if (!/\b\d{6}\b/.test(frase)) { verbos.forEach(function (v) { if (!v.padrao) gerais.push({ inst: v.inst, pos: pos }); }); return; }
+      const diretos = verbos.filter(function (v) { return !v.padrao; });
+      if (!diretos.length) return;
+      const reNf = /\b\d{6}\b/g;
+      while ((m = reNf.exec(frase))) {
+        let melhor = diretos[0];
+        diretos.forEach(function (v) { if (Math.abs(v.i - m.index) < Math.abs(melhor.i - m.index)) melhor = v; });
+        guardar(m[0], melhor.inst, pos);
+      }
+    });
+  };
+  const fimDoTexto = function (ini) {
+    const k = linhas.findIndex(function (l, idx) { return idx >= ini && (/^\s*De:\s/i.test(l) || /^\s*NF\s*$/i.test(l)); });
+    return k === -1 ? linhas.length : k;
+  };
+  // Mensagem mais nova: o que está ACIMA do primeiro "De:" ou cabeçalho de tabela.
+  const fimTopo = fimDoTexto(0);
+  if (fimTopo < linhas.length) lerTextoLivre(0, fimTopo, -1); // sem "De:" nem tabela: não arrisca
+  // Mensagens CITADAS (encaminhamento da Erika com a resposta da Simoni/Camila embaixo,
+  // 04/11/2026): lê o texto depois do "Assunto:" de cada "De:" de quem pode autorizar.
+  // A mensagem mais de cima continua tendo prioridade (pos menor).
+  linhas.forEach(function (l, d) {
+    if (!/^\s*De:\s/i.test(l) || !autorPodeAutorizar(autorDaLinha(d))) return;
+    let a = -1;
+    for (let k = d + 1; k < Math.min(linhas.length, d + 14); k++) { if (/^\s*Assunto:/i.test(linhas[k])) { a = k; break; } }
+    if (a === -1) return;
+    lerTextoLivre(a + 1, fimDoTexto(a + 1), d);
   });
+  if (!out.size && gerais.length) guardar('*', gerais[0].inst, gerais[0].pos);
   const saida = new Map();
   out.forEach(function (v, nf) { saida.set(nf, v.inst); });
   saida.ignoradas = ignoradas;
@@ -286,7 +336,7 @@ function interpretarEmailAjuste(msg) {
       else {
         tipo = null; status = 'Aguardando instrução do comercial';
         const ign = instrucoes.ignoradas && (instrucoes.ignoradas.get(r.nf) || instrucoes.ignoradas.get('*'));
-        if (ign) status = 'Instrução de ' + ign + ' ignorada — só vale o retorno da Simoni (gerente)';
+        if (ign) status = 'Instrução de ' + ign + ' ignorada — só vale o retorno da Simoni ou da Camila Ferreira';
       }
       if (citadas.has(r.nf)) status += ' — NF citada de novo na conversa: conferir se a instrução mudou';
     } else {

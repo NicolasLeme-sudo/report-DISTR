@@ -106,6 +106,18 @@ function turnoDe(minutosDoDia) {
   return 'T03';
 }
 
+/* DIA DE PRODUÇÃO (05/11/2026, decisão da operação): o turno da noite não fica partido em dois dias.
+   - T02 (14:48–00:16): o que passa da meia-noite conta no dia ANTERIOR (o dia em que o turno começou).
+   - T03 (20:20–04:48): o turno inteiro conta no dia em que TERMINA, onde fica a maior parte dele;
+     o trecho da noite (a partir das 12h) vai para o dia SEGUINTE.
+   - T01: dia do calendário.
+   Vale para o turno já resolvido (cadastro na base de Ativos ou chute pelo horário). */
+function diaDeProducao(dia, minutos, turno) {
+  if (turno === 'T02' && minutos < 300) return diaISO(-1, dia);
+  if (turno === 'T03' && minutos >= 720) return diaISO(1, dia);
+  return dia;
+}
+
 /* "20/08/26 13:40" -> { dia: '2026-08-20', minutos: 820 }
    Devolve null quando não casa — a linha é descartada e contada, nunca
    silenciosamente somada com data errada. */
@@ -116,10 +128,8 @@ function parsearDataHora(texto) {
   const hh = Number(m[4]), mm = Number(m[5]);
   if (mes < 1 || mes > 12 || dia < 1 || dia > 31 || hh > 23 || mm > 59) return null;
   const iso = ano + '-' + String(mes).padStart(2, '0') + '-' + String(dia).padStart(2, '0');
-  // Movimento entre 00:00 e 00:15 pertence ao T02 que começou no dia anterior
-  // (fallback por horário), mas fica no dia de CALENDÁRIO mesmo: são 150
-  // linhas em 340.503 no arquivo real (0,04%), não compensa inventar "dia
-  // operacional" por isso.
+  // Dia do CALENDÁRIO aqui; o dia de produção do turno da noite (T02 depois da
+  // meia-noite, T03 da noite) é resolvido depois do turno — ver diaDeProducao.
   return { dia: iso, minutos: hh * 60 + mm };
 }
 
@@ -237,7 +247,7 @@ function criarLeitorKardex(opcoes) {
     let dh;
     if (opcoes.meses) {
       dh = parsearDataHora(p[idx.data]);
-      if (!dh || !opcoes.meses.has(dh.dia.slice(0, 7))) return;
+      if (!dh || (!opcoes.meses.has(dh.dia.slice(0, 7)) && !(opcoes.diasExtra && opcoes.diasExtra.has(dh.dia)))) return;
     }
     if (opcoes.censo) {
       if (tipo !== 'TL+' && tipo !== 'TL-') return;
@@ -542,6 +552,11 @@ function ehBaixaPendente(mov) {
 
 /* Dia seguinte/anterior a partir de "AAAA-MM-DD", em UTC — nunca escorrega de
    dia por fuso, mesmo padrão de parsearDataHora acima. */
+function ultimoDiaDoMes(mes) {   // '2026-10' -> '2026-10-31'
+  const p = mes.split('-').map(Number);
+  return mes + '-' + String(new Date(Date.UTC(p[0], p[1], 0, 12)).getUTCDate()).padStart(2, '0');
+}
+
 function diaISO(delta, isoBase) {
   const p = String(isoBase).split('-').map(Number);
   const d = new Date(Date.UTC(p[0], p[1] - 1, p[2] + delta, 12));
@@ -746,6 +761,14 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
   // movimentos por horário" não vira ação: a operação precisa do login pra
   // cadastrar a pessoa na base de Ativos (ou confirmar que é ADM mesmo).
   const semCadastro = new Map();
+  // Borda do arquivo: dia de produção fora do período não grava (o turno está só em parte no arquivo e
+  // sobrescreveria o dia completo já gravado por outro Kardex). O T03 do 1º dia coberto também não:
+  // falta a noite anterior, que não veio no arquivo (no Kardex grande, o lote traz esse dia de apoio).
+  const deArquivo = dataBrParaIso(parsed.periodo && parsed.periodo.de);
+  const ateArquivo = dataBrParaIso(parsed.periodo && parsed.periodo.ate);
+  const primeiroDiaPernas = (parsed.pernas || []).reduce(function (mn, p) { return !mn || p.dia < mn ? p.dia : mn; }, '');
+  const primeiroDiaCoberto = parsed.primeiro_dia_coberto || deArquivo && (!primeiroDiaPernas || deArquivo < primeiroDiaPernas) ? deArquivo : primeiroDiaPernas;
+  let foraDoPeriodo = { pecas: 0, movimentos: 0 };
 
   movs.forEach(function (m) {
     // Turno REAL do colaborador quando existir cadastro pra esse login;
@@ -775,6 +798,14 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
     r.pecas += m.qtd; r.movimentos += 1;
 
     if (ehBaixaPendente(m)) { pecasEmTransito += m.qtd; movimentosEmTransito += 1; }
+
+    m.dia_calendario = m.dia;
+    m.dia = diaDeProducao(m.dia, m.minutos, m.turno);
+    if ((deArquivo && m.dia < deArquivo) || (ateArquivo && m.dia > ateArquivo) ||
+        (m.turno === 'T03' && m.dia <= primeiroDiaCoberto)) {
+      if (ehRessuprimento(m) || ehRetiradaPulmao(m)) { foraDoPeriodo.pecas += m.qtd; foraDoPeriodo.movimentos += 1; }
+      return;
+    }
     if (ehRetiradaPulmao(m)) {
       const famR = mapaArtigoFamilia.get(m.artigo);
       const segR = segmentoMacroSeDisponivel(famR ? mapaFamilias.get(famR) : null) || 'SEM FAMÍLIA';
@@ -789,7 +820,9 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
       xR.pecas += m.qtd; xR.movimentos += 1;
       if (direto) { xR.diretas_pecas += m.qtd; xR.diretas_movimentos += 1; }
       const kO = m.dia + '|' + m.turno + '|' + m.login;
-      if (!porDiaTurnoOperadorRetirada.has(kO)) porDiaTurnoOperadorRetirada.set(kO, { dia: m.dia, turno: m.turno, login: m.login, nome: m.nome });
+      if (!porDiaTurnoOperadorRetirada.has(kO)) porDiaTurnoOperadorRetirada.set(kO, { dia: m.dia, turno: m.turno, login: m.login, nome: m.nome, pecas: 0, movimentos: 0 });
+      // Peças por operador no dia (05/11/2026): Top 5 do telão DISTR
+      const oR = porDiaTurnoOperadorRetirada.get(kO); oR.pecas += m.qtd; oR.movimentos += 1;
       if (!porDiaRetirada.has(m.dia)) porDiaRetirada.set(m.dia, { dia: m.dia, pecas: 0, movimentos: 0, turnos: {}, operadores: new Set() });
       const dR = porDiaRetirada.get(m.dia);
       dR.pecas += m.qtd; dR.movimentos += 1; dR.operadores.add(m.login);
@@ -852,8 +885,10 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
 
     const chaveDTO = m.dia + '|' + m.turno + '|' + m.login;
     if (!porDiaTurnoOperador.has(chaveDTO)) {
-      porDiaTurnoOperador.set(chaveDTO, { dia: m.dia, turno: m.turno, login: m.login, nome: m.nome });
+      porDiaTurnoOperador.set(chaveDTO, { dia: m.dia, turno: m.turno, login: m.login, nome: m.nome, pecas: 0, movimentos: 0 });
     }
+    // Peças por operador no dia (05/11/2026): Top 5 do telão DISTR
+    const oDTO = porDiaTurnoOperador.get(chaveDTO); oDTO.pecas += m.qtd; oDTO.movimentos += 1;
   });
 
   const dias = Array.from(porDia.values())
@@ -926,6 +961,11 @@ function construirSnapshotMovimentacoes(parsed, meta, mapaArtigoFamilia, mapaFam
     historico_diario_operador: Array.from(porDiaTurnoOperador.values()),
     // Quantos movimentos tiveram o turno resolvido pelo cadastro real
     // (dim_colaboradores_turno) vs. chutado pelo horário — nunca escondido.
+    // Turno da noite que ficou só em parte no arquivo (dia de produção fora do período) — não gravado.
+    fora_do_periodo: foraDoPeriodo,
+    // Dias que este arquivo grava inteiros: limparHistoricoDoPeriodo apaga esses dias antes do upsert, para não
+    // sobrar linha velha (ex.: dia/turno que mudou com a regra do dia de produção, 05/11/2026).
+    periodo_gravado: ateArquivo ? { de: [deArquivo, primeiroDiaCoberto ? diaISO(1, primeiroDiaCoberto) : ''].filter(Boolean).sort().pop(), ate: ateArquivo } : null,
     resolucao_turno: {
       por_cadastro: porCadastro, por_horario: porHorario,
       // Lista dos logins que movimentaram sem turno cadastrado, do maior
@@ -1079,6 +1119,7 @@ async function processarMovimentacoes(supabaseClient, file, onProgresso) {
   }
 
   // Histórico ANTES do snapshot (21/10/2026): se a publicação falhar, o histórico do período já ficou gravado.
+  await limparHistoricoDoPeriodo(supabaseClient, payload, avisar);
   await upsertHistoricoDiario(supabaseClient, payload.historico_diario, avisar);
   await upsertHistoricoFamiliaDiario(supabaseClient, payload.historico_diario_familia, avisar);
   await upsertHistoricoOperadorDiario(supabaseClient, payload.historico_diario_operador, avisar);
@@ -1168,21 +1209,27 @@ async function processarKardexGrande(supabaseClient, file, avisar, opcoes) {
     const lote = lotes[i];
     const rot = 'Parte ' + (i + 1) + '/' + lotes.length + ' (' + lote[0] + (lote.length > 1 ? ' a ' + lote[lote.length - 1] : '') + ')';
     ultimoPct = -1;
-    const leitor = criarLeitorKardex({ meses: new Set(lote) });
+    // Último dia do mês anterior e 1º do seguinte entram como apoio: o turno da noite da virada do mês
+    // fica inteiro no lote certo (ver diaDeProducao); fora do período do lote, não grava.
+    const diasExtra = new Set([diaISO(-1, lote[0] + '-01'), diaISO(1, ultimoDiaDoMes(lote[lote.length - 1]))]);
+    const leitor = criarLeitorKardex({ meses: new Set(lote), diasExtra: diasExtra });
     await lerLinhasEmStream(file, leitor.linha, progresso(rot + ': lendo…'));
     const parsed = leitor.fim();
     // O período do lote (não o do cabeçalho do arquivo) é o que vale pro
-    // cruzamento com planejamento dentro do lote.
-    const ultimoDiaLote = parsed.pernas.reduce(function (mx, p) { return p.dia > mx ? p.dia : mx; }, '');
-    const primeiroDiaLote = parsed.pernas.reduce(function (mn, p) { return !mn || p.dia < mn ? p.dia : mn; }, '');
+    // cruzamento com planejamento dentro do lote — sem os dias de apoio.
+    const doLote = function (p) { return !diasExtra.has(p.dia); };
+    const ultimoDiaLote = parsed.pernas.filter(doLote).reduce(function (mx, p) { return p.dia > mx ? p.dia : mx; }, '');
+    const primeiroDiaLote = parsed.pernas.filter(doLote).reduce(function (mn, p) { return !mn || p.dia < mn ? p.dia : mn; }, '');
     const iso2br = function (iso) { return iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : null; };
     parsed.periodo = { de: iso2br(primeiroDiaLote), ate: iso2br(ultimoDiaLote) };
+    if (i > 0) parsed.primeiro_dia_coberto = diaISO(-1, lote[0] + '-01');   // noite da virada do mês veio no dia de apoio
 
     const payload = construirSnapshotMovimentacoes(parsed, { arquivo: file.name }, dims.mapaArtigoFamilia,
       dims.mapaFamilias, dims.planejamento, dims.mapaColaboradorTurno);
     avisar(rot + ': ' + payload.total.movimentos_ressuprimento.toLocaleString('pt-BR') + ' movimentos de ressuprimento · ' +
       payload.total.pecas_ressupridas.toLocaleString('pt-BR') + ' peças em ' + payload.total.dias_com_movimento + ' dias.');
 
+    await limparHistoricoDoPeriodo(supabaseClient, payload, avisar);
     await upsertHistoricoDiario(supabaseClient, payload.historico_diario, avisar);
     await upsertHistoricoFamiliaDiario(supabaseClient, payload.historico_diario_familia, avisar);
     await upsertHistoricoOperadorDiario(supabaseClient, payload.historico_diario_operador, avisar);
@@ -1241,8 +1288,8 @@ async function upsertHistoricoRetirada(supabaseClient, payload, onAviso) {
       if (error) throw error;
     }
     for (let i = 0; i < ops.length; i += 500) {
-      const lote = ops.slice(i, i + 500).map(function (o) { return { dia: o.dia, turno: o.turno, login: o.login, nome: o.nome || null }; });
-      const { error } = await supabaseClient.from('ressuprimento_retirada_operador').upsert(lote, { onConflict: 'dia,turno,login' });
+      const lote = ops.slice(i, i + 500).map(function (o) { return { dia: o.dia, turno: o.turno, login: o.login, nome: o.nome || null, pecas: o.pecas || 0, movimentos: o.movimentos || 0 }; });
+      const error = await upsertOperadorComPecas(supabaseClient, 'ressuprimento_retirada_operador', lote, avisar);
       if (error) throw error;
     }
     avisar(linhas.length.toLocaleString('pt-BR') + ' linha(s) de retirada do Pulmão gravadas no histórico.');
@@ -1254,6 +1301,17 @@ async function upsertHistoricoRetirada(supabaseClient, payload, onAviso) {
 /* As listas de histórico (dia x segmento/família/operador x turno, retirada) já vão pras tabelas próprias e a
    tela lê de lá — no snapshot elas só pesam. Kardex de 41 dias estourou o tempo do insert (statement timeout,
    21/10/2026): o snapshot é publicado sem elas. */
+/* Peças e movimentos por operador no dia (05/11/2026, Top 5 do telão DISTR). Banco sem as colunas
+   (migracao_operador_pecas.sql não rodada): grava de novo sem elas e só avisa — nada deixa de ser gravado. */
+let avisouSemColunaPecas = false;
+async function upsertOperadorComPecas(supabaseClient, tabela, lote, avisar) {
+  const r = await supabaseClient.from(tabela).upsert(lote, { onConflict: 'dia,turno,login' });
+  if (!r.error || !/pecas|movimentos|column/i.test(r.error.message || '')) return r.error || null;
+  if (!avisouSemColunaPecas) { avisouSemColunaPecas = true; (avisar || function () {})('Aviso: rode migracao_operador_pecas.sql no Supabase para gravar as peças por operador (Top 5 do telão).'); }
+  const semPecas = lote.map(function (o) { return { dia: o.dia, turno: o.turno, login: o.login, nome: o.nome || null }; });
+  const r2 = await supabaseClient.from(tabela).upsert(semPecas, { onConflict: 'dia,turno,login' });
+  return r2.error || null;
+}
 function semHistoricoNoSnapshot(payload) {
   const p = Object.assign({}, payload);
   ['historico_diario', 'historico_diario_familia', 'historico_diario_operador', 'historico_retirada', 'historico_retirada_operador']
@@ -1262,6 +1320,26 @@ function semHistoricoNoSnapshot(payload) {
 }
 
 const LOTE_HISTORICO_DIARIO = 500;
+/* Apaga do histórico os dias que o arquivo grava inteiros (payload.periodo_gravado) antes dos upserts:
+   o upsert sozinho não remove a chave que deixou de existir (ex.: a madrugada do T02 que passou para o dia
+   anterior). Só roda se o arquivo trouxe movimento; erro vira aviso e o upsert segue. */
+async function limparHistoricoDoPeriodo(supabaseClient, payload, onAviso) {
+  const avisar = onAviso || function () {};
+  const per = payload && payload.periodo_gravado;
+  const temDado = payload && ((payload.historico_diario || []).length || (payload.historico_retirada || []).length);
+  if (!per || !per.de || !per.ate || per.de > per.ate || !temDado) return;
+  const tabelas = ['ressuprimento_historico_diario', 'ressuprimento_familia_diario', 'ressuprimento_operador_diario',
+    'ressuprimento_retirada_diario', 'ressuprimento_retirada_operador'];
+  for (const t of tabelas) {
+    try {
+      const { error } = await supabaseClient.from(t).delete().gte('dia', per.de).lte('dia', per.ate);
+      if (error) throw error;
+    } catch (e) {
+      avisar('Aviso: não deu pra limpar ' + t + ' de ' + per.de + ' a ' + per.ate + ' (' + (e && e.message) + ') — gravando por cima.');
+    }
+  }
+}
+
 async function upsertHistoricoDiario(supabaseClient, linhas, onAviso) {
   const avisar = onAviso || function () {};
   if (!linhas || linhas.length === 0) return;
@@ -1331,8 +1409,7 @@ async function upsertHistoricoOperadorDiario(supabaseClient, linhas, onAviso) {
   }
   try {
     for (const lote of lotes) {
-      const { error } = await supabaseClient.from('ressuprimento_operador_diario')
-        .upsert(lote, { onConflict: 'dia,turno,login' });
+      const error = await upsertOperadorComPecas(supabaseClient, 'ressuprimento_operador_diario', lote, avisar);
       if (error) throw error;
     }
     avisar(linhas.length.toLocaleString('pt-BR') + ' linha(s) gravadas no histórico de operadores.');
@@ -1355,6 +1432,8 @@ window.upsertHistoricoFamiliaDiario = upsertHistoricoFamiliaDiario;
 window.upsertHistoricoOperadorDiario = upsertHistoricoOperadorDiario;
 window.parsearKardex = parsearKardex;
 window.casarMovimentos = casarMovimentos;
+window.diaDeProducao = diaDeProducao;
+window.limparHistoricoDoPeriodo = limparHistoricoDoPeriodo;
 window.construirSnapshotMovimentacoes = construirSnapshotMovimentacoes;
 window.classificarZona = classificarZona;
 window.turnoDe = turnoDe;
