@@ -186,25 +186,30 @@ body.ocioso,body.ocioso *{cursor:none!important}
 .rs .painel.rosca .pizza{grid-template-columns:auto 1fr;gap:22px;align-items:center}
 .rs .painel.rosca .pizza svg{max-height:176px}
 .rs .painel.rosca .pizza .leg{grid-template-columns:1fr;row-gap:12px;justify-content:start}
-/* ---------- Embarque: 4 cards em cima; gráfico × forecast à esquerda, transportadoras e marcas à direita ---------- */
+/* ---------- Embarque: 4 cards em cima; linhas × forecast à esquerda, Top 3 transportadoras e heatmap à direita ---------- */
 .emb{display:flex;flex-direction:column;gap:14px;flex:1;min-height:0}
 .emb-cards{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;height:140px;flex:none}
 .emb .kpi .v{font-size:38px}
-.emb-baixo{display:grid;grid-template-columns:2.6fr 1.15fr;gap:14px;flex:1;min-height:0}
+.emb-baixo{display:grid;grid-template-columns:2.05fr 1.5fr;gap:14px;flex:1;min-height:0}
 .emb-baixo .cresce{flex:1;min-height:0}
-.col .area{position:relative;min-height:0}
-.col .area .pilha{position:absolute;left:0;right:0;bottom:0}
-.col .area .fcm{position:absolute;left:-2px;right:-2px;height:0;border-top:3px dashed var(--text);z-index:3}
-.transp{display:grid;align-content:space-around;gap:6px;min-height:0}
-.transp .ln{display:grid;grid-template-columns:96px 1fr 78px;gap:10px;align-items:center;font-size:15px}
-.transp .ln span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-label);font-weight:700}
-.transp .ln .tr{height:18px;background:var(--bg-input);border-radius:5px;overflow:hidden}
-.transp .ln .tr i{display:block;height:100%;background:var(--c);border-radius:5px}
-.transp .ln b{text-align:right;font-size:17px}.transp .ln b small{display:block;font-size:12px;font-weight:600;color:var(--text-muted)}
-.emb .painel.rosca{padding:12px 16px;gap:6px;height:220px;flex:none}
-.emb .painel.rosca .pizza{grid-template-columns:auto 1fr;gap:22px;align-items:center}
-.emb .painel.rosca .pizza svg{max-height:156px}
-.emb .painel.rosca .pizza .leg{grid-template-columns:1fr;row-gap:12px;justify-content:start}
+.emb-graf{min-height:0;height:100%;overflow:hidden}.emb-graf svg{display:block}
+/* transportadoras: mesmo desenho do report (nome e %, barra verde translúcida, peças · volumes) */
+.et3{display:grid;gap:6px;align-content:start}
+.et3 .tp{display:flex;justify-content:space-between;align-items:baseline;font-weight:700;font-size:17px}.et3 .tp b{font-size:19px}
+.et3 .br{height:18px;border-radius:6px;background:var(--bg-input);margin:4px 0 3px;overflow:hidden}
+.et3 .br i{display:block;height:100%;background:color-mix(in srgb,#45C645 62%,transparent);border-radius:6px}
+.et3 .mt{font-size:14px;color:var(--text-muted)}
+/* marca × segmento: heatmap do report */
+.emx{border-collapse:separate;border-spacing:4px;width:100%;font-size:16px;align-self:center}
+.emx th{font-size:13px;color:var(--text-label);font-weight:700;padding:4px 4px;text-align:center;letter-spacing:.04em}
+.emx th.l{text-align:left;white-space:nowrap}
+.emx td{text-align:center;padding:8px 4px;border-radius:6px;font-weight:700}
+.emx td.vz{color:var(--text-muted);font-weight:400}
+.emx .tot{color:var(--text);background:transparent;font-weight:800}
+.emx .sc,.emx tr.sl>*{border-radius:0}
+.emx .sc{box-shadow:inset 1px 0 0 color-mix(in srgb,var(--text) 22%,transparent)}
+.emx tr.sl>*{box-shadow:inset 0 1px 0 color-mix(in srgb,var(--text) 22%,transparent)}
+.emx tr.sl>.sc{box-shadow:inset 1px 0 0 color-mix(in srgb,var(--text) 22%,transparent),inset 0 1px 0 color-mix(in srgb,var(--text) 22%,transparent)}
 /* Top 5 por turno: três blocos empilhados, cada um na cor do turno */
 /* rola de baixo para cima em loop contínuo (conteúdo duplicado, sobe metade da altura e recomeça) */
 .tops{overflow:hidden;min-height:0;position:relative}
@@ -552,20 +557,77 @@ function trocaEtapaRessup(k){
 document.getElementById('chaveRessup').addEventListener('click', function(e){ var b = e.target.closest('button'); if (b) { e.stopPropagation(); trocaEtapaRessup(b.dataset.etapa); } });
 
 /* ================= TELA 3 · EMBARQUE ================= */
-// Mesmas contas do report (embarque.js): expedido por dia pelo arquivo de Notas Embarcadas do time de Embarque,
-// forecast do mês repartido nos dias úteis, backlog = PFAs em tela. O arquivo chega com o dia anterior: a tela
-// mostra o último dia embarcado até o dia exibido.
-var COR_EMB = '#F6BD00', COR_EMB_CLARO = '#FCE38A', DIAS_EMB = 13;
-var COR_MARCA = { 'OLYMPIKUS':'#297ADF', 'MIZUNO':'#DFBD41', 'UNDER ARMOUR':'#C8102E' };
+// Mesmas contas e mesmo desenho do Embarque do report (embarque.js): expedido por dia pelo arquivo de Notas Embarcadas
+// do time de Embarque, forecast do mês repartido nos dias úteis, backlog = PFAs em tela. O arquivo chega com o dia
+// anterior: a tela mostra o último dia embarcado até o dia exibido. Cores do report: embarcado verde (--olive),
+// forecast azul (--accent), barras e heatmap no verde translúcido (musgo).
+var COR_EMB = '#45C645', COR_EMB_MUSGO = 'color-mix(in srgb, #45C645 62%, transparent)', COR_FC = '#297ADF', DIAS_EMB = 13;
 var MESES_CURTOS = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
 var emb = null;   // { b: dados brutos (Embarque.carregarDados), exp: {dia: peças}, fc: {dia: forecast} }
 function nomeMes(mes){ return MESES_CURTOS[+mes.slice(5, 7) - 1] || mes; }
+function pct1(v){ return (Math.round(v * 10) / 10).toFixed(1).replace('.', ',') + '%'; }
 function montaEmb(b){
   var s = window.Embarque.montarSerieEmbarque(b.diario, b.forecasts, b.hoje, b.ultimos, b.emTela, somaDias(b.hoje, -75), null);
   var exp = {}, fc = {};
   s.dias_iso.forEach(function(d, i){ if (s.expedido[i] !== null) exp[d] = s.expedido[i]; if (s.forecast[i] !== null) fc[d] = s.forecast[i]; });
   (b.agg || []).forEach(function(r){ diasComDado[String(r.d).slice(0, 10)] = 1; });
   return { b: b, exp: exp, fc: fc };
+}
+// Curva suave (Catmull-Rom -> Bézier), a mesma do gráfico Forecast × Expedição do report
+function pathSuave(pts){
+  if (pts.length < 2) return '';
+  var d = 'M' + pts[0][0].toFixed(1) + ',' + pts[0][1].toFixed(1);
+  for (var i = 0; i < pts.length - 1; i++) {
+    var p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    d += ' C' + (p1[0] + (p2[0] - p0[0]) / 6).toFixed(1) + ',' + (p1[1] + (p2[1] - p0[1]) / 6).toFixed(1) + ' ' +
+      (p2[0] - (p3[0] - p1[0]) / 6).toFixed(1) + ',' + (p2[1] - (p3[1] - p1[1]) / 6).toFixed(1) + ' ' + p2[0].toFixed(1) + ',' + p2[1].toFixed(1);
+  }
+  return d;
+}
+// Linhas Embarcado × Forecast em SVG, medidas no tamanho do painel (só dá para medir com a tela visível)
+function desenhaGraficoEmb(el){
+  requestAnimationFrame(function(){
+    var box = el.querySelector('.emb-graf'); if (!box || !box.clientWidth || !emb) return;
+    var W = box.clientWidth, H = box.clientHeight, pL = 40, pR = 40, pT = 46, pB = 50, FS = 15;
+    var dias = JSON.parse(box.dataset.dias), n = dias.length, step = (W - pL - pR) / (n - 1), hj = hojeISO();
+    var E = dias.map(function(d){ return d in emb.exp ? emb.exp[d] : null; });
+    var F = dias.map(function(d){ return d in emb.fc ? emb.fc[d] : null; });
+    var mx = Math.max.apply(null, E.concat(F).filter(function(v){ return v != null; }).concat(1)) * 1.18;
+    var x = function(i){ return pL + i * step; }, y = function(v){ return (H - pB) - v / mx * (H - pT - pB); };
+    var out = [], rot = [];
+    out.push('<line x1="'+pL+'" x2="'+(W - pR)+'" y1="'+(H - pB)+'" y2="'+(H - pB)+'" stroke="var(--border)"/>');
+    var iH = dias.indexOf(hj);
+    if (iH !== -1) out.push('<line x1="'+x(iH)+'" x2="'+x(iH)+'" y1="'+(pT - 30)+'" y2="'+(H - pB)+'" stroke="var(--amber)" stroke-width="1.5" stroke-dasharray="4 3"/>');
+    var linha = function(vals, cor){
+      var pts = vals.map(function(v, i){ return v == null ? null : [x(i), y(v), v, i]; }).filter(Boolean);
+      if (pts.length > 1) out.push('<path d="'+pathSuave(pts)+'" clip-path="url(#embClip)" fill="none" stroke="'+cor+'" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>');
+      pts.forEach(function(p){ out.push('<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="5" fill="'+cor+'"/>'); });
+      var m = {}; pts.forEach(function(p){ m[p[3]] = p; }); return m;
+    };
+    var chip = function(cx, cy, v, cor){
+      var t = fmt(v), w = t.length * FS * 0.62 + 10, yy = Math.min(cy, H - pB - 8);
+      rot.push('<rect x="'+(cx - w/2).toFixed(1)+'" y="'+(yy - FS - 1).toFixed(1)+'" width="'+w.toFixed(1)+'" height="'+(FS + 7)+'" rx="4" fill="color-mix(in srgb, '+cor+' 32%, var(--bg-card) 68%)"/>'+
+        '<text x="'+cx.toFixed(1)+'" y="'+yy.toFixed(1)+'" text-anchor="middle" font-size="'+FS+'" font-weight="800" fill="'+cor+'">'+t+'</text>');
+    };
+    var mF = linha(F, COR_FC), mE = linha(E, COR_EMB);
+    for (var i = 0; i < n; i++) {
+      var a = mF[i] && mF[i][2] > 0 ? mF[i] : null, b = mE[i] && mE[i][2] > 0 ? mE[i] : null;
+      if (a && b) {
+        var oA = 14, oB = 28, dist = Math.abs(a[1] - b[1]);
+        if (dist < 34) { var ex = (34 - dist) / 2 + 4; oA += ex; oB += ex; }
+        var fAlto = a[1] <= b[1];
+        chip(a[0], fAlto ? a[1] - oA : a[1] + oB, a[2], COR_FC); chip(b[0], fAlto ? b[1] + oB : b[1] - oA, b[2], COR_EMB);
+      } else if (a) chip(a[0], a[1] - 14, a[2], COR_FC);
+      else if (b) chip(b[0], b[1] - 14, b[2], COR_EMB);
+    }
+    dias.forEach(function(d, i){
+      var p = d.split('-'), sem = new Date(+p[0], +p[1]-1, +p[2]).toLocaleDateString('pt-BR', { weekday:'short' });
+      out.push('<text x="'+x(i)+'" y="'+(H - 24)+'" text-anchor="middle" font-size="15" fill="'+(d === hj ? 'var(--amber)' : 'var(--text-label)')+'" font-weight="'+(d === hj ? 700 : 500)+'">'+ddmm(d)+'</text>'+
+        '<text x="'+x(i)+'" y="'+(H - 6)+'" text-anchor="middle" font-size="13" fill="var(--text-muted)">'+esc(sem)+'</text>');
+    });
+    // a curva não desce abaixo da linha de base (fim de semana = 0), igual ao report
+    box.innerHTML = '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'"><defs><clipPath id="embClip"><rect x="0" y="0" width="'+W+'" height="'+(H - pB + 1.5)+'"/></clipPath></defs>'+out.join('')+rot.join('')+'</svg>';
+  });
 }
 function renderTelaE(){
   var el = document.getElementById('telaE');
@@ -587,51 +649,51 @@ function renderTelaE(){
     var alvo = +fM.pecas_embarque, pct = noMes / alvo * 100;
     var restam = window.Embarque.diasUteisDoMes(mes, fM.dias_folga).filter(function(d){ return d > ult; }).length;
     var falta = Math.max(0, alvo - noMes), ritmo = restam ? Math.ceil(falta / restam) : falta;
-    var noRitmo = noMes >= prevAte;
-    c2 = kpiHtml('Embarcado em '+nm+' até '+ddmm(ult), fmt(noMes), qt(Math.round(pct))+'% de '+qt(alvo)+' · previsto '+qt(prevAte), noRitmo ? '#45C645' : COR_EMB, null, 'peças');
-    c3 = falta ? kpiHtml('Ritmo para bater '+nm, fmt(ritmo), (restam ? 'faltam '+qt(restam)+' dias úteis' : 'último dia útil')+' · média '+qt(diasCom ? noMes / diasCom : 0), COR_EMB_CLARO, null, 'peças/dia')
-               : kpiHtml('Forecast de '+nm, 'Batido', qt(noMes - alvo)+' peças acima', '#45C645', null, '');
+    c2 = kpiHtml('Embarcado em '+nm+' até '+ddmm(ult), fmt(noMes), qt(Math.round(pct))+'% de '+qt(alvo)+' · previsto '+qt(prevAte), COR_EMB, null, 'peças');
+    c3 = falta ? kpiHtml('Ritmo para bater '+nm, fmt(ritmo), (restam ? 'faltam '+qt(restam)+' dias úteis' : 'último dia útil')+' · média '+qt(diasCom ? noMes / diasCom : 0), COR_FC, null, 'peças/dia')
+               : kpiHtml('Forecast de '+nm, 'Batido', qt(noMes - alvo)+' peças acima', COR_EMB, null, '');
   } else {
     c2 = kpiHtml('Embarcado em '+nm+' até '+ddmm(ult), fmt(noMes), 'forecast de '+nm+' não cadastrado', COR_EMB, null, 'peças');
-    c3 = kpiHtml('Média por dia em '+nm, fmt(diasCom ? noMes / diasCom : 0), qt(diasCom)+' dias com embarque', COR_EMB_CLARO, null, 'peças/dia');
+    c3 = kpiHtml('Média por dia em '+nm, fmt(diasCom ? noMes / diasCom : 0), qt(diasCom)+' dias com embarque', COR_FC, null, 'peças/dia');
   }
   var et = b.emTela, nd = et && et.por_situacao ? +(et.por_situacao['Nao disp. picking'] || 0) : 0;
-  var c4 = kpiHtml('Backlog em tela agora', et ? fmt(et.total) : '—', et ? 'Não disp. picking '+qt(nd)+' · disponível '+qt(et.total - nd) : 'sem PFAs em tela', '#297ADF', null, 'peças');
-  // Colunas: embarcado por dia; o tracejado é o forecast do dia (fim de semana e folga = 0)
+  var c4 = kpiHtml('Backlog em tela agora', et ? fmt(et.total) : '—', et ? 'Não disp. picking '+qt(nd)+' · disponível '+qt(et.total - nd) : 'sem PFAs em tela', 'var(--amber)', null, 'peças');
   var dias = [];
   for (var k = DIAS_EMB - 1; k >= 0; k--) dias.push(somaDias(ate, -k));
-  var maxD = Math.max.apply(null, dias.map(function(d){ return Math.max(exp[d] || 0, fc[d] || 0); }).concat(1)) * 1.12;
-  var cols = dias.map(function(d){
-    var v = exp[d], f = fc[d], p = d.split('-'), sem = new Date(+p[0], +p[1]-1, +p[2]).toLocaleDateString('pt-BR', { weekday:'short' });
-    var cor = f > 0 && v >= f ? '#45C645' : COR_EMB;
-    return '<div class="col"><div class="area">'+
-      (v ? '<div class="pilha" style="height:'+(v/maxD*100).toFixed(1)+'%"><em>'+fmt(v)+'</em><i style="flex:1 0 0;background:'+cor+'"></i></div>' : '')+
-      (f > 0 ? '<span class="fcm" style="bottom:'+(f/maxD*100).toFixed(1)+'%"></span>' : '')+
-      '</div><div class="rot"><small>'+esc(sem)+'</small>'+ddmm(d)+'</div></div>';
-  }).join('');
-  var temFc = dias.some(function(d){ return fc[d] > 0; });
-  var leg = '<span class="leg-t"><span><i style="background:'+COR_EMB+'"></i>embarcado</span>'+
-    (temFc ? '<span><i style="background:#45C645"></i>acima do forecast</span><span><i style="background:none;border-top:3px dashed var(--text);border-radius:0;height:0;width:18px;vertical-align:3px"></i>forecast do dia</span>' : '')+'</span>';
-  // Transportadoras e marcas do mês (mesma conta do mix do report, sem filtro)
-  var mix = window.Embarque.montarMix(b.agg, null, mes);
-  var tr = mix.transportadoras.slice(0, 6), maxT = tr.length ? tr[0].p : 1;
-  var transp = tr.length ? '<div class="transp">'+tr.map(function(t){
-    return '<div class="ln" style="--c:'+COR_EMB+'"><span>'+esc(t.nome)+'</span><div class="tr"><i style="width:'+(t.p/maxT*100).toFixed(1)+'%"></i></div><b>'+fmt(t.p)+'<small>'+Math.round(t.pct)+'%</small></b></div>';
+  var leg = '<span class="leg-t"><span><i style="background:'+COR_EMB+'"></i>Embarcado (peças)</span><span><i style="background:'+COR_FC+'"></i>Forecast</span></span>';
+  // Transportadoras (Top 3) e marca × segmento do mês: mesma conta e mesmo desenho do report
+  var mix = window.Embarque.montarMix(b.agg, null, mes), T = mix.total.p || 1;
+  var tr = mix.transportadoras.slice(0, 3), maxT = tr.length ? tr[0].p : 1;
+  var transp = tr.length ? '<div class="et3">'+tr.map(function(t){
+    return '<div class="lt"><div class="tp"><span>'+esc(t.nome)+'</span><b>'+pct1(t.pct)+'</b></div>'+
+      '<div class="br"><i style="width:'+Math.max(1.5, t.p/maxT*100).toFixed(1)+'%"></i></div>'+
+      '<div class="mt">'+fmt(t.p)+' peças · '+fmt(t.v)+' volumes</div></div>';
   }).join('')+'</div>' : '<div class="semhora">Sem transportadora no mês</div>';
-  var marcas = mix.marcas.filter(function(m){ return (mix.linhaM[m] || 0) > 0; }).map(function(m, i){ return { n:nomeSegmento(m), v:mix.linhaM[m], cor:COR_MARCA[m] || COR_EXTRA[i % COR_EXTRA.length] }; });
+  var maxCel = Math.max.apply(null, Object.keys(mix.cel).map(function(k){ return mix.cel[k]; }).concat(1));
+  var nomeSeg = function(g){ return g === 'VESTUÁRIO' ? 'VEST.' : g === 'ACESSÓRIO' ? 'ACESS.' : g; };
+  var mapa = !mix.total.p ? '<div class="semhora">Sem nota no mês</div>' :
+    '<table class="emx"><tr><th></th>'+mix.segs.map(function(g){ return '<th>'+nomeSeg(g)+'</th>'; }).join('')+'<th class="tot sc">Total</th></tr>'+
+    mix.marcas.map(function(mk){
+      return '<tr><th class="l">'+esc(mk === 'UNDER ARMOUR' ? 'UNDER' : mk)+'</th>'+mix.segs.map(function(g){
+        var v = mix.cel[mk + '|' + g] || 0;
+        return v ? '<td style="background:color-mix(in srgb,#45C645 '+Math.round((0.1 + 0.55 * v / maxCel) * 100)+'%,transparent)">'+pct1(v / T * 100)+'</td>' : '<td class="vz">—</td>';
+      }).join('')+'<td class="tot sc">'+pct1((mix.linhaM[mk] || 0) / T * 100)+'</td></tr>';
+    }).join('')+
+    '<tr class="sl"><th class="l tot">Total</th>'+mix.segs.map(function(g){ return '<td class="tot">'+pct1((mix.colS[g] || 0) / T * 100)+'</td>'; }).join('')+'<td class="tot sc">100%</td></tr></table>';
   el.innerHTML =
     '<div class="emb">'+
       '<div class="emb-cards">'+c1+c2+c3+c4+'</div>'+
       '<div class="emb-baixo">'+
         '<div class="painel cresce" style="--pc:'+COR_EMB+'"><span class="k" style="display:flex;justify-content:space-between;align-items:center">'+
-          '<span>Embarcado por dia × forecast</span>'+leg+'</span>'+
-          '<div class="colunas" style="padding-top:26px">'+cols+'</div></div>'+
+          '<span>Embarcado × Forecast</span>'+leg+'</span>'+
+          '<div class="emb-graf" data-dias=\''+JSON.stringify(dias)+'\'></div></div>'+
         '<div class="rs-col">'+
-          '<div class="painel cresce" style="--pc:'+COR_EMB+'"><span class="k">Por transportadora · '+nm+'</span>'+transp+'</div>'+
-          '<div class="painel rosca" style="border-top:4px solid '+(marcas[0] ? marcas[0].cor : COR_EMB)+'"><span class="k">Por marca · '+nm+'</span>'+(marcas.length ? roscaHtml(marcas, mix.total.p, 'peças') : '<div class="semhora">Sem marca no mês</div>')+'</div>'+
+          '<div class="painel" style="--pc:'+COR_EMB+'"><span class="k">Top 3 transportadoras · '+nm+'</span>'+transp+'</div>'+
+          '<div class="painel cresce" style="--pc:'+COR_EMB+'"><span class="k">Marca × segmento · % das peças · '+nm+'</span>'+mapa+'</div>'+
         '</div>'+
       '</div>'+
     '</div>';
+  desenhaGraficoEmb(el);
 }
 
 /* ================= FAIXA DE BAIXO (totais em loop) ================= */
@@ -686,7 +748,7 @@ function mostraTela(i){
   } else entraTela(i);
 }
 // Cor de destaque de cada tela (barra do giro, setas e calendário): [forte, clara, texto sobre a forte]
-var COR_TELA = { telaS:['#297ADF','#7FB2EC','#fff'], telaR:['#45C645','#9BE29B','#0E1626'], telaE:['#F6BD00','#FCE38A','#0E1626'] };
+var COR_TELA = { telaS:['#297ADF','#7FB2EC','#fff'], telaR:['#45C645','#9BE29B','#0E1626'], telaE:['#45C645','#9BE29B','#0E1626'] };
 var sentidoTroca = 1;   // 1 = avançou (botão >, seta → ou rodízio), -1 = voltou (botão <, seta ←)
 function entraTela(i){
   telas.forEach(function(t, k){ t.classList.toggle('on', k === i); });
@@ -703,6 +765,7 @@ function entraTela(i){
   requestAnimationFrame(function(){   // tela estava escondida: só agora dá para medir
     ajustaLinhaKpi();
     if (telas[i].id === 'telaR') { ajustaMediaColunas(telas[i]); ligaRolo(telas[i]); }
+    if (telas[i].id === 'telaE') desenhaGraficoEmb(telas[i]);
   });
 }
 // Barra do giro redesenhada a cada quadro: anda contínua, sem pulos.
