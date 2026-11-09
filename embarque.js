@@ -1783,7 +1783,7 @@
 
   const api = {
     aoSairDaTela: aoSairDaTela, aoMostrarTela: aoMostrarTela,
-    iniciar: iniciar, ligarAdmin: ligarAdmin, salvarForecast: salvarForecast,
+    iniciar: iniciar, ligarAdmin: ligarAdmin, salvarForecast: salvarForecast, carregarDados: carregarDados,   // carregarDados: telão DISTR (tv.html), mesmas consultas do report
     diasUteisDoMes: diasUteisDoMes, distribuirNosDias: distribuirNosDias,
     forecastPorDia: forecastPorDia, perfilSemana: perfilSemana, pesosDoMes: pesosDoMes, distribuirPorPeso: distribuirPorPeso, entradaDoMes: entradaDoMes, entradaAutomatica: entradaAutomatica, validarProporcoes: validarProporcoes, validarCruzada: validarCruzada, matrizPrevista: matrizPrevista, nomeCurtoTransportadora: nomeCurtoTransportadora,
     parsearNotasEmbarcadas: parsearNotasEmbarcadas, aplicarFiltrosNaSerie: aplicarFiltrosNaSerie, montarMix: montarMix, processarNotasEmbarcadas: processarNotasEmbarcadas, montarSerieEmbarque: montarSerieEmbarque, mesclarHistoricoOperacao: mesclarHistoricoOperacao, aplicarExpedidoTime: aplicarExpedidoTime, lerMilPecas: lerMilPecas, repartir: repartir, dataDeCelula: dataDeCelula,
