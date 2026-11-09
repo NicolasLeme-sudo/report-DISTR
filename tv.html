@@ -561,7 +561,7 @@ document.getElementById('chaveRessup').addEventListener('click', function(e){ va
 // do time de Embarque, forecast do mês repartido nos dias úteis, backlog = PFAs em tela. O arquivo chega com o dia
 // anterior: a tela mostra o último dia embarcado até o dia exibido. Cores do report: embarcado verde (--olive),
 // forecast azul (--accent), barras e heatmap no verde translúcido (musgo).
-var COR_EMB = '#45C645', COR_EMB_MUSGO = 'color-mix(in srgb, #45C645 62%, transparent)', COR_FC = '#297ADF', DIAS_EMB = 13;
+var COR_EMB = '#45C645', COR_EMB_MUSGO = 'color-mix(in srgb, #45C645 62%, transparent)', COR_FC = '#297ADF', DIAS_EMB = 10;
 var MESES_CURTOS = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
 var emb = null;   // { b: dados brutos (Embarque.carregarDados), exp: {dia: peças}, fc: {dia: forecast} }
 function nomeMes(mes){ return MESES_CURTOS[+mes.slice(5, 7) - 1] || mes; }
