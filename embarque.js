@@ -1478,7 +1478,20 @@
     if (!window.XLSX) throw new Error('Biblioteca de planilhas (XLSX) não carregou — recarregue a página.');
     avisar('Lendo a planilha de notas embarcadas…');
     const wb = window.XLSX.read(await arquivo.arrayBuffer(), { type: 'array' });
-    const linhas = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: null });
+    // procura a aba que tem o cabeçalho de notas embarcadas (pode não ser a primeira — ex.: tabela dinâmica na Plan2)
+    var linhas = null;
+    var semAc = function (v) { return String(v == null ? '' : v).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim(); };
+    for (var si = 0; si < wb.SheetNames.length; si++) {
+      var cand = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[si]], { header: 1, raw: true, defval: null });
+      for (var ri = 0; ri < Math.min(10, cand.length); ri++) {
+        var ns = (cand[ri] || []).map(semAc);
+        if (ns.indexOf('NOTA FISCAL') !== -1 || (ns.some(function (c) { return c.indexOf('EMBARQUE') === 0; }) && ns.indexOf('PECAS') !== -1 && ns.indexOf('FAMILIA') !== -1)) {
+          linhas = cand; break;
+        }
+      }
+      if (linhas) break;
+    }
+    if (!linhas) linhas = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: null });
     const fam = await supabaseClient.from('dim_familias').select('codigo, marca, categoria, segmento');
     if (fam.error) throw fam.error;
     const familias = {};
