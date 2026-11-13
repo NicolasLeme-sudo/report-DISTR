@@ -604,7 +604,7 @@ function desenhaGraficoEmb(el){
       if (!v) return;
       var yt = y(v), hc = (H - pB) - yt;
       out.push('<rect x="'+(x(i) - bw/2).toFixed(1)+'" y="'+yt.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hc.toFixed(1)+'" rx="6" fill="'+COR_EMB_MUSGO+'"/>');
-      rot.push(hc > 40 ? '<text x="'+x(i).toFixed(1)+'" y="'+(yt + 30).toFixed(1)+'" text-anchor="middle" font-size="22" font-weight="800" fill="#fff">'+fmt(v)+'</text>'
+      rot.push(hc > 40 ? '<text x="'+x(i).toFixed(1)+'" y="'+(yt + 30).toFixed(1)+'" text-anchor="middle" font-size="22" font-weight="800" fill="#E2FFE2">'+fmt(v)+'</text>'
                        : '<text x="'+x(i).toFixed(1)+'" y="'+(yt - 8).toFixed(1)+'" text-anchor="middle" font-size="22" font-weight="800" fill="'+COR_EMB+'">'+fmt(v)+'</text>');
     });
     // forecast: linha azul só nos dias com forecast (fim de semana e folga ficam sem linha)
@@ -620,8 +620,8 @@ function desenhaGraficoEmb(el){
       var colTopo = E[i] && E[i] > 0 ? y(E[i]) : null, ty = cy - 12;
       if (colTopo !== null && ty + 6 > colTopo + 2 && ty - FS - 2 < colTopo + 40) ty = cy + FS + 14;
       out.push('<circle cx="'+cx.toFixed(1)+'" cy="'+cy.toFixed(1)+'" r="6" fill="'+COR_FC+'"/>');
-      rot.push('<rect x="'+(cx - w/2).toFixed(1)+'" y="'+(ty - FS - 2).toFixed(1)+'" width="'+w.toFixed(1)+'" height="'+(FS + 8)+'" rx="5" fill="color-mix(in srgb, '+COR_FC+' 32%, var(--bg-card) 68%)"/>'+
-        '<text x="'+cx.toFixed(1)+'" y="'+ty.toFixed(1)+'" text-anchor="middle" font-size="'+FS+'" font-weight="800" fill="'+COR_FC+'">'+t+'</text>');
+      rot.push('<rect x="'+(cx - w/2).toFixed(1)+'" y="'+(ty - FS - 2).toFixed(1)+'" width="'+w.toFixed(1)+'" height="'+(FS + 8)+'" rx="5" fill="color-mix(in srgb, '+COR_FC+' 72%, var(--bg-card) 28%)"/>'+
+        '<text x="'+cx.toFixed(1)+'" y="'+ty.toFixed(1)+'" text-anchor="middle" font-size="'+FS+'" font-weight="800" fill="#fff">'+t+'</text>');
     });
     dias.forEach(function(d, i){
       var p = d.split('-'), sem = new Date(+p[0], +p[1]-1, +p[2]).toLocaleDateString('pt-BR', { weekday:'short' });
