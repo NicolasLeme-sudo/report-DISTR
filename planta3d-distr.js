@@ -62,6 +62,11 @@ const BLOCO = 6;
 // Formato do Picking (fotos da operação): bins brancos no lado direito, caixas sob medida nos
 // acessórios (11–13) e gaiolas aramadas nas meias (14–15) — cada gaiola guarda 2 endereços.
 const FORMATO_PK = { '11': 'caixa', '12': 'caixa', '13': 'caixa', '14': 'gaiola', '15': 'gaiola' };
+/* Picking das ruas 13 e 14: só existe no SISTEMA (13/11/2026). No físico, essas longarinas são as gaiolas de
+   meias, que o sistema endereça na rua 15 (ver ZIGUE_MEIAS). A numeração que sobrou nas ruas 13 e 14 está
+   praticamente toda "livre sem SKU" (rua 13: 392 de 394; rua 14: só os ímpares, 173 de 176) e, desenhada,
+   virava uma parede de centenas de cubinhos finos por cima das gaiolas. O Pulmão dessas ruas é real e continua. */
+const PK_SO_NO_SISTEMA = { '13': 1, '14': 1 };
 const NOME_FORMATO = { bin: 'Bin', caixa: 'Caixa sob medida', gaiola: 'Gaiola (2 endereços)' };                                          // trecho de ~6 m da longarina = uma célula do calor
 function geoRua(rua) {
   const esq = RUAS_ESQ.indexOf(rua), i = esq >= 0 ? esq : RUAS_DIR.indexOf(rua);
@@ -218,6 +223,10 @@ function montarItens(mapa) {
       Object.keys(R.niveis).forEach(nv => {
         const N = R.niveis[nv], lv = Number(nv), maxN = N.max || R.max || N.e.length;
         if (zona === 'pulmao' && rua === RUA_ALMOX) return;            // desenhada à parte (almoxarifado/insumos)
+        if (zona === 'picking' && PK_SO_NO_SISTEMA[rua]) {             // longarina é das meias (rua 15 do sistema)
+          for (let i = 0; i < N.e.length; i++) if ('12r0'.indexOf(N.e[i]) !== -1 && N.e[i] !== '') foraNum.picking++;
+          return;
+        }
         if (zona === 'pulmao' && lv > NIVEL_MAX_PU(rua)) {          // nível acima da estrutura do estoque novo
           for (let i = 0; i < N.e.length; i++) if ('12'.indexOf(N.e[i]) !== -1 && N.e[i] !== '') foraNum.pulmao++;
           return;
