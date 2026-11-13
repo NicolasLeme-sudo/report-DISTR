@@ -612,16 +612,34 @@ function desenhaGraficoEmb(el){
     var fecha = function(){ if (trecho.length > 1) out.push('<path d="'+pathSuave(trecho)+'" fill="none" stroke="'+COR_FC+'" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>'); trecho = []; };
     F.forEach(function(v, i){ if (v > 0) trecho.push([x(i), y(v)]); else fecha(); });
     fecha();
+    // posicionar rótulos do forecast em duas passadas: primeiro calcular, depois resolver sobreposições
+    var fcLabels = [];
+    var hLabel = FS + 8;
     F.forEach(function(v, i){
       if (!(v > 0)) return;
       var cx = x(i), cy = y(v), t = fmt(v), w = t.length * FS * 0.62 + 12;
-      // o rótulo do forecast fica acima do ponto; se o ponto cai logo abaixo do topo da coluna, vai para baixo dele
-      // número da coluna ocupa do topo até ~38 px abaixo; se o rótulo acima do ponto bater nele, vai para baixo do ponto
-      var colTopo = E[i] && E[i] > 0 ? y(E[i]) : null, ty = cy - 12;
-      if (colTopo !== null && ty + 6 > colTopo + 2 && ty - FS - 2 < colTopo + 40) ty = cy + FS + 14;
-      out.push('<circle cx="'+cx.toFixed(1)+'" cy="'+cy.toFixed(1)+'" r="6" fill="'+COR_FC+'"/>');
-      rot.push('<rect x="'+(cx - w/2).toFixed(1)+'" y="'+(ty - FS - 2).toFixed(1)+'" width="'+w.toFixed(1)+'" height="'+(FS + 8)+'" rx="5" fill="color-mix(in srgb, '+COR_FC+' 72%, var(--bg-card) 28%)"/>'+
-        '<text x="'+cx.toFixed(1)+'" y="'+ty.toFixed(1)+'" text-anchor="middle" font-size="'+FS+'" font-weight="800" fill="#fff">'+t+'</text>');
+      var colTopo = E[i] && E[i] > 0 ? y(E[i]) : null;
+      var acima = cy - 12, abaixo = cy + FS + 14;
+      // preferência: acima do ponto; se bate no rótulo da coluna, vai para baixo
+      var ty = acima;
+      if (colTopo !== null && ty + 6 > colTopo + 2 && ty - FS - 2 < colTopo + 40) ty = abaixo;
+      fcLabels.push({ i:i, cx:cx, cy:cy, ty:ty, acima:acima, abaixo:abaixo, t:t, w:w, colTopo:colTopo });
+    });
+    // resolver sobreposições entre rótulos vizinhos (alternar acima/abaixo)
+    for (var li = 1; li < fcLabels.length; li++) {
+      var prev = fcLabels[li - 1], cur = fcLabels[li];
+      var prevTop = prev.ty - FS - 2, prevBot = prev.ty + 6;
+      var curTop = cur.ty - FS - 2, curBot = cur.ty + 6;
+      if (curTop < prevBot && curBot > prevTop) {
+        // sobrepõe: se ambos estão acima, joga o atual para baixo (e vice-versa)
+        if (cur.ty === cur.acima) cur.ty = cur.abaixo;
+        else cur.ty = cur.acima;
+      }
+    }
+    fcLabels.forEach(function(lb){
+      out.push('<circle cx="'+lb.cx.toFixed(1)+'" cy="'+lb.cy.toFixed(1)+'" r="6" fill="'+COR_FC+'"/>');
+      rot.push('<rect x="'+(lb.cx - lb.w/2).toFixed(1)+'" y="'+(lb.ty - FS - 2).toFixed(1)+'" width="'+lb.w.toFixed(1)+'" height="'+hLabel+'" rx="5" fill="color-mix(in srgb, '+COR_FC+' 72%, var(--bg-card) 28%)"/>'+
+        '<text x="'+lb.cx.toFixed(1)+'" y="'+lb.ty.toFixed(1)+'" text-anchor="middle" font-size="'+FS+'" font-weight="800" fill="#fff">'+lb.t+'</text>');
     });
     dias.forEach(function(d, i){
       var p = d.split('-'), sem = new Date(+p[0], +p[1]-1, +p[2]).toLocaleDateString('pt-BR', { weekday:'short' });
