@@ -8,7 +8,7 @@ Regras gerais de trabalho: `C:\Repositórios\CLAUDE.md`. Resumo: plano + modelo 
 ## Essencial
 - Projeto independente, base herdada do Report E-commerce. Supabase `qaehjplsasumuhszjcnu`. Deploy Vercel a partir de `main`.
 - Hierarquia de estoque Armazém › Marca › Família (`estoque_posicoes`, `estoque_extracoes`, `dim_familias`).
-- Ingests separados: `ingest.js`, `ingest-movimentacoes.js`, `ingest-pfas.js`, `ingest-ressuprimento.js`, `ingest-colaboradores.js`, `ingest-emails-ajustes.js`, `embarque.js`. Fluxo de processos `distr-fluxo.js`; planta 3D `planta3d-distr.js`.
+- Ingests separados: `ingest.js`, `ingest-movimentacoes.js`, `ingest-pfas.js`, `ingest-ressuprimento.js`, `ingest-colaboradores.js`, `ingest-emails-ajustes.js`, `embarque.js`. Fluxo de processos `distr-fluxo.js`; planta 3D `planta3d-distr.js` (13/11: a **mesa do ADM da DISTR** ficou no lugar da caixa de faturamento, na frente das ruas 07 e 08 — bancada com 3 postos de cada lado e o coordenador na ponta, hidrante, gaiola dos galões e armário branco na divisão de módulos; o parágrafo de detalhes embaixo da planta saiu, a legenda das cores ficou).
 - **Testes automáticos** `testes-*.js`: rode com `node testes-<nome>.js` depois de mexer no ingest correspondente.
 - Migrações em `migracao_*.sql`, esquema em `esquema.sql`.
 - Forecast: meses com forecast e os dois seguintes aparecem no filtro Período; o gráfico vai até o último mês liberado; mês sem forecast mostra aviso.

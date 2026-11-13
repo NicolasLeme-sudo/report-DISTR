@@ -13,8 +13,8 @@
    - Picking embaixo (níveis 1–7) e Pulmão em cima (níveis 8–12).
    - Frente: colmeias pretas (2 por par de longarinas encostadas, menos no
      par 04/05, que tem o hidrante), placas das marcas (Olympikus na 04,
-     Mizuno na 06, Under Armour na 08), caixa de faturamento na frente das
-     ruas 07 e 08 (esteira de roletes com 4 mesas) e eclusas.
+     Mizuno na 06, Under Armour na 08), mesa do ADM da DISTR na frente das
+     ruas 07 e 08 (no lugar da caixa de faturamento) e eclusas.
    - Picking: bins no lado direito, caixas sob medida nos acessórios
      (11–13) e gaiolas nas meias (14–15, 2 endereços por gaiola).
 
@@ -82,9 +82,9 @@ const RAMPS = {
 };
 const INFRA = {
   dark:  { esteira: '#10161F', estr: '#7C92AC', estrut: '#2F5F9E', longarina: '#6E5238', montante: '#3B5478', passagem: '#2B3A50', outro: '#8592A6', parede: '#5A6F88', chao: '#18233A', corredor: '#1E2B40',
-           colmeia: '#0B0D10', pallet: '#9A7350', carga: '#CDB48C', caixa: '#C9A36A', faixa: '#F6BD00', mesa: '#E6EAEF', monitor: '#0E141E', tela: '#2F7DE0', rolete: '#2A2F38', hidrante: '#C8102E', coluna: '#E8ECF1', grade: '#9AA6B4', guarda: '#F6BD00', eclusa: '#33516E', piso: '#22344A', perna: '#55657A', fora: '#3A4A5E', neutro: '#6F7F96' },
+           colmeia: '#0B0D10', cadeira: '#232E3E', pallet: '#9A7350', carga: '#CDB48C', caixa: '#C9A36A', faixa: '#F6BD00', mesa: '#E6EAEF', monitor: '#0E141E', tela: '#2F7DE0', rolete: '#2A2F38', hidrante: '#C8102E', coluna: '#E8ECF1', grade: '#9AA6B4', guarda: '#F6BD00', eclusa: '#33516E', piso: '#22344A', perna: '#55657A', fora: '#3A4A5E', neutro: '#6F7F96' },
   light: { esteira: '#3A4656', estr: '#8EA3BA', estrut: '#3A6AAE', longarina: '#C9A786', montante: '#8EA6C8', passagem: '#C9D3DE', outro: '#9AA8BA', parede: '#9DB0C4', chao: '#E3E9F0', corredor: '#D3DCE6',
-           colmeia: '#1A1C20', pallet: '#9A7350', carga: '#D9C4A0', caixa: '#B98E52', faixa: '#C9960A', mesa: '#FFFFFF', monitor: '#1B2533', tela: '#2F7DE0', rolete: '#4A5160', hidrante: '#C0392B', coluna: '#FFFFFF', grade: '#8A96A4', guarda: '#D9A300', eclusa: '#C4D3E2', piso: '#D6DFE9', perna: '#8A99AA', fora: '#B4C0CE', neutro: '#8C9AAD' }
+           colmeia: '#1A1C20', cadeira: '#6B7786', pallet: '#9A7350', carga: '#D9C4A0', caixa: '#B98E52', faixa: '#C9960A', mesa: '#FFFFFF', monitor: '#1B2533', tela: '#2F7DE0', rolete: '#4A5160', hidrante: '#C0392B', coluna: '#FFFFFF', grade: '#8A96A4', guarda: '#D9A300', eclusa: '#C4D3E2', piso: '#D6DFE9', perna: '#8A99AA', fora: '#B4C0CE', neutro: '#8C9AAD' }
 };
 // Visão "Endereço": uma cor por estado do endereço
 const ESTADOS = {
@@ -306,7 +306,6 @@ function injetaCSS() {
 .p3-ramp .ticks span { position: absolute; top: 2px; transform: translateX(-50%); font-size: 10.5px; }
 .p3-sw { display: inline-flex; gap: 6px; align-items: center; }
 .p3-sw i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
-.p3-base { padding: 0 14px 12px; font-size: 11.5px; color: var(--text-muted); }
 .p3-tip { position: fixed; z-index: 9999; pointer-events: none; background: var(--bg-card); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px;
   font-size: 12.5px; min-width: 200px; max-width: 330px; box-shadow: var(--shadow); font-variant-numeric: tabular-nums; }
 .p3-tip .t { font-weight: 700; margin-bottom: 2px; }
@@ -317,8 +316,7 @@ function injetaCSS() {
 .p3-tela svg { width: 14px; height: 14px; }
 .p3-card:fullscreen, .p3-card.p3-max { display: flex; flex-direction: column; width: 100vw; height: 100vh; border-radius: 0; border: 0; background: var(--bg-card); }
 .p3-card.p3-max { position: fixed; inset: 0; z-index: 9000; }
-.p3-card:fullscreen .p3-stage, .p3-card.p3-max .p3-stage { flex: 1 1 auto; height: auto; min-height: 0; }
-.p3-card:fullscreen .p3-base, .p3-card.p3-max .p3-base { display: none; }`;
+.p3-card:fullscreen .p3-stage, .p3-card.p3-max .p3-stage { flex: 1 1 auto; height: auto; min-height: 0; }`;
   document.head.appendChild(st);
 }
 function htmlPlanta() {
@@ -337,8 +335,7 @@ function htmlPlanta() {
     + '<div class="p3-msg" data-k="msg">Carregando planta 3D…</div>'
     + '<div class="p3-hint">Role para aproximar onde está o mouse · duplo clique aproxima (até 2×), o próximo volta · arraste para girar (na Planta, para mover)</div>'
     + '<button class="p3-chip p3-reset" type="button" data-k="reset">Centralizar</button></div>'
-    + '<div class="p3-legend" data-k="legend"></div>'
-    + '<div class="p3-base" data-k="base"></div>';
+    + '<div class="p3-legend" data-k="legend"></div>';
 }
 
 /* ---------------- tooltip (um só por página) ---------------- */
@@ -458,16 +455,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
     msg.innerHTML = 'Ainda não há mapa de endereços.<br>Reprocesse <strong>Picking + Pulmão</strong> em Admin › Abastecimento para montar a planta.';
     return;
   }
-  const { itens, grupos, foraNum, pass } = montarItens(mapa);
-  const fora = { pulmao: ((mapa.fora_do_desenho || {}).pulmao || 0) + foraNum.pulmao, picking: ((mapa.fora_do_desenho || {}).picking || 0) + foraNum.picking };
-  q('base').textContent = 'Posição de Picking + Pulmão' + (dados.gerado_em && window.formatarDataHora ? ' de ' + window.formatarDataHora(dados.gerado_em) : '')
-    + (dados.arquivos ? ' (' + dados.arquivos + ')' : '') + '. Cada cubo é um endereço: Picking nos níveis 1 a 7, Pulmão nos níveis 8 a 12; box 001 no fundo do galpão. '
-    + 'Calor = % de endereços ocupados em cada trecho de ~6 m da longarina (no Picking, endereço alocado conta como ocupado, como na tela Estoque). '
-    + 'No Picking, o endereço sem SKU cadastrado não vem no arquivo: os livres são deduzidos pela numeração até o maior box de cada nível. '
-    + 'A ocupação no topo é a oficial por rua (capacidade da planilha, mesma régua do card de endereços livres).'
-    + ' Ruas 11 a 15 no físico: rua 11 com o Picking todo na longarina da direita; rua 12 com malas/acessórios na esquerda; meias (rua 15 do sistema) em zigue-zague — 001–032 na rua 14, 033–102 e 103–168 nos dois lados da rua 13 e 169 em diante na direita da rua 12.'
-    + ((fora.pulmao || fora.picking) ? ' Fora do desenho (lado que a rua não tem, numeração fora do padrão ou nível 12 do estoque novo): ' + fmtI(fora.pulmao || 0) + ' no Pulmão e ' + fmtI(fora.picking || 0) + ' no Picking.' : '')
-    + (foraNum.passagem ? ' ' + fmtI(foraNum.passagem) + ' endereço(s) com saldo dentro de passagem de empilhadeira não aparecem.' : '');
+  const { itens, grupos, pass } = montarItens(mapa);
 
   try { await garantirThree(); }
   catch (e) { console.error(e); msg.textContent = 'Não foi possível montar a planta 3D: ' + e.message; return; }
@@ -739,46 +727,61 @@ window.montarPlanta3DDistr = async function (container, dados) {
   }
   placa('3', '4', 'Olympikus'); placa('5', '6', 'Mizuno'); placa('7', '8', 'Under Armour');
 
-  // caixa de faturamento (fotos + operação): na frente das ruas 07 e 08, no lugar das eclusas. Esteira de
-  // roletes larga no meio; de cada lado dela, da direita para a esquerda, uma mesa com 2 telas e uma com 1
-  // tela; na ponta da esteira, os pallets de caixas sendo montados. As mesas ficam de lado.
-  const fxA = geoRua('7').xImpar - D / 2, fxB = geoRua('8').xPar + D / 2;
-  const xR = fxB - .3, fz = Z_FRENTE + 11.5, LARG = 2.2;           // esteira: ~2,5× a largura anterior
-  const xEst0 = xR - 5.4, xEst1 = xR;                              // esteira corre da direita para a esquerda
-  const tipCx = tipInfo('Caixa de faturamento', 'Esteira de roletes no meio · mesas de conferência ao lado · na ponta da esteira a caixa é lacrada e o pallet é montado');
-  caixa(xEst0, fz - LARG / 2, xEst1, fz + LARG / 2, .66, .1, 'rolete', 'comum', { tip: tipCx });
-  const rol = [], pern = [], mesas = [], pcs = [];
-  for (let x = xEst0 + .15; x < xEst1; x += .28) rol.push({ x, y: .76, z: fz, w: .11, h: .05, d: LARG - .16, corNome: 'grade', tip: () => tipCx });
-  for (let x = xEst0 + .3; x < xEst1; x += 1.6) [fz - LARG / 2 + .1, fz + LARG / 2 - .18].forEach(z => pern.push({ x, y: 0, z, w: .08, h: .66, d: .08, corNome: 'perna' }));
-  // monitor de frente para +x (lado = 1) ou −x (lado = −1): tela no plano z-y
+  // Mesa do ADM da DISTR (planta e fotos da operação, 13/11/2026): ficou onde era a caixa de faturamento
+  // (esteira de roletes e mesas de conferência), na frente das ruas 07 e 08, encostada na divisão de módulos.
+  // Bancada comprida com 3 postos de cada lado — assistentes, auxiliares e líder — e o coordenador na ponta.
+  // Do lado da divisória ficam o hidrante, a gaiola dos galões de água e o armário branco; o marrom na ponta.
+  const fxA = geoRua('7').xImpar - D / 2;
+  const admX1 = X_FIM - 2.6, admX0 = admX1 - 2.4;                       // duas fileiras de mesas, uma de costas para a outra
+  const PASSO_ADM = 1.6, admZ0 = Z_FRENTE + 6, admZ1 = admZ0 + 4 * PASSO_ADM;   // 3 postos por lado + a ponta do coordenador
+  const admXc = (admX0 + admX1) / 2, admZc = (admZ0 + admZ1) / 2, H_ADM = .74;
+  const tipAdm = tipInfo('Mesa do ADM da DISTR', 'Na frente das ruas 07 e 08, encostada na divisão de módulos · ficou no lugar da caixa de faturamento');
+  caixa(admX0, admZ0, admX1, admZ1, H_ADM, .06, 'mesa', 'comum', { tip: tipAdm });
+  const pern = [], pcs = [], movs = [];
+  [admX0 + .3, admX1 - .3].forEach(x => [admZ0 + .35, admZc, admZ1 - .35].forEach(z =>
+    pern.push({ x, y: 0, z, w: .08, h: H_ADM, d: .08, corNome: 'mesa', tip: () => tipAdm })));
+  // monitor virado para +x (lado = 1) ou −x (lado = −1): a tela fica no plano z-y, de frente para quem senta
   function monitor(x, z, lado, t) {
-    pcs.push({ x, y: .91, z, w: .05, h: .38, d: .5, corNome: 'monitor', tip: t });
-    pcs.push({ x: x + lado * .035, y: .95, z, w: .02, h: .3, d: .44, corNome: 'tela', tip: t });
+    pcs.push({ x, y: H_ADM + .06, z, w: .05, h: .38, d: .5, corNome: 'monitor', tip: t });
+    pcs.push({ x: x + lado * .035, y: H_ADM + .1, z, w: .02, h: .3, d: .44, corNome: 'tela', tip: t });
   }
-  // 4 mesas: em cada lado da esteira, uma com 2 telas (uma de cada lado, conferentes frente a frente) à
-  // direita e uma com 1 tela à esquerda. Mesas de lado: 1,2 m (x) × 2 m (z), encostadas na esteira.
-  function mesa(xc, zM, nome, detalhe) {
-    const t = () => tipInfo(nome, detalhe);
-    mesas.push({ x: xc, y: .85, z: zM, w: 1.2, h: .06, d: 2, corNome: 'mesa', tip: t });
-    [[-.5, -.9], [.5, -.9], [-.5, .9], [.5, .9]].forEach(([dx, dz]) => pern.push({ x: xc + dx, y: 0, z: zM + dz, w: .07, h: .85, d: .07, corNome: 'mesa' }));
-    return t;
+  // cadeira encostada na bancada; (dx, dz) é a direção para onde a pessoa olha
+  function cadeira(x, z, dx, dz, t) {
+    movs.push({ x, y: .42, z, w: .5, h: .06, d: .5, corNome: 'cadeira', tip: t });
+    movs.push({ x: x - dx * .25, y: .48, z: z - dz * .25, w: dx ? .07 : .5, h: .45, d: dz ? .07 : .5, corNome: 'cadeira', tip: t });
+    movs.push({ x, y: 0, z, w: .09, h: .42, d: .09, corNome: 'perna', tip: t });
   }
-  const xM1 = xR - .9, xM2 = xM1 - 2.2;
-  [[fz + LARG / 2 + .35 + 1, 'da frente'], [fz - LARG / 2 - .35 - 1, 'do fundo']].forEach(([zM, lado], i) => {
-    const t1 = mesa(xM1, zM, 'Mesa de conferência ' + (2 * i + 1), '2 telas, uma de cada lado · as conferentes ficam uma de frente para a outra · lado ' + lado + ' da esteira');
-    monitor(xM1 + .12, zM, 1, t1); monitor(xM1 - .12, zM, -1, t1);
-    const t2 = mesa(xM2, zM, 'Mesa de conferência ' + (2 * i + 2), '1 tela · lado ' + lado + ' da esteira');
-    monitor(xM2 - .3, zM, 1, t2);
+  // 3 postos de cada lado, do fundo (rua do almoxarifado) para a frente do galpão
+  [[-1, admX0, ['Assistente', 'Auxiliar', 'Auxiliar']], [1, admX1, ['Assistente', 'Assistente', 'Líder']]].forEach(([lado, xb, cargos]) => {
+    cargos.forEach((cargo, i) => {
+      const z = admZ0 + (i + .5) * PASSO_ADM;
+      const t = () => tipInfo(cargo + ' · ADM da DISTR', 'Mesa do ADM · lado ' + (lado < 0 ? 'das colmeias' : 'da divisão de módulos') + ' · posto ' + (i + 1) + ' de 3');
+      monitor(admXc + lado * .35, z, lado, t);
+      cadeira(xb + lado * .62, z, -lado, 0, t);
+    });
   });
-  lote(rol, 'comum', 0); lote(pern, 'comum', 0); lote(mesas, 'comum', 0); lote(pcs, 'comum', 0);
-  // pallets de caixas sendo montados, na ponta da esteira
-  const cxs = [];
-  [[xEst0 - .9, fz - .65, 3], [xEst0 - .9, fz + .65, 2], [xEst0 - 2.2, fz, 1]].forEach(([x, z, n]) => {
-    cxs.push({ x, y: 0, z, w: 1.1, h: .15, d: 1.1, corNome: 'pallet', tip: () => tipCx });
-    for (let i = 0; i < n; i++) cxs.push({ x, y: .15 + i * .45, z, w: .95, h: .42, d: .95, corNome: 'caixa', tip: () => tipCx });
-  });
-  lote(cxs, 'comum', 0);
-  const fx0 = xEst0, LE = xEst1 - xEst0;
+  // coordenador na ponta da bancada, de frente para o fundo do galpão
+  const tCoord = () => tipInfo('Coordenador · ADM da DISTR', 'Na ponta da bancada, de frente para os outros postos');
+  pcs.push({ x: admXc, y: H_ADM + .06, z: admZ1 - .5, w: .5, h: .38, d: .05, corNome: 'monitor', tip: tCoord });
+  pcs.push({ x: admXc, y: H_ADM + .1, z: admZ1 - .465, w: .44, h: .3, d: .02, corNome: 'tela', tip: tCoord });
+  cadeira(admXc, admZ1 + .62, 0, -1, tCoord);
+  lote(pern, 'comum', 0); lote(pcs, 'comum', 0); lote(movs, 'comum', 0);
+
+  // ao lado da mesa, na divisão de módulos: hidrante, gaiola dos galões de água e armário branco
+  const xMur = X_FIM - .35;
+  const tipHA = tipInfo('Hidrante', 'Na divisão de módulos, ao lado da mesa do ADM');
+  caixa(xMur - .55, admZ0 + .1, xMur + .3, admZ0 + .75, 0, 1.3, 'hidrante', 'comum', { tip: tipHA });
+  caixa(xMur - .08, admZ0 + .3, xMur + .08, admZ0 + .46, 1.3, ALT + 1.5, 'hidrante', 'comum', { tip: tipHA });
+  const tipGa = tipInfo('Gaiola dos galões de água', 'Encostada na divisão de módulos, ao lado da mesa do ADM');
+  caixa(xMur - 1.25, admZ0 + 2.1, xMur + .25, admZ0 + 3.6, 0, 1.05, 'grade', 'comum', { op: .4, tip: tipGa });
+  const gal = [];
+  [0, 1].forEach(l => { for (let a = 0; a < 2; a++) for (let b = 0; b < 3; b++)
+    gal.push({ x: xMur - 1.05 + a * .6, y: l * .48, z: admZ0 + 2.35 + b * .45, w: .34, h: .45, d: .34, corNome: 'tela', tip: () => tipGa }); });
+  lote(gal, 'comum', 0);
+  caixa(xMur - .9, admZ1 - 1.6, xMur + .25, admZ1 - .6, 0, 1.8, 'coluna', 'comum',
+    { tip: tipInfo('Armário branco', 'Na divisão de módulos, ao lado da mesa do ADM') });
+  caixa(admX0 - 1.4, admZ1 - .2, admX0 - .1, admZ1 + .5, 0, 1.1, 'longarina', 'comum',
+    { tip: tipInfo('Armário marrom', 'Na ponta da mesa do ADM, do lado das colmeias') });
   // eclusas: 2 colunas × 5 fileiras de pallets, na frente do galpão (posições fixas: não mudam a cada carga)
   const pal = [], car = [], faixas = [];
   let semente = 11;
@@ -804,7 +807,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
     [[x0, z0, x1, z0 + e], [x0, z1 - e, x1, z1], [x0, z0, x0 + e, z1], [x1 - e, z0, x1, z1], [(x0 + x1) / 2 - e / 2, z0, (x0 + x1) / 2 + e / 2, z1]]
       .forEach(([a, b, c, d]) => faixas.push({ x: (a + c) / 2, y: .05, z: (b + d) / 2, w: c - a, h: .03, d: d - b, corNome: 'faixa', tip: tl }));
   }
-  // eclusas só até a rua 06: a frente das ruas 07 e 08 é da caixa de faturamento
+  // eclusas só até a rua 06: a frente das ruas 07 e 08 é da mesa do ADM e da passagem até ela
   const xFimE = fxA - 1, nE = Math.floor((xFimE - (XR + 1) + .9) / 6.4), xIniE = XR + 1, passoE = nE > 1 ? (xFimE - 5.5 - xIniE) / (nE - 1) : 0;
   for (let i = 0; i < nE; i++) eclusa(xIniE + i * passoE, 'Eclusa ' + (i + 1));
   // eclusas do recebimento (desenho da operação, 26/10/2026): 3 fileiras na frente das ruas 11–15, uma embaixo
@@ -834,7 +837,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
   rotulo('Divisão · estoque do E-commerce', X_DIV, ALT + 4.4, 20, 'comum', 'inf');
   rotulo('Colmeias', (geoRua('2').xPar + geoRua('3').xImpar) / 2, 2.8, Z_FRENTE + 2, 'comum', 'inf');
   rotulo('Hidrante', xH, 2.2, Z_FRENTE + .6, 'comum', 'inf');
-  rotulo('Caixa de faturamento', fx0 + LE / 2, 2.2, fz, 'comum', 'inf');
+  rotulo('Mesa do ADM da DISTR', admXc, 2.2, admZc, 'comum', 'inf');
   rotulo('Eclusas', (XR + xFimE) / 2, 2.4, Z_FRENTE + 13, 'comum', 'inf');
   rotulo('Eclusas do recebimento', (geoRua('12').xPar + geoRua('14').xImpar) / 2, 2.4, (L_CURTA + Z_FRENTE + 20.5) / 2, 'comum', 'inf');
   rotulo('RUAS 11–15', XL + RUAS_ESQ.length * PASSO / 2, ALT + 3.4, -1.5, 'comum', 'inf');
