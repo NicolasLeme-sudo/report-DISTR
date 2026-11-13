@@ -667,7 +667,7 @@ function renderTelaE(){
   var c2, c3;
   if (fM && +fM.pecas_embarque > 0) {
     var alvo = +fM.pecas_embarque, pct = noMes / alvo * 100;
-    var restam = window.Embarque.diasUteisDoMes(mes, fM.dias_folga).filter(function(d){ return d > ult; }).length;
+    var restam = window.Embarque.diasUteisDoMes(mes, fM.dias_folga, fM.dias_extras).filter(function(d){ return d > ult; }).length;
     var falta = Math.max(0, alvo - noMes), ritmo = restam ? Math.ceil(falta / restam) : falta;
     c2 = kpiHtml('Embarcado em '+nm+' até '+ddmm(ult), fmt(noMes), qt(Math.round(pct))+'% de '+qt(alvo)+' · previsto '+qt(prevAte), COR_EMB, null, 'peças');
     c3 = falta ? kpiHtml('Ritmo para bater '+nm, fmt(ritmo), (restam ? 'faltam '+qt(restam)+' dias úteis' : 'último dia útil')+' · média '+qt(diasCom ? noMes / diasCom : 0), COR_FC, null, 'peças/dia')

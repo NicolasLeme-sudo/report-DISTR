@@ -77,14 +77,16 @@
   /* ============================================================================
      FORECAST — mês dividido pelos dias úteis
      ============================================================================ */
-  function diasUteisDoMes(mes, folgas) {
+  function diasUteisDoMes(mes, folgas, extras) {
     const p = String(mes).split('-').map(Number);
     const n = new Date(Date.UTC(p[0], p[1], 0)).getUTCDate();
     const fol = new Set((folgas || []).map(function (f) { return String(f).slice(0, 10); }));
+    const ext = new Set((extras || []).map(function (f) { return String(f).slice(0, 10); }));
     const dias = [];
     for (let d = 1; d <= n; d++) {
       const iso = p[0] + '-' + pad2(p[1]) + '-' + pad2(d), dow = diaDaSemana(iso);
-      if (dow >= 1 && dow <= 5 && !fol.has(iso)) dias.push(iso);
+      if (fol.has(iso)) continue;
+      if (dow >= 1 && dow <= 5 || ext.has(iso)) dias.push(iso);
     }
     return dias;
   }
@@ -163,11 +165,11 @@
     return ps || pe || fS || fE ? { saida: ps, entrada: pe, fase_saida: fS, fase_entrada: fE } : null;
   }
   // peso de cada dia útil do mês = peso do dia da semana × peso do momento do mês (1º a 5º quinto dos dias úteis)
-  function pesosDoMes(perfil, tipo, mes, folgas) {
+  function pesosDoMes(perfil, tipo, mes, folgas, extras) {
     if (!perfil) return null;
     const ds = perfil[tipo], fa = perfil[tipo === 'saida' ? 'fase_saida' : 'fase_entrada'];
     if (!ds && !fa) return null;
-    const uteis = diasUteisDoMes(mes, folgas), out = {};
+    const uteis = diasUteisDoMes(mes, folgas, extras), out = {};
     uteis.forEach(function (d, i) {
       const q = Math.min(4, Math.floor(i / uteis.length * 5));
       out[d] = (ds ? ds[diaDaSemana(d)] || 1 : 1) * (fa ? fa[q] || 1 : 1);
@@ -215,7 +217,7 @@
     let m = mesAnterior(f.mes), base = null;
     for (let k = 0; k < 3 && !base; k++) { base = entradaDoMes(diario, m); if (!base) m = mesAnterior(m); }
     if (!base) return null;
-    const uteis = diasUteisDoMes(f.mes, f.dias_folga).length;
+    const uteis = diasUteisDoMes(f.mes, f.dias_folga, f.dias_extras).length;
     if (!uteis) return null;
     const forecastDia = (Number(f.pecas_embarque) || 0) / uteis, expedidoDia = base.expedido / base.dias;
     const fator = forecastDia / expedidoDia;
@@ -227,19 +229,19 @@
     const saida = {}, entrada = {};
     perfil = perfil || null;
     (forecasts || []).forEach(function (f) {
-      const uteis = diasUteisDoMes(f.mes, f.dias_folga);
+      const uteis = diasUteisDoMes(f.mes, f.dias_folga, f.dias_extras);
       const todos = (function () {
         const p = String(f.mes).split('-').map(Number), n = new Date(Date.UTC(p[0], p[1], 0)).getUTCDate(), l = [];
         for (let d = 1; d <= n; d++) l.push(p[0] + '-' + pad2(p[1]) + '-' + pad2(d));
         return l;
       })();
-      const pS = pesosDoMes(perfil, 'saida', f.mes, f.dias_folga);
+      const pS = pesosDoMes(perfil, 'saida', f.mes, f.dias_folga, f.dias_extras);
       const dist = distribuirPorPeso(Number(f.pecas_embarque) || 0, uteis, pS);
       todos.forEach(function (d) { saida[d] = dist[d] || 0; });
       // entrada prevista: a informada no forecast; sem ela, a automática (entrada média do mês anterior × % do forecast sobre
       // o expedido dele); sem histórico para isso, o próprio forecast dividido pelos dias úteis
       const auto = f.pecas_entrada !== null && f.pecas_entrada !== undefined ? null : entradaAutomatica(diario, f);
-      const pE = pesosDoMes(perfil, 'entrada', f.mes, f.dias_folga);
+      const pE = pesosDoMes(perfil, 'entrada', f.mes, f.dias_folga, f.dias_extras);
       const distE = f.pecas_entrada !== null && f.pecas_entrada !== undefined ? distribuirPorPeso(Number(f.pecas_entrada) || 0, uteis, pE)
         : auto ? distribuirPorPeso(auto.entrada_dia * uteis.length, uteis, pE) : distribuirPorPeso(Number(f.pecas_embarque) || 0, uteis, pE);
       todos.forEach(function (d) { entrada[d] = distE[d] || 0; });
@@ -294,9 +296,9 @@
       const fM = (forecasts || []).filter(function (x) { return x.mes === mesHoje; })[0];
       if (fM) {
         const alvo = fM.pecas_entrada !== null && fM.pecas_entrada !== undefined ? Number(fM.pecas_entrada) || 0 : Number(fM.pecas_embarque) || 0;
-        const restam = diasUteisDoMes(mesHoje, fM.dias_folga).filter(function (d) { return d > hojeISO; });
+        const restam = diasUteisDoMes(mesHoje, fM.dias_folga, fM.dias_extras).filter(function (d) { return d > hojeISO; });
         const restante = Math.max(0, alvo - importadoMes);
-        const dist = distribuirPorPeso(restante, restam, pesosDoMes(perfil, 'entrada', mesHoje, fM.dias_folga));
+        const dist = distribuirPorPeso(restante, restam, pesosDoMes(perfil, 'entrada', mesHoje, fM.dias_folga, fM.dias_extras));
         Object.keys(fc.entrada).forEach(function (d) {
           if (d.slice(0, 7) !== mesHoje) return;
           fc.entrada[d] = d > hojeISO ? (dist[d] || 0) : d === hojeISO ? agenda.importado_hoje : undefined;
@@ -1379,7 +1381,7 @@
       supabaseClient.from('embarque_diario').select('dia, expedido, backlog, atualizado_em').gte('dia', de).lte('dia', ate).order('dia'),
       supabaseClient.from('embarque_diario').select('dia, expedido').not('expedido', 'is', null).order('dia', { ascending: false }).limit(1),
       supabaseClient.from('embarque_diario').select('dia, backlog').not('backlog', 'is', null).order('dia', { ascending: false }).limit(1),
-      supabaseClient.from('embarque_forecast_mensal').select('mes, pecas_embarque, pecas_entrada, dias_folga, prop_marca, prop_segmento, prop_cruzada, atualizado_em'),
+      supabaseClient.from('embarque_forecast_mensal').select('mes, pecas_embarque, pecas_entrada, dias_folga, dias_extras, prop_marca, prop_segmento, prop_cruzada, atualizado_em'),
       supabaseClient.rpc('embarque_backlog_em_tela'),
       supabaseClient.rpc('embarque_notas_agregado', { p_de: somaDias(hoje, -400) }),
       supabaseClient.rpc('embarque_historico_operacao', { p_de: somaDias(hoje, -400) }),
@@ -1575,7 +1577,7 @@
     const entrada = lerMilPecas(f.entrada);
     if (entrada !== null && isNaN(entrada)) throw new Error('Entrada prevista inválida.');
     const { error } = await supabaseClient.from('embarque_forecast_mensal').upsert(
-      { mes: f.mes, pecas_embarque: pecas, pecas_entrada: entrada, dias_folga: lerFolgas(f.folgas),
+      { mes: f.mes, pecas_embarque: pecas, pecas_entrada: entrada, dias_folga: lerFolgas(f.folgas), dias_extras: lerFolgas(f.extras),
         ...(f.cruzada ? validarCruzada(f.cruzada)
           : { prop_marca: validarProporcoes('Marca', f.marcas), prop_segmento: validarProporcoes('Segmento', f.segmentos), prop_cruzada: null }),
         atualizado_em: new Date().toISOString() },
@@ -1643,8 +1645,8 @@
       let txt = '';
       try {
         if (/^\d{4}-\d{2}$/.test(mes)) {
-          const dias = diasUteisDoMes(mes, lerFolgas($('embFolgas').value));
-          txt = fmtN(dias.length) + ' dia(s) útil(eis) (seg–sex)';
+          const dias = diasUteisDoMes(mes, lerFolgas($('embFolgas').value), lerFolgas($('embExtras').value));
+          txt = fmtN(dias.length) + ' dia(s) útil(eis)';
           if (pecas && !isNaN(pecas) && dias.length) txt = '= ' + fmtN(pecas) + ' peças · ' + txt + ' · ' + fmtN(Math.floor(pecas / dias.length)) + ' peças por dia';
         }
       } catch (e) { txt = e.message; }
@@ -1652,7 +1654,7 @@
       somaTxt($('embPropMarca'), $('embSomaMarca')); somaTxt($('embPropSeg'), $('embSomaSeg'));
       if ($('embPropCruz')) somaCruz();
     };
-    ['embMes', 'embPecas', 'embEntrada', 'embFolgas'].forEach(function (id) { $(id).addEventListener('input', prever); });
+    ['embMes', 'embPecas', 'embEntrada', 'embFolgas', 'embExtras'].forEach(function (id) { $(id).addEventListener('input', prever); });
     // ---- modo "segmento dentro de cada marca" ----
     let modoProp = 'sep';
     const inp = 'padding:6px 10px;border-radius:6px;background:var(--bg-input);color:var(--text);border:1px solid var(--border)';
@@ -1739,7 +1741,7 @@
       const diarioAdm = hist.error ? [] : (hist.data || []);
       const fmtPctS = function (v) { return (v >= 0 ? '+' : '') + String(Math.round(v * 10) / 10).replace('.', ',') + '%'; };
       $('embForecastLista').innerHTML = (data || []).length ? data.map(function (f) {
-        const n = diasUteisDoMes(f.mes, f.dias_folga).length;
+        const n = diasUteisDoMes(f.mes, f.dias_folga, f.dias_extras).length;
         return '<div class="cap-item" style="margin:8px 0"><div style="display:flex;gap:10px;align-items:center"><span><strong>' + f.mes.slice(5, 7) + '/' + f.mes.slice(0, 4) + '</strong> — ' + fmtN(f.pecas_embarque) +
           ' peças em ' + n + ' dias úteis (' + fmtN(Math.floor(f.pecas_embarque / Math.max(n, 1))) + '/dia)' +
           (f.pecas_entrada != null ? ' · entrada ' + fmtN(f.pecas_entrada) : (function () {
@@ -1759,6 +1761,7 @@
           $('embMes').value = f.mes; $('embPecas').value = f.pecas_embarque / 1000;
           $('embEntrada').value = f.pecas_entrada == null ? '' : f.pecas_entrada / 1000;
           $('embFolgas').value = (f.dias_folga || []).join(', ');
+          $('embExtras').value = (f.dias_extras || []).join(', ');
           $('embPropMarca').innerHTML = ''; $('embPropSeg').innerHTML = '';
           (f.prop_marca || []).forEach(function (x) { linhaProp($('embPropMarca'), x.nome, x.pct); });
           (f.prop_segmento || []).forEach(function (x) { linhaProp($('embPropSeg'), x.nome, x.pct); });
@@ -1781,7 +1784,7 @@
     $('btnSalvarForecastEmbarque').addEventListener('click', async function () {
       const log = $('logForecastEmbarque'); log.textContent = '';
       try {
-        await salvarForecast(supabaseClient, { mes: $('embMes').value, pecas: $('embPecas').value, entrada: $('embEntrada').value, folgas: $('embFolgas').value,
+        await salvarForecast(supabaseClient, { mes: $('embMes').value, pecas: $('embPecas').value, entrada: $('embEntrada').value, folgas: $('embFolgas').value, extras: $('embExtras').value,
           marcas: lerLinhas($('embPropMarca')), segmentos: lerLinhas($('embPropSeg')), cruzada: modoProp === 'cruz' ? lerCruzada() : null });
         log.textContent = '✔ Forecast salvo.';
         listar(); if (bruto) recarregar(supabaseClient);
