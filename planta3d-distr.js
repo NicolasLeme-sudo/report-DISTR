@@ -82,9 +82,9 @@ const RAMPS = {
 };
 const INFRA = {
   dark:  { esteira: '#10161F', estr: '#7C92AC', estrut: '#2F5F9E', longarina: '#6E5238', montante: '#3B5478', passagem: '#2B3A50', outro: '#8592A6', parede: '#5A6F88', chao: '#18233A', corredor: '#1E2B40',
-           colmeia: '#0B0D10', cadeira: '#232E3E', pallet: '#9A7350', carga: '#CDB48C', caixa: '#C9A36A', faixa: '#F6BD00', mesa: '#E6EAEF', monitor: '#0E141E', tela: '#2F7DE0', rolete: '#2A2F38', hidrante: '#C8102E', coluna: '#E8ECF1', grade: '#9AA6B4', guarda: '#F6BD00', eclusa: '#33516E', piso: '#22344A', perna: '#55657A', fora: '#3A4A5E', neutro: '#6F7F96' },
+           colmeia: '#0B0D10', cadeira: '#232E3E', pessoa: '#2C3E60', pele: '#B98A6A', pallet: '#9A7350', carga: '#CDB48C', caixa: '#C9A36A', faixa: '#F6BD00', mesa: '#E6EAEF', monitor: '#0E141E', tela: '#2F7DE0', rolete: '#2A2F38', hidrante: '#C8102E', coluna: '#E8ECF1', grade: '#9AA6B4', guarda: '#F6BD00', eclusa: '#33516E', piso: '#22344A', perna: '#55657A', fora: '#3A4A5E', neutro: '#6F7F96' },
   light: { esteira: '#3A4656', estr: '#8EA3BA', estrut: '#3A6AAE', longarina: '#C9A786', montante: '#8EA6C8', passagem: '#C9D3DE', outro: '#9AA8BA', parede: '#9DB0C4', chao: '#E3E9F0', corredor: '#D3DCE6',
-           colmeia: '#1A1C20', cadeira: '#6B7786', pallet: '#9A7350', carga: '#D9C4A0', caixa: '#B98E52', faixa: '#C9960A', mesa: '#FFFFFF', monitor: '#1B2533', tela: '#2F7DE0', rolete: '#4A5160', hidrante: '#C0392B', coluna: '#FFFFFF', grade: '#8A96A4', guarda: '#D9A300', eclusa: '#C4D3E2', piso: '#D6DFE9', perna: '#8A99AA', fora: '#B4C0CE', neutro: '#8C9AAD' }
+           colmeia: '#1A1C20', cadeira: '#6B7786', pessoa: '#44557A', pele: '#C9966F', pallet: '#9A7350', carga: '#D9C4A0', caixa: '#B98E52', faixa: '#C9960A', mesa: '#FFFFFF', monitor: '#1B2533', tela: '#2F7DE0', rolete: '#4A5160', hidrante: '#C0392B', coluna: '#FFFFFF', grade: '#8A96A4', guarda: '#D9A300', eclusa: '#C4D3E2', piso: '#D6DFE9', perna: '#8A99AA', fora: '#B4C0CE', neutro: '#8C9AAD' }
 };
 // Visão "Endereço": uma cor por estado do endereço
 const ESTADOS = {
@@ -733,7 +733,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
   // Do lado da divisória ficam o hidrante, a gaiola dos galões de água e o armário branco; o marrom na ponta.
   const fxA = geoRua('7').xImpar - D / 2;
   const admX1 = X_FIM - 2.6, admX0 = admX1 - 2.4;                       // duas fileiras de mesas, uma de costas para a outra
-  const PASSO_ADM = 1.6, admZ0 = Z_FRENTE + 6, admZ1 = admZ0 + 4 * PASSO_ADM;   // 3 postos por lado + a ponta do coordenador
+  const PASSO_ADM = 1.6, admZ0 = Z_FRENTE + 10, admZ1 = admZ0 + 4 * PASSO_ADM;  // 3 postos por lado + a ponta do coordenador
   const admXc = (admX0 + admX1) / 2, admZc = (admZ0 + admZ1) / 2, H_ADM = .74;
   const tipAdm = tipInfo('Mesa do ADM da DISTR', 'Na frente das ruas 07 e 08, encostada na divisão de módulos · ficou no lugar da caixa de faturamento');
   caixa(admX0, admZ0, admX1, admZ1, H_ADM, .06, 'mesa', 'comum', { tip: tipAdm });
@@ -751,6 +751,12 @@ window.montarPlanta3DDistr = async function (container, dados) {
     movs.push({ x: x - dx * .25, y: .48, z: z - dz * .25, w: dx ? .07 : .5, h: .45, d: dz ? .07 : .5, corNome: 'cadeira', tip: t });
     movs.push({ x, y: 0, z, w: .09, h: .42, d: .09, corNome: 'perna', tip: t });
   }
+  // pessoa sentada na cadeira, olhando para (dx, dz): tronco, cabeça e as coxas na direção da bancada
+  function pessoa(x, z, dx, dz, t) {
+    movs.push({ x: x - dx * .06, y: .48, z: z - dz * .06, w: dx ? .3 : .46, h: .52, d: dz ? .3 : .46, corNome: 'pessoa', tip: t });
+    movs.push({ x: x - dx * .04, y: 1, z: z - dz * .04, w: .24, h: .24, d: .24, corNome: 'pele', tip: t });
+    movs.push({ x: x + dx * .26, y: .44, z: z + dz * .26, w: dx ? .4 : .34, h: .1, d: dz ? .4 : .34, corNome: 'pessoa', tip: t });
+  }
   // 3 postos de cada lado, do fundo (rua do almoxarifado) para a frente do galpão
   [[-1, admX0, ['Assistente', 'Auxiliar', 'Auxiliar']], [1, admX1, ['Assistente', 'Assistente', 'Líder']]].forEach(([lado, xb, cargos]) => {
     cargos.forEach((cargo, i) => {
@@ -758,6 +764,7 @@ window.montarPlanta3DDistr = async function (container, dados) {
       const t = () => tipInfo(cargo + ' · ADM da DISTR', 'Mesa do ADM · lado ' + (lado < 0 ? 'das colmeias' : 'da divisão de módulos') + ' · posto ' + (i + 1) + ' de 3');
       monitor(admXc + lado * .35, z, lado, t);
       cadeira(xb + lado * .62, z, -lado, 0, t);
+      pessoa(xb + lado * .62, z, -lado, 0, t);
     });
   });
   // coordenador na ponta da bancada, de frente para o fundo do galpão
@@ -765,13 +772,15 @@ window.montarPlanta3DDistr = async function (container, dados) {
   pcs.push({ x: admXc, y: H_ADM + .06, z: admZ1 - .5, w: .5, h: .38, d: .05, corNome: 'monitor', tip: tCoord });
   pcs.push({ x: admXc, y: H_ADM + .1, z: admZ1 - .465, w: .44, h: .3, d: .02, corNome: 'tela', tip: tCoord });
   cadeira(admXc, admZ1 + .62, 0, -1, tCoord);
+  pessoa(admXc, admZ1 + .62, 0, -1, tCoord);
   lote(pern, 'comum', 0); lote(pcs, 'comum', 0); lote(movs, 'comum', 0);
 
   // ao lado da mesa, na divisão de módulos: hidrante, gaiola dos galões de água e armário branco
   const xMur = X_FIM - .35;
-  const tipHA = tipInfo('Hidrante', 'Na divisão de módulos, ao lado da mesa do ADM');
-  caixa(xMur - .55, admZ0 + .1, xMur + .3, admZ0 + .75, 0, 1.3, 'hidrante', 'comum', { tip: tipHA });
-  caixa(xMur - .08, admZ0 + .3, xMur + .08, admZ0 + .46, 1.3, ALT + 1.5, 'hidrante', 'comum', { tip: tipHA });
+  const tipHA = tipInfo('Hidrante', 'Na divisão de módulos, junto à ponta das ruas · antes da mesa do ADM');
+  const zHA = Z_FRENTE + 1.2;                                            // colado na ponta das longarinas, como no desenho da operação
+  caixa(xMur - .55, zHA, xMur + .3, zHA + .65, 0, 1.3, 'hidrante', 'comum', { tip: tipHA });
+  caixa(xMur - .08, zHA + .2, xMur + .08, zHA + .36, 1.3, ALT + 1.5, 'hidrante', 'comum', { tip: tipHA });
   const tipGa = tipInfo('Gaiola dos galões de água', 'Encostada na divisão de módulos, ao lado da mesa do ADM');
   caixa(xMur - 1.25, admZ0 + 2.1, xMur + .25, admZ0 + 3.6, 0, 1.05, 'grade', 'comum', { op: .4, tip: tipGa });
   const gal = [];
@@ -807,9 +816,10 @@ window.montarPlanta3DDistr = async function (container, dados) {
     [[x0, z0, x1, z0 + e], [x0, z1 - e, x1, z1], [x0, z0, x0 + e, z1], [x1 - e, z0, x1, z1], [(x0 + x1) / 2 - e / 2, z0, (x0 + x1) / 2 + e / 2, z1]]
       .forEach(([a, b, c, d]) => faixas.push({ x: (a + c) / 2, y: .05, z: (b + d) / 2, w: c - a, h: .03, d: d - b, corNome: 'faixa', tip: tl }));
   }
-  // eclusas só até a rua 06: a frente das ruas 07 e 08 é da mesa do ADM e da passagem até ela
+  // eclusas até a rua 06 e mais uma na frente da rua 07 (13/11/2026); a frente da rua 08 é da mesa do ADM
   const xFimE = fxA - 1, nE = Math.floor((xFimE - (XR + 1) + .9) / 6.4), xIniE = XR + 1, passoE = nE > 1 ? (xFimE - 5.5 - xIniE) / (nE - 1) : 0;
   for (let i = 0; i < nE; i++) eclusa(xIniE + i * passoE, 'Eclusa ' + (i + 1));
+  eclusa(fxA + .1, 'Eclusa ' + (nE + 1), { larg: 5.2, onde: 'Frente do galpão · rua 07' });
   // eclusas do recebimento (desenho da operação, 26/10/2026): 3 fileiras na frente das ruas 11–15, uma embaixo
   // de cada par de longarinas encostadas (11/12, 12/13, 13/14, 14/15), entre o estoque e a frente do galpão
   let nRec = 0;
