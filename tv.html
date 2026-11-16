@@ -599,13 +599,11 @@ function desenhaGraficoEmb(el){
     var x = function(i){ return pL + step * (i + 0.5); }, y = function(v){ return (H - pB) - v / mx * (H - pT - pB); };
     var bw = Math.min(120, step * 0.62), out = [], rot = [];
     out.push('<line x1="'+pL+'" x2="'+(W - pR)+'" y1="'+(H - pB)+'" y2="'+(H - pB)+'" stroke="var(--border)"/>');
-    // colunas do embarcado, com o número dentro do topo (fora, se a coluna for baixa)
     E.forEach(function(v, i){
       if (!v) return;
       var yt = y(v), hc = (H - pB) - yt;
       out.push('<rect x="'+(x(i) - bw/2).toFixed(1)+'" y="'+yt.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hc.toFixed(1)+'" rx="6" fill="'+COR_EMB_MUSGO+'"/>');
-      rot.push(hc > 40 ? '<text x="'+x(i).toFixed(1)+'" y="'+(yt + 30).toFixed(1)+'" text-anchor="middle" font-size="22" font-weight="800" fill="#E2FFE2">'+fmt(v)+'</text>'
-                       : '<text x="'+x(i).toFixed(1)+'" y="'+(yt - 8).toFixed(1)+'" text-anchor="middle" font-size="22" font-weight="800" fill="'+COR_EMB+'">'+fmt(v)+'</text>');
+      rot.push('<text x="'+x(i).toFixed(1)+'" y="'+(yt - 8).toFixed(1)+'" text-anchor="middle" font-size="22" font-weight="800" fill="'+COR_EMB+'">'+fmt(v)+'</text>');
     });
     // forecast: linha azul só nos dias com forecast (fim de semana e folga ficam sem linha)
     var trecho = [];
