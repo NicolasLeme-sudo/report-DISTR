@@ -141,7 +141,7 @@ body.ocioso,body.ocioso *{cursor:none!important}
 .col .pilha{display:flex;flex-direction:column-reverse;justify-content:flex-start;align-self:end;position:relative;border-radius:6px 6px 0 0;overflow:visible;transition:height .9s cubic-bezier(.2,.8,.2,1)}
 .col .pilha i{display:block;min-height:2px}
 .col .pilha i:last-child{border-radius:6px 6px 0 0}
-.col .pilha em{position:absolute;left:50%;bottom:100%;transform:translateX(-50%);margin-bottom:4px;font-style:normal;font-weight:800;font-size:19px;white-space:nowrap;background:var(--bg-card);padding:0 5px;border-radius:4px;z-index:2}
+.col .pilha em{position:absolute;left:50%;bottom:100%;transform:translateX(-50%);margin-bottom:4px;font-style:normal;font-weight:800;font-size:19px;white-space:nowrap;background:var(--bg-card);padding:0 5px;border-radius:4px;z-index:2;color:var(--pc,var(--text))}
 .col .rot{text-align:center;font-size:15px;color:var(--text-label);white-space:nowrap}.col .rot small{display:block;font-size:13px;color:var(--text-muted)}
 .media{position:absolute;left:0;right:0;border-top:2px dashed var(--text);z-index:1;pointer-events:none}
 .leg-t{display:flex;gap:16px;font-size:14px;color:var(--text-label);text-transform:none;letter-spacing:0;font-weight:600}.leg-t i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
@@ -426,7 +426,7 @@ function nfSegmentoHtml(lista){
 
 /* ================= TELA R · RESSUPRIMENTO ================= */
 var COR_TURNO = { T01:'#297ADF', T02:'#DFBD41', T03:'#45C645' }, ORDEM_TURNO = ['T01','T02','T03'];
-var COR_RS = '#45C645';
+var COR_RS = '#F6BD00';
 // Dias do Ressuprimento: os 10 últimos dias CORRIDOS até o dia exibido (hoje ou o escolhido no calendário);
 // dia sem registro aparece zerado. Os cards mostram o último dia com registro.
 function diasRessup(){
@@ -765,7 +765,7 @@ function mostraTela(i){
   } else entraTela(i);
 }
 // Cor de destaque de cada tela (barra do giro, setas e calendário): [forte, clara, texto sobre a forte]
-var COR_TELA = { telaS:['#297ADF','#7FB2EC','#fff'], telaR:['#45C645','#9BE29B','#0E1626'], telaE:['#45C645','#9BE29B','#0E1626'] };
+var COR_TELA = { telaS:['#297ADF','#7FB2EC','#fff'], telaR:['#F6BD00','#FCE38A','#0E1626'], telaE:['#45C645','#9BE29B','#0E1626'] };
 var sentidoTroca = 1;   // 1 = avançou (botão >, seta → ou rodízio), -1 = voltou (botão <, seta ←)
 function entraTela(i){
   telas.forEach(function(t, k){ t.classList.toggle('on', k === i); });
