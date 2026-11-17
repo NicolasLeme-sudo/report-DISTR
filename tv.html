@@ -198,7 +198,7 @@ body.ocioso,body.ocioso *{cursor:none!important}
 .et3 .tp{display:flex;justify-content:space-between;align-items:baseline;font-weight:800;font-size:20px}
 .et3 .tp b{font-size:21px;color:#5DD356}.et3 .tp b small{font-size:14px;font-weight:700}
 .et3 .br{height:30px;border-radius:7px;background:var(--bg-input);margin-top:6px;overflow:hidden}
-.et3 .br i{display:block;height:100%;background:#2D7F1E;border-radius:6px}
+.et3 .br i{display:block;height:100%;background:#5B7F2B;border-radius:6px}
 .et3 .mt{font-size:14px;color:var(--text-muted)}
 /* marca × segmento: heatmap do report */
 .emx{border-collapse:separate;border-spacing:4px;width:100%;font-size:16px;align-self:center}
@@ -562,7 +562,7 @@ document.getElementById('chaveRessup').addEventListener('click', function(e){ va
 // do time de Embarque, forecast do mês repartido nos dias úteis, backlog = PFAs em tela. O arquivo chega com o dia
 // anterior: a tela mostra o último dia embarcado até o dia exibido. Cores do report: embarcado verde (--olive),
 // forecast azul (--accent), barras e heatmap no verde translúcido (musgo).
-var COR_EMB = '#45C645', COR_EMB_MUSGO = '#2D7F1E', COR_FC = '#297ADF', DIAS_EMB = 7;
+var COR_EMB = '#45C645', COR_EMB_MUSGO = '#5B7F2B', COR_FC = '#297ADF', DIAS_EMB = 7;
 var MESES_CURTOS = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
 var emb = null;   // { b: dados brutos (Embarque.carregarDados), exp: {dia: peças}, fc: {dia: forecast} }
 function nomeMes(mes){ return MESES_CURTOS[+mes.slice(5, 7) - 1] || mes; }
