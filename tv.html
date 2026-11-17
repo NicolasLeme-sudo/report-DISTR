@@ -196,7 +196,7 @@ body.ocioso,body.ocioso *{cursor:none!important}
 /* transportadoras: mesmo desenho do report (nome e %, barra verde translúcida, peças · volumes) */
 .et3{display:grid;gap:14px;align-content:space-around;min-height:0}
 .et3 .tp{display:flex;justify-content:space-between;align-items:baseline;font-weight:800;font-size:20px}
-.et3 .tp b{font-size:21px;color:#5DD356}.et3 .tp b small{font-size:14px;font-weight:700}
+.et3 .tp b{font-size:21px;color:#2D7F1E}.et3 .tp b small{font-size:14px;font-weight:700}
 .et3 .br{height:30px;border-radius:7px;background:var(--bg-input);margin-top:6px;overflow:hidden}
 .et3 .br i{display:block;height:100%;background:#2D7F1E;border-radius:6px}
 .et3 .mt{font-size:14px;color:var(--text-muted)}
@@ -603,7 +603,7 @@ function desenhaGraficoEmb(el){
       if (!v) return;
       var yt = y(v), hc = (H - pB) - yt;
       out.push('<rect x="'+(x(i) - bw/2).toFixed(1)+'" y="'+yt.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hc.toFixed(1)+'" rx="6" fill="'+COR_EMB_MUSGO+'"/>');
-      rot.push('<text x="'+x(i).toFixed(1)+'" y="'+(yt - 8).toFixed(1)+'" text-anchor="middle" font-size="22" font-weight="800" fill="'+COR_EMB+'">'+fmt(v)+'</text>');
+      rot.push('<text x="'+x(i).toFixed(1)+'" y="'+(yt - 8).toFixed(1)+'" text-anchor="middle" font-size="22" font-weight="800" fill="'+COR_EMB_MUSGO+'">'+fmt(v)+'</text>');
     });
     // forecast: linha azul só nos dias com forecast (fim de semana e folga ficam sem linha)
     var trecho = [];
