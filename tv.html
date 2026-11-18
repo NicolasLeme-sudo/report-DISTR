@@ -103,6 +103,26 @@ body.ocioso,body.ocioso *{cursor:none!important}
 @keyframes telaEntra{from{opacity:0;transform:translateX(28px)}}
 @keyframes telaSai{to{opacity:0;transform:translateX(-28px)}}
 @media (prefers-reduced-motion:reduce){.tela.on,.tela.saindo{animation:none}}
+/* ---------- Entrada dos elementos ao abrir cada tela (mesmo desenho do telão do E-commerce) ----------
+   A tela já desliza; agora o conteúdo também chega: cartões em cascata, painéis subindo, colunas e barras
+   crescendo, roscas girando. Classe "entrando" posta pelo entraTela() e tirada depois de 1,8 s. */
+.tela.entrando .kpi{animation:entraCard .6s cubic-bezier(.2,.8,.2,1) both}
+.tela.entrando .kpi:nth-child(2){animation-delay:.07s}.tela.entrando .kpi:nth-child(3){animation-delay:.14s}
+.tela.entrando .kpi:nth-child(4){animation-delay:.21s}.tela.entrando .kpi:nth-child(5){animation-delay:.28s}
+.tela.entrando .kpi:nth-child(6){animation-delay:.35s}
+.tela.entrando .painel{animation:entraPainel .7s cubic-bezier(.2,.8,.2,1) .15s both}
+.tela.entrando .col .pilha{animation:cresceCol 1s cubic-bezier(.2,.8,.2,1) .3s both}
+.tela.entrando .colunas .media{animation:entraFade .5s ease 1s both}
+.tela.entrando .etapa .barra{animation:cresceBarra 1s cubic-bezier(.2,.8,.2,1) .3s both}
+.tela.entrando .pizza svg{animation:giraRosca 1s cubic-bezier(.2,.8,.2,1) .25s both}
+@keyframes entraCard{from{opacity:0;transform:translateY(16px)}}
+@keyframes entraPainel{from{opacity:0;transform:translateY(12px)}}
+@keyframes entraFade{from{opacity:0}}
+/* cresce de baixo para cima sem achatar o rótulo (clip em vez de scale); o topo negativo deixa o rótulo à vista */
+@keyframes cresceCol{from{clip-path:inset(100% -60px 0 -60px)}to{clip-path:inset(-140px -60px 0 -60px)}}
+@keyframes cresceBarra{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+@keyframes giraRosca{from{opacity:0;transform:rotate(-120deg) scale(.7)}}
+@media (prefers-reduced-motion: reduce){.tela.entrando *{animation:none!important}}
 .vazio{flex:1;display:grid;place-items:center;color:var(--text-muted);font-size:22px;text-align:center}
 
 /* ---------- cards, painéis e top 5 (mesmos do telão do E-commerce) ---------- */
@@ -767,8 +787,17 @@ function mostraTela(i){
 // Cor de destaque de cada tela (barra do giro, setas e calendário): [forte, clara, texto sobre a forte]
 var COR_TELA = { telaS:['#297ADF','#7FB2EC','#fff'], telaR:['#F6BD00','#FCE38A','#0E1626'], telaE:['#45C645','#9BE29B','#0E1626'] };
 var sentidoTroca = 1;   // 1 = avançou (botão >, seta → ou rodízio), -1 = voltou (botão <, seta ←)
+// Reinicia a entrada dos elementos da tela (também chamada quando chega o 1º dado).
+var tEntrada = null;
+function animaEntrada(el){
+  if (!el) return;
+  clearTimeout(tEntrada);
+  el.classList.remove('entrando'); void el.offsetWidth; el.classList.add('entrando');
+  tEntrada = setTimeout(function(){ el.classList.remove('entrando'); }, 1800);
+}
 function entraTela(i){
   telas.forEach(function(t, k){ t.classList.toggle('on', k === i); });
+  animaEntrada(telas[i]);
   var cc = COR_TELA[telas[i].id] || COR_TELA.telaS, pal = document.getElementById('palco');
   pal.style.setProperty('--cc', cc[0]); pal.style.setProperty('--cc2', cc[1]); pal.style.setProperty('--cc-t', cc[2]);
   var tit = document.getElementById('titulo'), novoTit = telas[i].getAttribute('data-titulo');
@@ -1016,6 +1045,7 @@ async function iniciar(){
   document.getElementById('login').classList.remove('on');
   mostraTela(0);
   await carregar();
+  animaEntrada(telas[atual]);   // a 1ª tela abriu vazia: a entrada roda de novo com o dado
   setInterval(carregar, REFRESH_S*1000);
 }
 document.getElementById('loginForm').addEventListener('submit', async function(e){
