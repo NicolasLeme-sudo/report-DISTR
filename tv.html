@@ -115,6 +115,13 @@ body.ocioso,body.ocioso *{cursor:none!important}
 .tela.entrando .colunas .media{animation:entraFade .5s ease 1s both}
 .tela.entrando .etapa .barra{animation:cresceBarra 1s cubic-bezier(.2,.8,.2,1) .3s both}
 .tela.entrando .pizza svg{animation:giraRosca 1s cubic-bezier(.2,.8,.2,1) .25s both}
+/* Embarque (SVG): colunas crescem de baixo para cima em cascata, a linha do forecast se desenha e os rótulos aparecem */
+.eb-col{transform-box:fill-box;transform-origin:50% 100%}
+.tela.entrando .eb-col{animation:ebCresce .9s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(.25s + var(--i,0)*.05s)}
+.tela.entrando .eb-linha{stroke-dasharray:1;animation:ebTraco 1.1s ease .5s both}
+.tela.entrando .eb-pt,.tela.entrando .eb-rot{animation:entraFade .5s ease 1.2s both}
+@keyframes ebCresce{from{transform:scaleY(0)}}
+@keyframes ebTraco{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
 @keyframes entraCard{from{opacity:0;transform:translateY(16px)}}
 @keyframes entraPainel{from{opacity:0;transform:translateY(12px)}}
 @keyframes entraFade{from{opacity:0}}
@@ -622,12 +629,12 @@ function desenhaGraficoEmb(el){
     E.forEach(function(v, i){
       if (!v) return;
       var yt = y(v), hc = (H - pB) - yt;
-      out.push('<rect x="'+(x(i) - bw/2).toFixed(1)+'" y="'+yt.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hc.toFixed(1)+'" rx="6" fill="'+COR_EMB_MUSGO+'"/>');
+      out.push('<rect x="'+(x(i) - bw/2).toFixed(1)+'" y="'+yt.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hc.toFixed(1)+'" rx="6" fill="'+COR_EMB_MUSGO+'" class="eb-col" style="--i:'+i+'"/>');
       rot.push('<text x="'+x(i).toFixed(1)+'" y="'+(yt - 8).toFixed(1)+'" text-anchor="middle" font-size="22" font-weight="800" fill="'+COR_EMB_MUSGO+'">'+fmt(v)+'</text>');
     });
     // forecast: linha azul só nos dias com forecast (fim de semana e folga ficam sem linha)
     var trecho = [];
-    var fecha = function(){ if (trecho.length > 1) out.push('<path d="'+pathSuave(trecho)+'" fill="none" stroke="'+COR_FC+'" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>'); trecho = []; };
+    var fecha = function(){ if (trecho.length > 1) out.push('<path class="eb-linha" pathLength="1" d="'+pathSuave(trecho)+'" fill="none" stroke="'+COR_FC+'" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>'); trecho = []; };
     F.forEach(function(v, i){ if (v > 0) trecho.push([x(i), y(v)]); else fecha(); });
     fecha();
     // posicionar rótulos do forecast em duas passadas: primeiro calcular, depois resolver sobreposições
@@ -655,7 +662,7 @@ function desenhaGraficoEmb(el){
       }
     }
     fcLabels.forEach(function(lb){
-      out.push('<circle cx="'+lb.cx.toFixed(1)+'" cy="'+lb.cy.toFixed(1)+'" r="6" fill="'+COR_FC+'"/>');
+      out.push('<circle class="eb-pt" cx="'+lb.cx.toFixed(1)+'" cy="'+lb.cy.toFixed(1)+'" r="6" fill="'+COR_FC+'"/>');
       rot.push('<rect x="'+(lb.cx - lb.w/2).toFixed(1)+'" y="'+(lb.ty - FS - 2).toFixed(1)+'" width="'+lb.w.toFixed(1)+'" height="'+hLabel+'" rx="5" fill="rgba(41,122,223,0.82)"/>'+
         '<text x="'+lb.cx.toFixed(1)+'" y="'+lb.ty.toFixed(1)+'" text-anchor="middle" font-size="'+FS+'" font-weight="800" fill="#fff">'+lb.t+'</text>');
     });
@@ -664,7 +671,7 @@ function desenhaGraficoEmb(el){
       out.push('<text x="'+x(i)+'" y="'+(H - 28)+'" text-anchor="middle" font-size="18" fill="'+(d === hj ? 'var(--amber)' : 'var(--text-label)')+'" font-weight="'+(d === hj ? 800 : 600)+'">'+ddmm(d)+'</text>'+
         '<text x="'+x(i)+'" y="'+(H - 7)+'" text-anchor="middle" font-size="15" fill="var(--text-muted)">'+esc(d === hj ? 'hoje' : sem)+'</text>');
     });
-    box.innerHTML = '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'">'+out.join('')+rot.join('')+'</svg>';
+    box.innerHTML = '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'">'+out.join('')+'<g class="eb-rot">'+rot.join('')+'</g></svg>';
   });
 }
 function renderTelaE(){
