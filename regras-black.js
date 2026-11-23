@@ -63,9 +63,9 @@ var TIMES = {
   1: { nome: 'Vermelho', cor: '#EF5B5B', gif: 'corrida/vermelho.gif', espelha: true,  altura: 56, turno: '1º Turno' },
   2: { nome: 'Azul',     cor: '#4C95F0', gif: 'corrida/azul.gif',     espelha: true,  altura: 66, turno: '1º Turno' },
   3: { nome: 'Verde',    cor: '#45C665', gif: 'corrida/verde.gif',    espelha: true,  altura: 52, turno: '1º Turno' },
-  4: { nome: 'Amarelo',  cor: '#F6C400', gif: 'corrida/coyote.gif',      espelha: false, altura: 45, turno: '2º Turno' },
-  5: { nome: 'Roxo',     cor: '#A773EA', gif: 'corrida/papaleguas.gif',  espelha: true,  altura: 70, turno: '2º Turno' },
-  6: { nome: 'Laranja',  cor: '#F28C28', gif: 'corrida/flintstones.gif', espelha: false, altura: 66, turno: '2º Turno' }
+  4: { nome: 'Amarelo',  cor: '#F6C400', gif: 'corrida/coyote.webp',     espelha: false, altura: 45, turno: '2º Turno' },
+  5: { nome: 'Roxo',     cor: '#A773EA', gif: 'corrida/papaleguas.webp', espelha: true,  altura: 70, turno: '2º Turno' },
+  6: { nome: 'Laranja',  cor: '#F28C28', gif: 'corrida/flintstones.webp', espelha: false, altura: 66, turno: '2º Turno' }
 };
 var NUM_TIMES = [1, 2, 3, 4, 5, 6];
 // Uma corrida por turno: posição, destaque e ranking só entre os 3 times do turno.
