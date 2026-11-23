@@ -57,14 +57,14 @@ var GINCANAS_DIA = {
 };
 var GINCANAS = GINCANAS_DIA['2026-11-28'].concat(GINCANAS_DIA['2026-11-29']);
 
-// Os 6 times. Cor, nome e personagem (gif) ainda provisórios, menos o Laranja e o Branco, que já têm GIF próprio.
+// Os 6 times. 1º turno = Relâmpago McQueen, The King e Chick Hicks (Carros); 2º turno = Laranja, Branco e o time 6 (ainda provisório).
 // espelha = o personagem aponta para a esquerda no arquivo e o CSS espelha; false = já aponta para a direita.
 var TIMES = {
-  1: { nome: 'Laranja',  cor: '#F28C28', gif: 'corrida/laranja.gif',  espelha: false, altura: 78, turno: '1º Turno' },
-  2: { nome: 'Branco',   cor: '#F2F2F2', gif: 'corrida/branco.gif',   espelha: true,  altura: 78, turno: '1º Turno' },
-  3: { nome: 'Azul',     cor: '#4C95F0', gif: 'corrida/azul.gif',     espelha: true,  altura: 58, turno: '1º Turno' },
-  4: { nome: 'Vermelho', cor: '#EF5B5B', gif: 'corrida/vermelho.gif', espelha: true,  altura: 58, turno: '2º Turno' },
-  5: { nome: 'Verde',    cor: '#45C665', gif: 'corrida/verde.gif',    espelha: true,  altura: 58, turno: '2º Turno' },
+  1: { nome: 'Vermelho', cor: '#EF5B5B', gif: 'corrida/vermelho.gif', espelha: true,  altura: 56, turno: '1º Turno' },
+  2: { nome: 'Azul',     cor: '#4C95F0', gif: 'corrida/azul.gif',     espelha: true,  altura: 66, turno: '1º Turno' },
+  3: { nome: 'Verde',    cor: '#45C665', gif: 'corrida/verde.gif',    espelha: true,  altura: 52, turno: '1º Turno' },
+  4: { nome: 'Laranja',  cor: '#F28C28', gif: 'corrida/laranja.gif',  espelha: false, altura: 78, turno: '2º Turno' },
+  5: { nome: 'Branco',   cor: '#F2F2F2', gif: 'corrida/branco.gif',   espelha: true,  altura: 78, turno: '2º Turno' },
   6: { nome: 'Roxo',     cor: '#A773EA', gif: 'corrida/roxo.gif',     espelha: true,  altura: 58, turno: '2º Turno' }
 };
 var NUM_TIMES = [1, 2, 3, 4, 5, 6];

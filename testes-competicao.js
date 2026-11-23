@@ -65,7 +65,7 @@ const cad = [
   { id: 4, usuario_wms: 'NOVATO.6.1', nome: null, turno: '2º Turno', time: 6, observacao: 'novato', lider: false, presenca: {} }
 ];
 const exp = A.abasExportacao(cad);
-assert.strictEqual(exp.length, 6); assert.strictEqual(exp[0].nome, 'Laranja');
+assert.strictEqual(exp.length, 6); assert.strictEqual(exp[0].nome, 'Vermelho');
 assert.strictEqual(A.formatoDaPlanilha(exp), 'times');
 const volta = A.parsePlanilhaPorTimes(exp);
 assert.strictEqual(volta.length, 4);
@@ -125,7 +125,7 @@ assert.strictEqual(blocos[0].linhas[0].r.metaBatida, 200); assert.strictEqual(bl
 assert.strictEqual(blocos[1].linhas.length, 2, 'só times com membros no cadastro');
 assert.strictEqual(C.montarBlocos(dados, '2026-11-27', '2º Turno').length, 1);
 const html = C.cardTimeHtml(blocos[0].linhas[0], '2026-11-27', C.presencaMap(cadRank, '2026-11-27'));
-assert.ok(/Time Branco/.test(html) && /3\.200/.test(html) && /data-flip="time-2"/.test(html) && /Meta batida/.test(html) && /lider/.test(html));
+assert.ok(/Time Azul/.test(html) && /3\.200/.test(html) && /data-flip="time-2"/.test(html) && /Meta batida/.test(html) && /lider/.test(html));
 assert.ok(/Novato \(vaga\)/.test(C.blocoHtml(blocos[1], '2026-11-27', {})), 'novato aparece como vaga');
 assert.ok(/sem produção em 28\/11/.test(C.blocoHtml(C.montarBlocos(dados, '2026-11-28', '1º Turno')[0], '2026-11-28', {})));
 const acc = C.acumuladoDosDias(dados);
