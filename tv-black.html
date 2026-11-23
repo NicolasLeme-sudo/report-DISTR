@@ -302,9 +302,9 @@ body.ocioso,body.ocioso *{cursor:none!important}
 .comp-tk.prim.ult{border-radius:8px}
 .comp-pista.trocando .comp-tk{overflow-x:clip;overflow-y:visible}
 .comp-largada{position:absolute;left:4%;top:0;bottom:0;border-left:2px dashed rgba(124,139,168,.6)}
-.comp-chegada{position:absolute;left:calc(4% + 100px + (89% - 100px) * var(--pl,1));top:0;height:var(--raia,60px);width:14px;margin-left:-7px;z-index:1;background:conic-gradient(#fff 25%,#111 0 50%,#fff 0 75%,#111 0) 0 0/14px 14px;background-position:0 var(--cy,0px)}
-.comp-rastro{position:absolute;left:4%;bottom:6px;height:5px;width:calc((89% - 100px) * var(--p) + 112px - var(--w));border-radius:3px;background:linear-gradient(90deg,transparent,var(--c))}
-.comp-carro{position:absolute;left:calc(4% + 100px + (89% - 100px) * var(--p));bottom:3px;width:var(--w);height:var(--h);margin-left:calc(var(--w) * -1);z-index:2}
+.comp-chegada{position:absolute;left:calc(4% + var(--wmax,100px) + (89% - var(--wmax,100px)) * var(--pl,1));top:0;height:var(--raia,60px);width:14px;margin-left:-7px;z-index:1;background:conic-gradient(#fff 25%,#111 0 50%,#fff 0 75%,#111 0) 0 0/14px 14px;background-position:0 var(--cy,0px)}
+.comp-rastro{position:absolute;left:4%;bottom:6px;height:5px;width:calc((89% - var(--wmax,100px)) * var(--p) + var(--wmax,100px) + 12px - var(--w));border-radius:3px;background:linear-gradient(90deg,transparent,var(--c))}
+.comp-carro{position:absolute;left:calc(4% + var(--wmax,100px) + (89% - var(--wmax,100px)) * var(--p));bottom:3px;width:var(--w);height:var(--h);margin-left:calc(var(--w) * -1);z-index:2}
 .comp-carro img{display:block;width:100%;height:100%;transform:scaleX(-1);position:relative;z-index:2;animation:comp-treme .16s steps(2) infinite}
 .comp-carro img.dir{transform:none}
 @keyframes comp-treme{50%{translate:0 -1px}}
@@ -930,6 +930,9 @@ function doGrupo(c, g){ return c.times.filter(function(t){ return t.grupo === g;
 function grupoDoTurno(turno){ return RG.GRUPOS.filter(function(g){ return g.turno === turno; })[0]; }
 function pistaHtml(g){
   var lista = g.times, S = escalaCampo(lista);
+  // a largada abre espaço para o carro mais largo da pista (a traseira dele fica na linha de largada) e a linha de chegada é a mesma para todos
+  var wmax = 100;
+  lista.forEach(function(t){ var hh = Math.max(30, Math.round(RAIA * RG.TIMES[t.n].altura / 90)); wmax = Math.max(wmax, Math.round(hh * (AR_GIF[t.n] || 1.5))); });
   var linhas = lista.map(function(t, i){
     var inf = RG.TIMES[t.n], pct = posCarro(t, S), x = pct.toFixed(4), ant = pAnterior[t.n] != null ? pAnterior[t.n] : 0;
     var pl = posLinha(S), plAnt = plAnterior[t.n] != null ? plAnterior[t.n] : 1;
@@ -937,7 +940,7 @@ function pistaHtml(g){
     var cls = 'comp-tk' + (i === 0 ? ' prim' : '') + (i === lista.length-1 ? ' ult' : '');
     return '<div class="cl lt" data-k="r'+t.n+'" style="'+estiloTime(inf.cor)+'">'+
       '<div class="comp-raia-nome"><i></i>'+(i+1)+'º '+inf.nome+'</div>'+
-      '<div class="comp-raia"><div class="'+cls+'"><span class="comp-largada"></span>'+
+      '<div class="comp-raia" style="--wmax:'+wmax+'px"><div class="'+cls+'"><span class="comp-largada"></span>'+
         '<span class="comp-rastro" data-p="'+x+'" style="--w:'+w+'px; --p:'+ant+'"></span>'+
         '<span class="comp-carro" data-n="'+t.n+'" data-p="'+x+'" style="--w:'+w+'px; --h:'+h+'px; --p:'+ant+'; --vel:'+vel+'">'+FUMACA_SVG+'<img'+(inf.espelha ? '' : ' class="dir"')+' src="'+inf.gif+'" alt=""></span></div>'+
         '<span class="comp-chegada" data-pl="'+pl.toFixed(4)+'" style="--cy:'+(-i*RAIA)+'px; --pl:'+plAnt+'"></span></div>'+
