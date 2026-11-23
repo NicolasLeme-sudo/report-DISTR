@@ -1301,6 +1301,9 @@ tr.total > th, tr.total > td {
     <div class="menu-item" id="menuEmbarque" onclick="mostrarSecao('embarque')">
       <span class="icone">🚚</span> Embarque
     </div>
+    <div class="menu-item" id="menuCompeticao" onclick="mostrarSecao('competicao')">
+      <span class="icone">🏆</span> Competição
+    </div>
 
     <div class="sidebar-section-label">Gestão</div>
     <div class="menu-item ativo" id="menuEstoque" onclick="mostrarSecao('estoque')">
@@ -1352,6 +1355,10 @@ tr.total > th, tr.total > td {
 
     <section class="secao" id="secao-embarque">
       <div id="embarque-conteudo"><div class="loading-msg">Carregando…</div></div>
+    </section>
+
+    <section class="secao" id="secao-competicao">
+      <div id="competicao-conteudo"><div class="loading-msg">Carregando…</div></div>
     </section>
 
     <section class="secao ativa" id="secao-estoque">
@@ -1670,6 +1677,8 @@ tr.total > th, tr.total > td {
         <div class="log" id="logPersona"></div>
       </div>
 
+      <div id="compAdminRoot"></div>
+
     </section>
   </main>
 </div>
@@ -1684,6 +1693,9 @@ tr.total > th, tr.total > td {
 <script src="embarque.js"></script>
 <script src="planta3d-distr.js"></script>
 <script src="ingest-emails-ajustes.js"></script>
+<script src="regras-black.js"></script>
+<script src="competicao.js"></script>
+<script src="ingest-competicao.js"></script>
 <!-- SheetJS — só usado na tela de Admin, pra ler a base de Ativos (.xlsx) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <!-- ExcelJS — modelo de Ajustes de PFA (10/09/2026): SheetJS community não
@@ -1847,6 +1859,7 @@ const TITULOS = {
   estoqueop: 'Estoque',
   heatmap: 'Heatmap - Planta 3D',
   embarque: 'Embarque',
+  competicao: 'Competição',
   estoque: 'Balanço de Estoque',
   distr: 'Fluxo de Processos',
   atualizar: 'Abastecimento',
@@ -1873,6 +1886,7 @@ function atualizarSubtituloSecao(secao) {
   else if (secao === 'ressuprimento') iso = dataSnapshotMovimentacoes;
   else if (secao === 'start') iso = dataSnapshotPfas;
   else if (secao === 'embarque') iso = dataSnapshotEmbarque;
+  else if (secao === 'competicao') iso = window.Competicao ? Competicao.dataSnapshot() : null;
   else if (secao === 'heatmap') iso = dataSnapshotHeatmap;
   el.textContent = iso ? 'Última atualização: ' + formatarDataHora(iso) : '';
 }
@@ -1903,7 +1917,7 @@ function mostrarSecao(secao) {
   ajustarTabelas5Linhas(document.getElementById('secao-' + secao));
   document.querySelectorAll('.menu-item').forEach(function (i) { i.classList.remove('ativo'); });
   const item = {
-    start: 'menuStart', ressuprimento: 'menuRessuprimento', estoqueop: 'menuEstoqueOp', heatmap: 'menuHeatmap', embarque: 'menuEmbarque', estoque: 'menuEstoque',
+    start: 'menuStart', ressuprimento: 'menuRessuprimento', estoqueop: 'menuEstoqueOp', heatmap: 'menuHeatmap', embarque: 'menuEmbarque', competicao: 'menuCompeticao', estoque: 'menuEstoque',
     distr: 'menuDistrFluxo', atualizar: 'menuAtualizar',
   }[secao];
   if (item) document.getElementById(item).classList.add('ativo');
@@ -1939,7 +1953,8 @@ function mostrarSecao(secao) {
     window.Embarque.iniciar('embarque-conteudo', supabaseClient);
   } else if (secao === 'embarque') window.Embarque.aoMostrarTela();
   if (secao !== 'embarque' && embarqueCarregado) window.Embarque.aoSairDaTela();
-  if (secao === 'atualizar') { mostrarOrigemPersona(); window.Embarque.ligarAdmin(supabaseClient); }
+  if (secao === 'competicao') { if (!window.CompeticaoIniciada) { window.CompeticaoIniciada = true; Competicao.iniciar('competicao-conteudo', supabaseClient); } else Competicao.aoMostrar(); }
+  if (secao === 'atualizar') { mostrarOrigemPersona(); window.Embarque.ligarAdmin(supabaseClient); CompeticaoAdmin.ligar(supabaseClient); }
 }
 
 function aplicarVisibilidadeMenu() {
