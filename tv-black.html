@@ -308,7 +308,7 @@ body.ocioso,body.ocioso *{cursor:none!important}
 .comp-carro img{display:block;width:100%;height:100%;transform:scaleX(-1);position:relative;z-index:2;animation:comp-treme .16s steps(2) infinite}
 .comp-carro img.dir{transform:none}
 @keyframes comp-treme{50%{translate:0 -1px}}
-.comp-fumaca{position:absolute;right:calc(100% - 8px);bottom:-1px;width:62px;height:26px;overflow:visible;z-index:1;pointer-events:none;transform-origin:100% 100%;animation:comp-pulsa var(--vel,1s) ease-in-out infinite alternate}
+.comp-fumaca{position:absolute;right:calc(100% - var(--h) * .12);bottom:calc(var(--h) * .06);width:calc(var(--h) * 1.5);height:calc(var(--h) * .62);overflow:visible;z-index:1;pointer-events:none;transform-origin:100% 100%;animation:comp-pulsa var(--vel,1s) ease-in-out infinite alternate}
 @keyframes comp-pulsa{0%{transform:scale(.94,.96)}50%{transform:scale(1.03,1) skewX(-2deg)}100%{transform:scale(1.08,1.03)}}
 .comp-fumaca path[fill="#cdd5df"]{fill:var(--fm1,#cdd5df)}
 .comp-fumaca path[fill="#fbfcfd"]{fill:var(--fm2,#fbfcfd)}
