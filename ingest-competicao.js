@@ -81,10 +81,14 @@ function parseEscalacaoBlack(abas) {
   });
   return out;
 }
+// A cor se repete nos dois turnos (Vermelho no time 1 e no 4...): a aba leva o turno ("Vermelho T01"); sem turno, só vale se a cor for única.
 function timeDaAba(nome) {
-  var s = norm(nome), achou = null;
-  Object.keys(R().TIMES).forEach(function (n) { if (norm(R().TIMES[n].nome) === s) achou = +n; });
-  if (achou) return achou;
+  var s = norm(nome), mt = /\s*\bT0?([12])\b\s*$/.exec(s), turno = mt ? (mt[1] === '1' ? '1º Turno' : '2º Turno') : null;
+  if (mt) s = s.slice(0, mt.index).trim();
+  var achou = [];
+  Object.keys(R().TIMES).forEach(function (n) { if (norm(R().TIMES[n].nome) === s && (!turno || R().TIMES[n].turno === turno)) achou.push(+n); });
+  if (achou.length === 1) return achou[0];
+  if (achou.length) return null;
   var m = /^(TIME|EQUIPE)? ?([1-6])$/.exec(s);
   return m ? +m[2] : null;
 }
@@ -128,7 +132,7 @@ function abasExportacao(cadastro) {
     (cadastro || []).filter(function (r) { return r.time === n; }).forEach(function (r) {
       linhas.push([r.nome || '', r.usuario_wms, r.turno, r.observacao || '', r.lider ? 'S' : ''].concat(dias.map(function (d) { return r.presenca && r.presenca[d[0]] || ''; })));
     });
-    return { nome: R().TIMES[n].nome, linhas: linhas };
+    return { nome: R().TIMES[n].nome + ' ' + (R().TIMES[n].turno === '1º Turno' ? 'T01' : 'T02'), linhas: linhas };
   });
 }
 
@@ -431,7 +435,7 @@ function ligar(sb) {
 }
 
 var api = {
-  ligar: ligar, norm: norm, casarNome: casarNome, turnoDaAba: turnoDaAba, parseEscalacaoBlack: parseEscalacaoBlack, parsePlanilhaPorTimes: parsePlanilhaPorTimes,
+  ligar: ligar, norm: norm, casarNome: casarNome, turnoDaAba: turnoDaAba, timeDaAba: timeDaAba, parseEscalacaoBlack: parseEscalacaoBlack, parsePlanilhaPorTimes: parsePlanilhaPorTimes,
   formatoDaPlanilha: formatoDaPlanilha, abasExportacao: abasExportacao, montarLinhasBanco: montarLinhasBanco, montarExtracao: montarExtracao,
   montarLancamentos: montarLancamentos, linhaEstorno: linhaEstorno
 };

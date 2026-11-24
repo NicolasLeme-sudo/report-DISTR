@@ -65,7 +65,8 @@ const cad = [
   { id: 4, usuario_wms: 'NOVATO.6.1', nome: null, turno: '2º Turno', time: 6, observacao: 'novato', lider: false, presenca: {} }
 ];
 const exp = A.abasExportacao(cad);
-assert.strictEqual(exp.length, 6); assert.strictEqual(exp[0].nome, 'Vermelho');
+assert.strictEqual(exp.length, 6); assert.strictEqual(exp[0].nome, 'Vermelho T01'); assert.strictEqual(exp[3].nome, 'Vermelho T02');
+assert.strictEqual(A.timeDaAba('Vermelho T01'), 1); assert.strictEqual(A.timeDaAba('Vermelho T02'), 4); assert.strictEqual(A.timeDaAba('Vermelho'), null, 'cor repetida sem turno é ambígua'); assert.strictEqual(A.timeDaAba('Time 5'), 5);
 assert.strictEqual(A.formatoDaPlanilha(exp), 'times');
 const volta = A.parsePlanilhaPorTimes(exp);
 assert.strictEqual(volta.length, 4);
