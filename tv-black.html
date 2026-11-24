@@ -1037,14 +1037,15 @@ async function carregaCompeticao(){
       lerTudo(function(){ return sb.from('ressuprimento_operador_diario').select('dia, turno, login, pecas, atualizado_em').eq('dia', dia).order('login'); }),
       sb.from('competicao_times').select('usuario_wms, nome, turno, time, lider, presenca, observacao'),
       sb.from('competicao_pontos').select('id, dia, turno, time, categoria, item, pontos, motivo, criado_em').eq('dia', dia),
-      sb.from('ressuprimento_operador_diario').select('atualizado_em').order('atualizado_em', { ascending:false }).limit(1)
+      // Selo da Corrida = hora do último Kardex publicado (o mesmo do Ressuprimento): o operador_diario só muda quando há movimento novo.
+      sb.from('dashboard_snapshots').select('gerado_em').eq('pagina', 'ressuprimento_mov').order('gerado_em', { ascending:false }).limit(1)
     ]);
     if (r[0].error) throw r[0].error;
     if (r[1].error) throw r[1].error;   // tabelas ainda não criadas (migracao_competicao.sql): a Corrida sai do rodízio
     var cadAll = r[1].data || [];
     comp = { c:RG.calcularCompeticao(r[0].data || [], cadAll, dia), cadAll:cadAll, lanc:r[2].error ? [] : (r[2].data || []), dia:dia, ta:ta, turnoVer:turnoVer, outro:turnoVer !== ta.turno || !ehHoje() };
     if (comp.c.temDados) diasComDado[dia] = 1;
-    var ult = !r[3].error && r[3].data && r[3].data[0] && r[3].data[0].atualizado_em;
+    var ult = !r[3].error && r[3].data && r[3].data[0] && r[3].data[0].gerado_em;
     if (ult) atualizadoEm.ressuprimento_operador = new Date(ult);
     avisouSemTabelas = false;
     if (!comp.outro) { verificaMetas(); verificaBaloes(); }
