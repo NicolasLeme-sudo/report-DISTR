@@ -1911,6 +1911,7 @@ function mostrarSecao(secao) {
   // esquema.sql, política ler_snapshots/ler_extracoes/ler_posicoes.)
   if (secao === 'atualizar' && perfilAtual !== 'admin') return;
   if (secao === 'estoque' && perfilAtual !== 'gestor' && perfilAtual !== 'admin') return;
+  if (secao === 'competicao' && perfilAtual !== 'admin') return;
 
   document.querySelectorAll('.secao').forEach(function (s) { s.classList.remove('ativa'); });
   document.getElementById('secao-' + secao).classList.add('ativa');
@@ -1973,6 +1974,8 @@ function aplicarVisibilidadeMenu() {
       irmao = irmao.nextElementSibling;
     }
   });
+  // Competição (gamificação Black): só admin, em qualquer grupo do menu.
+  document.getElementById('menuCompeticao').style.display = perfilAtual === 'admin' ? '' : 'none';
 }
 
 /* ============================================================
