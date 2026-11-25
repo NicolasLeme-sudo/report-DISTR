@@ -1301,9 +1301,6 @@ tr.total > th, tr.total > td {
     <div class="menu-item" id="menuEmbarque" onclick="mostrarSecao('embarque')">
       <span class="icone">🚚</span> Embarque
     </div>
-    <div class="menu-item" id="menuCompeticao" onclick="mostrarSecao('competicao')">
-      <span class="icone">🏆</span> Competição
-    </div>
 
     <div class="sidebar-section-label">Gestão</div>
     <div class="menu-item ativo" id="menuEstoque" onclick="mostrarSecao('estoque')">
@@ -1319,6 +1316,9 @@ tr.total > th, tr.total > td {
     <div class="menu-item" id="menuAtualizar" onclick="mostrarSecao('atualizar')">
       <span class="icone">⚙️</span> Abastecimento
       <span class="badge-admin">Admin</span>
+    </div>
+    <div class="menu-item" id="menuCompeticao" onclick="mostrarSecao('competicao')">
+      <span class="icone">🏆</span> Competição
     </div>
   </nav>
 
@@ -1974,8 +1974,6 @@ function aplicarVisibilidadeMenu() {
       irmao = irmao.nextElementSibling;
     }
   });
-  // Competição (gamificação Black): só admin, em qualquer grupo do menu.
-  document.getElementById('menuCompeticao').style.display = perfilAtual === 'admin' ? '' : 'none';
 }
 
 /* ============================================================
