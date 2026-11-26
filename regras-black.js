@@ -57,7 +57,7 @@ var GINCANAS_DIA = {
 };
 var GINCANAS = GINCANAS_DIA['2026-11-28'].concat(GINCANAS_DIA['2026-11-29']);
 
-// Os 6 times, cada cor = a do personagem. 1º turno = Relâmpago McQueen, The King e Chick Hicks (Carros); 2º turno = Mario, Toad e Bowser (mesmas cores do 1º turno).
+// Os 5 times ativos (o 3, Verde T01, saiu), cada cor = a do personagem. 1º turno = Relâmpago McQueen, The King e Chick Hicks (Carros); 2º turno = Mario, Toad e Bowser (mesmas cores do 1º turno).
 // espelha = o personagem aponta para a esquerda no arquivo e o CSS espelha; false = já aponta para a direita.
 var TIMES = {
   1: { nome: 'Vermelho', cor: '#EF5B5B', gif: 'corrida/vermelho.gif', espelha: true,  altura: 56, turno: '1º Turno' },
@@ -68,17 +68,19 @@ var TIMES = {
   6: { nome: 'Verde',    cor: '#45C665', gif: 'corrida/bowser.webp', espelha: false, altura: 66, turno: '2º Turno' }
 };
 var NUM_TIMES = [1, 2, 3, 4, 5, 6];
+// Time 3 (Verde T01) saiu da competição: o número fica reservado (o banco indexa por posição), mas não corre nem pontua.
+var ATIVOS = [1, 2, 4, 5, 6];
 // Uma corrida por turno: posição, destaque e ranking só entre os 3 times do turno.
 var GRUPOS = [
-  { id: 't1', rot: '1º Turno', turno: '1º Turno', times: [1, 2, 3] },
+  { id: 't1', rot: '1º Turno', turno: '1º Turno', times: [1, 2] },
   { id: 't2', rot: '2º Turno', turno: '2º Turno', times: [4, 5, 6] }
 ];
-function grupoDoTime(n) { return n <= 3 ? 't1' : 't2'; }
+function grupoDoTime(n) { return n === 3 ? null : (n <= 3 ? 't1' : 't2'); }
 function turnoDoTime(n) { return TIMES[n] ? TIMES[n].turno : '1º Turno'; }
 
 // Meta do time por dia: 3.000 peças alocadas por equipe (9.000 por turno).
 var META_TIME = 3000;
-var META_TURNO = { '1º Turno': META_TIME * 3, '2º Turno': META_TIME * 3 };
+var META_TURNO = { '1º Turno': META_TIME * 2, '2º Turno': META_TIME * 3 };
 function metaDoTime() { return META_TIME; }
 
 function pts(valor) { return Math.round(valor); }
@@ -135,7 +137,7 @@ function calcularCompeticao(producao, cadastro, diaAlvo) {
 //   c = calcularCompeticao(...) · cadastro = linhas de competicao_times · lanc = linhas de competicao_pontos do dia/turno
 function placarDoDia(o) {
   var c = o.c, dia = o.dia, turno = o.turno;
-  var times = c.times.filter(function (t) { return t.turno === turno && (t.lista.length || (o.cadastro || []).some(function (r) { return r.time === t.n; })); });
+  var times = c.times.filter(function (t) { return t.grupo && t.turno === turno && (t.lista.length || (o.cadastro || []).some(function (r) { return r.time === t.n; })); });
 
   // destaque: o operador que mais ressuprimiu no turno leva +destaque para o time dele
   var top = null;
@@ -194,7 +196,7 @@ function acumulado(placares) {
 global.RegrasBlack = {
   DIAS: DIAS, TURNOS: TURNOS, P: P, GRAVIDADES: GRAVIDADES, CHECKLIST: CHECKLIST,
   DESAFIOS: DESAFIOS, GINCANAS: GINCANAS, GINCANAS_DIA: GINCANAS_DIA, PONTOS_DESAFIO: PONTOS_DESAFIO,
-  TIMES: TIMES, NUM_TIMES: NUM_TIMES, GRUPOS: GRUPOS, grupoDoTime: grupoDoTime, turnoDoTime: turnoDoTime,
+  TIMES: TIMES, NUM_TIMES: NUM_TIMES, ATIVOS: ATIVOS, GRUPOS: GRUPOS, grupoDoTime: grupoDoTime, turnoDoTime: turnoDoTime,
   META_TIME: META_TIME, META_TURNO: META_TURNO, metaDoTime: metaDoTime,
   pts: pts, isoLocal: isoLocal, diaOperacional: diaOperacional, turnoAtual: turnoAtual, chaveUsu: chaveUsu,
   minutosTrabalhados: minutosTrabalhados, calcularCompeticao: calcularCompeticao, placarDoDia: placarDoDia, acumulado: acumulado

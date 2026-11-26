@@ -26,13 +26,13 @@ assert.strictEqual(c.times[0].total, 3300, 'time 1 soma todos os turnos do banco
 assert.strictEqual(c.times[0].meta, 3000);
 assert.strictEqual(c.times[2].total, 0, 'dia 26 não conta no dia 27');
 assert.strictEqual(c.times[5].lista[0].vago, true, 'novato é vaga sem peças');
-assert.strictEqual(c.times[0].pos, 1); assert.strictEqual(c.times[1].pos, 2); assert.strictEqual(c.times[2].pos, 3);
+assert.strictEqual(c.times[0].pos, 1); assert.strictEqual(c.times[1].pos, 2); assert.strictEqual(c.times[2].pos, undefined, 'time 3 saiu da competição');
 assert.strictEqual(R.calcularCompeticao(prod, cad).dia, '2026-11-27', 'sem dia alvo usa o último com produção');
 
 const p = R.placarDoDia({ c, dia: '2026-11-27', turno: '1º Turno', cadastro: cad, lanc: [
   { time: 1, categoria: 'desafio', pontos: 100 }, { time: 1, categoria: 'desafio', pontos: 250 },
   { time: 2, categoria: 'vistoria', pontos: -50 }, { time: 2, categoria: 'ajuste', pontos: 30 }] });
-assert.strictEqual(p.linhas.length, 3, 'só os 3 times do 1º turno');
+assert.strictEqual(p.linhas.length, 2, 'só os 2 times do 1º turno (o 3 saiu)');
 const t1 = p.linhas.find(r => r.n === 1), t2 = p.linhas.find(r => r.n === 2);
 assert.strictEqual(t1.produtividade, 3300);
 assert.strictEqual(t1.metaBatida, 200);
@@ -47,7 +47,7 @@ assert.strictEqual(t2.total, 900 + 0 + 0 - 50 + 30);
 
 const ac = R.acumulado([p]);
 assert.strictEqual(ac[1].trinca, 0);
-assert.strictEqual(R.grupoDoTime(3), 't1'); assert.strictEqual(R.grupoDoTime(4), 't2');
+assert.strictEqual(R.grupoDoTime(3), null); assert.strictEqual(R.grupoDoTime(2), 't1'); assert.strictEqual(R.grupoDoTime(4), 't2');
 assert.strictEqual(R.turnoAtual(new Date(2026, 10, 27, 1, 0)).turno, '2º Turno');
 assert.strictEqual(R.diaOperacional(new Date(2026, 10, 28, 0, 30)), '2026-11-27');
 console.log('testes-black.js OK');

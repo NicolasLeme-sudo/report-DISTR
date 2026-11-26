@@ -127,7 +127,7 @@ function formatoDaPlanilha(abas) {
 // Abas para "Exportar times atuais" (formato por times; volta pelo parsePlanilhaPorTimes).
 function abasExportacao(cadastro) {
   var dias = R().DIAS;
-  return R().NUM_TIMES.map(function (n) {
+  return R().ATIVOS.map(function (n) {
     var linhas = [['Nome', 'Usuário WMS', 'Turno', 'Observação', 'Líder'].concat(dias.map(function (d) { return d[1]; }))];
     (cadastro || []).filter(function (r) { return r.time === n; }).forEach(function (r) {
       linhas.push([r.nome || '', r.usuario_wms, r.turno, r.observacao || '', r.lider ? 'S' : ''].concat(dias.map(function (d) { return r.presenca && r.presenca[d[0]] || ''; })));
@@ -229,7 +229,7 @@ function payloadLinha(x) { return { usuario_wms: String(x.usuario_wms || '').tri
 function pagLinhas(cad) { return cad.map(function (r) { var x = { id: r.id, usuario_wms: r.usuario_wms, nome: r.nome, time: r.time, observacao: r.observacao, lider: r.lider, presenca: Object.assign({}, r.presenca || {}) }; x._orig = JSON.stringify(payloadLinha(x)); return x; }); }
 function desenharTimes() {
   var T = R().TIMES, dias = R().DIAS;
-  $('cadGrade').innerHTML = R().NUM_TIMES.map(function (n) {
+  $('cadGrade').innerHTML = R().ATIVOS.map(function (n) {
     var linhas = A.linhas.map(function (x, i) { return { x: x, i: i }; }).filter(function (o) { return o.x.time === n && !o.x._rm; });
     return '<div class="cmpad-time" style="--tc:' + esc(T[n].cor) + '" data-time="' + n + '"><h5>Time ' + esc(T[n].nome) + ' <small>· ' + T[n].turno + '</small></h5><table><tr class="cmpad-th"><td>Usuário (EX)</td><td>Nome</td>' +
       dias.map(function (d) { return '<td>' + d[1] + '</td>'; }).join('') + '<td></td></tr>' +

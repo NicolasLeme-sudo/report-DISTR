@@ -1202,7 +1202,7 @@ document.addEventListener('click', function(e){ if (comemorando && e.target.id !
 (function(){
   var box = document.getElementById('demoMeta'), pop = document.getElementById('dmPop');
   box.hidden = false;
-  pop.innerHTML = RG.NUM_TIMES.map(function(n){
+  pop.innerHTML = RG.ATIVOS.map(function(n){
     return '<button type="button" role="menuitem" data-n="'+n+'" style="--tc:'+RG.TIMES[n].cor+'"><i></i>Time '+RG.TIMES[n].nome+'</button>';
   }).join('');
   document.getElementById('btnDemoMeta').addEventListener('click', function(e){ e.stopPropagation(); pop.hidden = !pop.hidden; });

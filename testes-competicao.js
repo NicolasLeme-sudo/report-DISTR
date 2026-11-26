@@ -65,7 +65,7 @@ const cad = [
   { id: 4, usuario_wms: 'NOVATO.6.1', nome: null, turno: '2º Turno', time: 6, observacao: 'novato', lider: false, presenca: {} }
 ];
 const exp = A.abasExportacao(cad);
-assert.strictEqual(exp.length, 6); assert.strictEqual(exp[0].nome, 'Vermelho T01'); assert.strictEqual(exp[3].nome, 'Vermelho T02');
+assert.strictEqual(exp.length, 5); assert.strictEqual(exp[0].nome, 'Vermelho T01'); assert.strictEqual(exp[2].nome, 'Vermelho T02');
 assert.strictEqual(A.timeDaAba('Vermelho T01'), 1); assert.strictEqual(A.timeDaAba('Vermelho T02'), 4); assert.strictEqual(A.timeDaAba('Vermelho'), null, 'cor repetida sem turno é ambígua'); assert.strictEqual(A.timeDaAba('Time 5'), 5);
 assert.strictEqual(A.formatoDaPlanilha(exp), 'times');
 const volta = A.parsePlanilhaPorTimes(exp);
@@ -121,7 +121,7 @@ assert.deepStrictEqual(dias, ['2026-11-29', '2026-11-28', '2026-11-27', '2026-11
 assert.strictEqual(C.diaPadrao(dias, '2026-11-27'), '2026-11-27'); assert.strictEqual(C.diaPadrao(dias, '2026-11-25'), '2026-11-26'); assert.strictEqual(C.diaPadrao(dias, '2026-11-20'), '2026-11-26');
 const blocos = C.montarBlocos(dados, '2026-11-27', 'ambos');
 assert.strictEqual(blocos.length, 2); assert.strictEqual(blocos[0].turno, '1º Turno');
-assert.deepStrictEqual(blocos[0].linhas.map(l => l.t.n), [2, 1, 3], 'pódio do 1º turno por peças: time 2 (3.200) à frente do 1 (1.000)');
+assert.deepStrictEqual(blocos[0].linhas.map(l => l.t.n), [2, 1], 'pódio do 1º turno por peças: time 2 (3.200) à frente do 1 (1.000)');
 assert.strictEqual(blocos[0].linhas[0].r.metaBatida, 200); assert.strictEqual(blocos[0].linhas[1].r.desafios, 100);
 assert.strictEqual(blocos[1].linhas.length, 2, 'só times com membros no cadastro');
 assert.strictEqual(C.montarBlocos(dados, '2026-11-27', '2º Turno').length, 1);
