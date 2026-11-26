@@ -1221,7 +1221,7 @@ document.addEventListener('click', function(e){ if (comemorando && e.target.id !
 // Botão "Meta batida" (demonstração): escolhe o time e toca a comemoração completa. Não marca nada no banco nem na TV.
 (function(){
   var box = document.getElementById('demoMeta'), pop = document.getElementById('dmPop');
-  box.hidden = false;
+  box.hidden = true; return;   // 26/11: botão retirado do telão da DISTR (pedido do Nicolas)
   pop.innerHTML = RG.ATIVOS.map(function(n){
     return '<button type="button" role="menuitem" data-n="'+n+'" style="--tc:'+RG.TIMES[n].cor+'"><i></i>Time '+RG.TIMES[n].nome+'</button>';
   }).join('');
