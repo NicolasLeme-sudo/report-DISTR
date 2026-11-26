@@ -108,9 +108,11 @@ function minutosTrabalhados(de, ate, almoco) {
    O time soma tudo o que cada membro alocou no dia, em qualquer turno do banco. */
 function calcularCompeticao(producao, cadastro, diaAlvo) {
   var linhas = (producao || []).map(function (r) { return { dia: String(r.dia).slice(0, 10), k: chaveUsu(r.login), pecas: +r.pecas || 0 }; });
-  var diaRef = diaAlvo || linhas.reduce(function (a, r) { return r.dia > a ? r.dia : a; }, '');
+  // diaAlvo também pode ser uma LISTA de dias (26/11): soma a produção e a meta de cada dia (telão: calendário com vários dias).
+  var dias = Array.isArray(diaAlvo) && diaAlvo.length ? diaAlvo.map(String).sort() : null;
+  var diaRef = dias ? dias[dias.length - 1] : (diaAlvo || linhas.reduce(function (a, r) { return r.dia > a ? r.dia : a; }, ''));
   var porLogin = new Map();
-  linhas.forEach(function (r) { if (r.dia === diaRef) porLogin.set(r.k, (porLogin.get(r.k) || 0) + r.pecas); });
+  linhas.forEach(function (r) { if (dias ? dias.indexOf(r.dia) >= 0 : r.dia === diaRef) porLogin.set(r.k, (porLogin.get(r.k) || 0) + r.pecas); });
   var times = NUM_TIMES.map(function (n) { return { n: n, grupo: grupoDoTime(n), turno: turnoDoTime(n), nome: TIMES[n].nome, cor: TIMES[n].cor, membros: [] }; });
   (cadastro || []).forEach(function (r) {
     var t = times[r.time - 1];
@@ -122,7 +124,7 @@ function calcularCompeticao(producao, cadastro, diaAlvo) {
   times.forEach(function (t) {
     t.lista = t.membros.slice().sort(function (a, b) { return b.valor - a.valor; });
     t.total = t.lista.reduce(function (s, m) { return s + m.valor; }, 0);
-    t.meta = metaDoTime(t.n);
+    t.meta = metaDoTime(t.n) * (dias ? dias.length : 1);
     t.ativos = t.lista.filter(function (m) { return m.valor > 0; }).length;
   });
   GRUPOS.forEach(function (G) {
@@ -130,7 +132,7 @@ function calcularCompeticao(producao, cadastro, diaAlvo) {
       .sort(function (a, b) { return (b.lista.length ? 1 : 0) - (a.lista.length ? 1 : 0) || b.total - a.total; })
       .forEach(function (t, i) { t.pos = t.lista.length ? i + 1 : null; });
   });
-  return { times: times, dia: diaRef || null, temDados: linhas.length > 0 };
+  return { times: times, dia: diaRef || null, dias: dias, temDados: linhas.length > 0 };
 }
 
 // Placar de UM dia de UM turno (só os 3 times do turno).
