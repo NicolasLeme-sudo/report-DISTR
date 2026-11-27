@@ -95,7 +95,7 @@ assert.strictEqual(A.montarLancamentos('vistoria', hoje, '1º Turno', { time: 2,
 const vm = A.montarLancamentos('vistoria', hoje, '1º Turno', { sel: [1, 2], itens: [5], qtds: { 5: '2' } });
 assert.deepStrictEqual(vm.map(l => l.time), [1, 2], 'um lançamento por time marcado'); assert.ok(vm.every(l => l.pontos === vis[1].pontos * 2));
 const vq = A.montarLancamentos('vistoria', hoje, '1º Turno', { time: 2, itens: [5], qtds: { 5: '3' } });
-assert.strictEqual(vq.length, 1); assert.strictEqual(vq[0].pontos, vis[1].pontos * 3, 'quantidade multiplica os pontos'); assert.ok(/\(3×\)$/.test(vq[0].item));
+assert.strictEqual(vq.length, 1); assert.strictEqual(vq[0].pontos, vis[1].pontos * 3, 'quantidade multiplica os pontos'); assert.ok(/\(×3\)$/.test(vq[0].item));
 const ginc = A.montarLancamentos('gincana', '2026-11-28', '2º Turno', { item: 'Torre Black', valor: 150 });
 assert.deepStrictEqual(ginc.map(l => l.time), [4, 5, 6], 'gincana vale igual para os 3 times do turno'); assert.ok(ginc.every(l => l.pontos === 150 && l.categoria === 'desafio' && l.item === 'Gincana: Torre Black'));
 assert.strictEqual(A.montarLancamentos('desafio', hoje, '1º Turno', { time: 1, item: 'Outro', outro: '  ', valor: 100 }).length, 0, 'outro sem nome não lança');

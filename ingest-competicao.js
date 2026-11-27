@@ -196,7 +196,10 @@ var CSS = [
   '.cmpad-prev .ok{color:var(--olive)}.cmpad-prev .ap{color:var(--amber)}.cmpad-prev .no{color:var(--red)}',
   '.cmpad-f{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin:10px 0;align-items:end}.cmpad-f label{display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}',
   '.cmpad-chk{border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin:8px 0;max-height:260px;overflow:auto;background:var(--bg-input)}',
-  '.cmpad-chk label{display:flex;gap:8px;font-size:12.5px;padding:5px 0;align-items:center;border-bottom:1px solid rgba(120,175,245,.35)}.cmpad-chk label:last-child{border-bottom:0}.cmpad-chk b{margin-left:auto;color:var(--red)}.ptsQtdBox{margin-left:auto;font-size:11px;color:var(--text-label);white-space:nowrap}.ptsQtdBox+b{margin-left:12px;min-width:34px;text-align:right}.cmpad-times{display:flex;gap:14px;flex-wrap:wrap;padding:4px 0}.cmpad-tm{display:flex;gap:6px;align-items:center;font-size:12.5px}.ptsQtd{width:46px;padding:2px 4px;font-size:12px}',
+  '.cmpad-chk label{display:flex;gap:8px;font-size:12.5px;padding:5px 0;align-items:center;border-bottom:1px solid rgba(120,175,245,.35)}.cmpad-chk label:last-child{border-bottom:0}.cmpad-chk b{margin-left:auto;color:var(--red)}.ptsQtdBox{margin-left:auto;font-size:11px;color:var(--text-label);white-space:nowrap}.ptsQtdBox+b{margin-left:12px;min-width:34px;text-align:right}.cmpad-times{display:flex;gap:14px;flex-wrap:wrap;padding:4px 0}.cmpad-tm{display:flex;gap:6px;align-items:center;font-size:12.5px;white-space:nowrap;color:var(--text);text-transform:none;letter-spacing:0}.ptsQtd{width:46px;padding:2px 4px;font-size:12px}',
+  '.cmpad-cartoes{display:flex;flex-direction:column;gap:14px}.cmpad-cart{border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:12px;background:var(--bg-card)}.cmpad-cart-h small{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted)}.cmpad-cart-h h4{margin:2px 0 0;font-size:15px}',
+  '.comp-add{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}.pb-campo{display:flex;flex-direction:column;gap:3px;flex:1 1 140px;font-size:11px;color:var(--text-muted)}.pb-campo input,.pb-campo select{background:var(--bg-input);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:7px 10px;font:inherit;font-size:12.5px;width:100%;box-sizing:border-box}',
+  '.pb-check{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}.pb-grav{display:grid;gap:5px;align-content:start;padding-bottom:6px;border-bottom:1px solid rgba(120,175,245,.35)}.pb-grav b{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em}.pb-item{display:flex;align-items:center;gap:8px;font-size:12.5px}.pb-item input[type=number]{width:52px;flex:none;background:var(--bg-input);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:5px 6px;text-align:center}',
   '.cmpad-hist{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}.cmpad-hist th,.cmpad-hist td{border-bottom:1px solid var(--border);padding:5px 6px;text-align:left}.cmpad-hist .neg{color:var(--red)}'
 ].join('\n');
 
@@ -217,11 +220,9 @@ function esqueleto() {
     '<div id="cadPrev"></div><div class="aviso ok" id="cadOk" style="display:none;margin-top:10px"></div><div class="log" id="cadLog"></div></div>' +
     '<div class="section-title" style="margin-top:24px">Pontos da competição</div>' +
     '<div class="card"><div id="ptsMsg"></div>' +
-    '<div class="cmpad-f"><div><label>Dia</label><select id="ptsDia"></select></div><div><label>Turno</label><select id="ptsTurno"><option>1º Turno</option><option>2º Turno</option></select></div>' +
-    '<div><label>Lançar</label><div class="seg-toggle" id="ptsCat"><button type="button" class="seg-btn ativo" data-cat="vistoria">Vistoria</button><button type="button" class="seg-btn" data-cat="desafio">Desafio</button><button type="button" class="seg-btn" data-cat="gincana">Gincana</button><button type="button" class="seg-btn" data-cat="ajuste">Ajuste</button></div></div></div>' +
-    '<div id="ptsForm"></div><div class="aviso ok" id="ptsOk" style="display:none;margin-top:10px"></div>' +
-    '<div class="cmpad-barra"><button class="btn-mini" id="ptsExtrair">⬇ Extrair Descontos e Adições</button></div>' +
-    '<div id="ptsHist"></div></div>';
+    '<div class="cmpad-f"><div><label>Dia</label><select id="ptsDia"></select></div><div><label>Turno</label><select id="ptsTurno"><option>1º Turno</option><option>2º Turno</option></select></div></div>' +
+    '<div class="cmpad-barra" style="justify-content:flex-end"><button class="btn-mini" id="ptsExtrair">⬇ Extrair Descontos e Adições</button></div>' +
+    '<div id="ptsForm"></div></div>';
 }
 
 /* --- times --- */
@@ -334,36 +335,41 @@ async function aplicarEscalacao() {
 function timesDoTurno(turno) { return R().GRUPOS.filter(function (G) { return G.turno === turno; })[0].times; }
 function opcoesTime(turno) { return timesDoTurno(turno).map(function (n) { return '<option value="' + n + '">Time ' + esc(R().TIMES[n].nome) + '</option>'; }).join(''); }
 function formPontos() {
-  var dia = $('ptsDia').value, turno = $('ptsTurno').value, cat = A.cat, Rg = R(), h = '';
-  var selTime = '<div style="grid-column:1/-1"><label>Times (marque um ou mais)</label><div class="cmpad-times">' + timesDoTurno(turno).map(function (n, k) { return '<label class="cmpad-tm"><input type="checkbox" class="ptsTm" data-n="' + n + '"' + (k === 0 ? ' checked' : '') + '> Time ' + esc(Rg.TIMES[n].nome) + '</label>'; }).join('') + '</div></div>';
-  if (cat === 'vistoria') {
-    var ordem = ['leve', 'media', 'grave', 'gravissima'];
-    h = '<div class="cmpad-f">' + selTime + '</div><div class="cmpad-chk"><label><input type="checkbox" id="ptsLimpa"> Sem apontamentos (vistoria limpa)<b style="color:var(--olive)">+' + Rg.P.vistoriaLimpa + '</b></label>' +
-      Rg.CHECKLIST.map(function (c, i) { return '<label><input type="checkbox" class="ptsItem" data-i="' + i + '"> ' + esc(c.item) + ' <small>(' + Rg.GRAVIDADES[c.grav].rot + ')</small><span class="ptsQtdBox">vezes <input type="number" class="ptsQtd" data-i="' + i + '" min="1" max="99" value="1"></span><b>' + c.pts + '</b></label>'; }).join('') + '</div>';
-  } else if (cat === 'desafio') {
-    var lista = (Rg.DESAFIOS[dia] || []).concat(['Outro']);
-    h = '<div class="cmpad-f">' + selTime + '<div><label>Desafio</label><select id="ptsItem">' + lista.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('') + '</select></div><div><label>Se outro, qual</label><input type="text" id="ptsOutro"></div><div><label>Pontos</label><input type="number" id="ptsValor" value="' + Rg.PONTOS_DESAFIO + '"></div></div>';
-  } else if (cat === 'gincana') {
-    var gl = Rg.GINCANAS.concat(['Outra gincana']);   // as 8 gincanas da programação (qualquer dia) + Outra
-
-    h = '<div class="cmpad-f"><div><label>Gincana</label><select id="ptsItem">' + gl.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('') + '</select></div><div><label>Se outra, qual</label><input type="text" id="ptsOutro"></div><div><label>Pontos para cada time marcado</label><input type="number" id="ptsValor" value="' + Rg.PONTOS_DESAFIO + '"></div></div>' +
-      '<div class="cmpad-chk"><label style="font-weight:700">Quem ganha (desmarque os times que não pontuaram):</label>' + timesDoTurno(turno).map(function (n) { return '<label><input type="checkbox" class="ptsGin" data-n="' + n + '" checked> Time ' + esc(Rg.TIMES[n].nome) + '</label>'; }).join('') + '</div>';
-  } else {
-    h = '<div class="cmpad-f">' + selTime + '<div><label>Pontos (negativo = desconto)</label><input type="number" id="ptsValor" value="0"></div><div style="grid-column:span 2"><label>Motivo</label><input type="text" id="ptsMotivo"></div></div>';
-  }
-  $('ptsForm').innerHTML = h + '<button class="btn-mini" id="ptsLancar">Lançar</button>';
-  $('ptsLancar').addEventListener('click', lancarPontos);
-  // Mexer na quantidade já marca a infração.
-  Array.prototype.forEach.call(A.raiz.querySelectorAll('.ptsQtd'), function (q) {
-    q.addEventListener('input', function () { var c = q.closest('label').querySelector('.ptsItem'); if (c && (parseInt(q.value, 10) || 0) > 0) c.checked = true; });
-  });
+  var turno = $('ptsTurno').value, Rg = R(), tms = timesDoTurno(turno);
+  var selTimes = function (k) { return '<div class="pb-campo" style="flex:1 1 100%"><span>Times (marque um ou mais)</span><div class="cmpad-times">' + tms.map(function (n, i) { return '<label class="cmpad-tm"><input type="checkbox" class="ptsTm" data-k="' + k + '" data-n="' + n + '"' + (i === 0 ? ' checked' : '') + '> Time ' + esc(Rg.TIMES[n].nome) + '</label>'; }).join('') + '</div></div>'; };
+  var campo = function (r, h) { return '<label class="pb-campo">' + r + h + '</label>'; };
+  var linha = function (h) { return '<div class="comp-add">' + h + '</div>'; };
+  var cartao = function (k, titulo, corpo) { return '<div class="cmpad-cart"><div class="cmpad-cart-h"><small>Missão Black</small><h4>' + titulo + '</h4></div>' + corpo + '<div id="ptsSt-' + k + '"></div><div id="ptsHist-' + k + '"></div></div>'; };
+  var porGrav = {};
+  Rg.CHECKLIST.forEach(function (c, i) { (porGrav[c.grav] = porGrav[c.grav] || []).push('<label class="pb-item"><input type="number" min="0" max="9" value="0" data-i="' + i + '"> ' + esc(c.item) + '</label>'); });
+  var checklist = Object.keys(Rg.GRAVIDADES).map(function (g) { return '<div class="pb-grav"><b>' + Rg.GRAVIDADES[g].rot + ' · ' + Rg.GRAVIDADES[g].pts + ' pts cada</b>' + (porGrav[g] || []).join('') + '</div>'; }).join('');
+  var vistoria = cartao('vistoria', 'Vistoria', linha(selTimes('vistoria')) +
+    '<div class="pb-check">' + checklist + '</div>' +
+    '<label class="pb-item"><input type="checkbox" id="ptsLimpa"> Vistoria sem apontamento (+' + Rg.P.vistoriaLimpa + ')</label>' +
+    linha(campo('Observação', '<input id="ptsVisObs" placeholder="local, corredor, quem viu">') + '<button class="btn-mini" id="ptsBtnVistoria" type="button">Lançar vistoria</button>'));
+  var gl = Rg.GINCANAS.concat(['Outra gincana']);
+  var membros = ((A.dados && A.dados.cadastro) || []).filter(function (r) { return tms.indexOf(r.time) !== -1 && r.usuario_wms && !/^NOVATO\./.test(r.usuario_wms); })
+    .sort(function (a, b) { return String(a.nome || a.usuario_wms).localeCompare(String(b.nome || b.usuario_wms)); });
+  var selPara = '<select id="ptsPara"><option value="todos">Todos os times do turno</option><optgroup label="Time">' + tms.map(function (n) { return '<option value="t:' + n + '">Time ' + esc(Rg.TIMES[n].nome) + '</option>'; }).join('') + '</optgroup>' +
+    (membros.length ? '<optgroup label="Colaborador (pontos vão para o time dele)">' + membros.map(function (m) { return '<option value="u:' + esc(m.usuario_wms) + '">' + esc((m.nome || m.usuario_wms) + ' · ' + Rg.TIMES[m.time].nome) + '</option>'; }).join('') + '</optgroup>' : '') + '</select>';
+  var gincanas = cartao('gincanas', 'Gincanas', linha(campo('Gincana', '<select id="ptsGinSel">' + gl.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('') + '</select>') + campo('Pontos', '<input id="ptsGinPts" type="number" value="' + Rg.PONTOS_DESAFIO + '">')) +
+    '<div id="ptsGinOutraBox" hidden>' + linha(campo('Nome da gincana', '<input id="ptsGinOutra" placeholder="ex.: Dupla Conectada">')) + '</div>' +
+    linha(campo('Para', selPara)) + '<div><button class="btn-mini" id="ptsBtnGincana" type="button">Lançar</button></div>');
+  var ajuste = cartao('ajuste', 'Ajuste de pontuação', linha(selTimes('ajuste')) + linha(campo('Pontos (negativo desconta)', '<input id="ptsAjPts" type="number" placeholder="ex.: -30 ou 50">') + campo('Motivo (obrigatório)', '<input id="ptsAjMotivo">')) +
+    '<div><button class="btn-mini" id="ptsBtnAjuste" type="button">Lançar ajuste</button></div>');
+  $('ptsForm').innerHTML = '<div class="cmpad-cartoes">' + vistoria + gincanas + ajuste + '</div>';
+  $('ptsGinSel').addEventListener('change', function () { var bx = $('ptsGinOutraBox'); bx.hidden = this.value !== 'Outra gincana'; if (!bx.hidden) $('ptsGinOutra').focus(); });
+  $('ptsBtnVistoria').addEventListener('click', lancarVistoria);
+  $('ptsBtnGincana').addEventListener('click', lancarGincana);
+  $('ptsBtnAjuste').addEventListener('click', lancarAjuste);
+  if (A.dados) histPontos();
 }
 function montarLancamentos(cat, dia, turno, f) {   // f = valores do formulário; devolve linhas de competicao_pontos
   var Rg = R(), base = { dia: dia, turno: turno };
   var tms = f.sel && f.sel.length ? f.sel : (f.time ? [f.time] : []);   // times marcados (vistoria, desafio e ajuste)
   if (cat === 'vistoria') {
-    if (f.limpa) return tms.map(function (n) { return Object.assign({}, base, { time: n, categoria: 'vistoria', item: 'Sem apontamentos', pontos: Rg.P.vistoriaLimpa, motivo: null }); });
-    return [].concat.apply([], tms.map(function (n) { return (f.itens || []).map(function (i) { var c = Rg.CHECKLIST[i], q = Math.max(1, Math.min(99, parseInt((f.qtds || {})[i], 10) || 1)); return Object.assign({}, base, { time: n, categoria: 'vistoria', item: q > 1 ? c.item + ' (' + q + '×)' : c.item, pontos: c.pts * q, motivo: Rg.GRAVIDADES[c.grav].rot }); }); }));
+    if (f.limpa) return tms.map(function (n) { return Object.assign({}, base, { time: n, categoria: 'vistoria', item: 'Vistoria sem apontamento', pontos: Rg.P.vistoriaLimpa, motivo: f.motivo || null }); });
+    return [].concat.apply([], tms.map(function (n) { return (f.itens || []).map(function (i) { var c = Rg.CHECKLIST[i], q = Math.max(1, Math.min(99, parseInt((f.qtds || {})[i], 10) || 1)); return Object.assign({}, base, { time: n, categoria: 'vistoria', item: Rg.GRAVIDADES[c.grav].rot + ': ' + c.item + (q > 1 ? ' (×' + q + ')' : ''), pontos: c.pts * q, motivo: f.motivo || null }); }); }));
   }
   var nome = /^Outr[oa]( gincana)?$/.test(f.item) ? (f.outro || '').trim() : f.item;
   if (cat === 'desafio') return nome && f.valor ? tms.map(function (n) { return Object.assign({}, base, { time: n, categoria: 'desafio', item: nome, pontos: f.valor, motivo: null }); }) : [];
@@ -375,30 +381,60 @@ async function inserirPontos(linhas) {
   var r = await A.sb.from('competicao_pontos').insert(linhas.map(function (l) { return Object.assign({}, l, { registrado_email: email }); }));
   if (r.error) throw r.error;
 }
-async function lancarPontos() {
-  var dia = $('ptsDia').value, turno = $('ptsTurno').value, g = function (id) { var e = $(id); return e ? e.value : ''; };
-  var f = { sel: Array.prototype.map.call(A.raiz.querySelectorAll('.ptsTm:checked'), function (x) { return +x.dataset.n; }), item: g('ptsItem'), outro: g('ptsOutro'), valor: parseInt(g('ptsValor'), 10) || 0, motivo: g('ptsMotivo'),
-    times: Array.prototype.map.call(A.raiz.querySelectorAll('.ptsGin:checked'), function (x) { return +x.dataset.n; }),
-    qtds: (function () { var o = {}; Array.prototype.forEach.call(A.raiz.querySelectorAll('.ptsQtd'), function (x) { o[x.dataset.i] = x.value; }); return o; })(),
-    limpa: !!($('ptsLimpa') && $('ptsLimpa').checked), itens: Array.prototype.map.call(A.raiz.querySelectorAll('.ptsItem:checked'), function (x) { return +x.dataset.i; }) };
-  var linhas = montarLancamentos(A.cat, dia, turno, f);
-  if (!linhas.length) { msg('ptsMsg', 'Nada para lançar: marque um item, informe pontos' + (A.cat === 'ajuste' ? ' e o motivo.' : '.'), 'erro'); return; }
-  try {
-    await inserirPontos(linhas);
-    msg('ptsMsg', ''); msg('ptsOk', linhas.length + ' lançamento(s) gravado(s).', 'ok');
-    await recarregarTudo();
-  } catch (e) { msg('ptsMsg', erroAmigavel(e), 'erro'); }
+function marcados(k) { return Array.prototype.map.call(A.raiz.querySelectorAll('.ptsTm[data-k="' + k + '"]:checked'), function (x) { return +x.dataset.n; }); }
+async function gravar(k, linhas, ok) {
+  try { await inserirPontos(linhas); await recarregarTudo(); msg('ptsSt-' + k, ok, 'ok'); }
+  catch (e) { msg('ptsSt-' + k, erroAmigavel(e), 'erro'); }
+}
+function nomeTimes(ns) { return ns.map(function (n) { return R().TIMES[n].nome; }).join(', '); }
+function lancarVistoria() {
+  var dia = $('ptsDia').value, turno = $('ptsTurno').value, sel = marcados('vistoria'), itens = [], qtds = {};
+  A.raiz.querySelectorAll('#ptsForm .pb-check input[data-i]').forEach(function (inp) { var q = Math.max(0, Math.min(9, parseInt(inp.value, 10) || 0)); if (q) { itens.push(+inp.dataset.i); qtds[inp.dataset.i] = q; } });
+  var limpa = $('ptsLimpa').checked;
+  if (!sel.length) { msg('ptsSt-vistoria', 'Marque pelo menos um time.', 'erro'); return; }
+  if (limpa && itens.length) { msg('ptsSt-vistoria', 'Marque itens OU vistoria sem apontamento, não os dois.', 'erro'); return; }
+  var linhas = montarLancamentos('vistoria', dia, turno, { sel: sel, itens: itens, qtds: qtds, limpa: limpa, motivo: $('ptsVisObs').value.trim() });
+  if (!linhas.length) { msg('ptsSt-vistoria', 'Marque pelo menos um item (ou vistoria sem apontamento).', 'erro'); return; }
+  var tot = linhas.filter(function (l) { return l.time === sel[0]; }).reduce(function (a, l) { return a + l.pontos; }, 0);
+  if (!confirm('Lançar vistoria para ' + nomeTimes(sel) + ': ' + (tot > 0 ? '+' : '') + tot + ' pontos' + (sel.length > 1 ? ' cada' : '') + '?')) return;
+  gravar('vistoria', linhas, '✓ Vistoria lançada: ' + (tot > 0 ? '+' : '') + tot + ' pontos para ' + nomeTimes(sel) + '.');
+}
+function lancarGincana() {
+  var dia = $('ptsDia').value, turno = $('ptsTurno').value, Rg = R(), nome = $('ptsGinSel').value, v = parseInt($('ptsGinPts').value, 10), para = $('ptsPara').value, times, motivo = null, alvo;
+  if (nome === 'Outra gincana') { nome = $('ptsGinOutra').value.trim(); if (!nome) { msg('ptsSt-gincanas', 'Escreva o nome da gincana.', 'erro'); return; } }
+  if (!v) { msg('ptsSt-gincanas', 'Informe os pontos.', 'erro'); return; }
+  if (para === 'todos') { times = timesDoTurno(turno); alvo = 'os ' + times.length + ' times do turno: ' + v + ' pontos cada'; }
+  else if (para.indexOf('t:') === 0) { times = [+para.slice(2)]; alvo = 'o time ' + Rg.TIMES[times[0]].nome + ': ' + v + ' pontos'; }
+  else {
+    var m = ((A.dados && A.dados.cadastro) || []).filter(function (r) { return r.usuario_wms === para.slice(2); })[0];
+    if (!m) { msg('ptsSt-gincanas', 'Colaborador não encontrado no turno.', 'erro'); return; }
+    times = [m.time]; motivo = 'Colaborador: ' + (m.nome || m.usuario_wms); alvo = (m.nome || m.usuario_wms) + ' (time ' + Rg.TIMES[m.time].nome + '): ' + v + ' pontos';
+  }
+  if (!confirm('Lançar "' + nome + '" para ' + alvo + '?')) return;
+  var linhas = montarLancamentos('gincana', dia, turno, { item: nome, outro: nome, valor: v, times: times });
+  if (motivo) linhas.forEach(function (l) { l.motivo = motivo; });
+  gravar('gincanas', linhas, '✓ Gincana lançada para ' + nomeTimes(times) + '.');
+}
+function lancarAjuste() {
+  var dia = $('ptsDia').value, turno = $('ptsTurno').value, sel = marcados('ajuste'), v = parseInt($('ptsAjPts').value, 10), mt = $('ptsAjMotivo').value.trim();
+  if (!sel.length) { msg('ptsSt-ajuste', 'Marque pelo menos um time.', 'erro'); return; }
+  if (!v || !mt) { msg('ptsSt-ajuste', 'Informe os pontos e o motivo.', 'erro'); return; }
+  gravar('ajuste', montarLancamentos('ajuste', dia, turno, { sel: sel, valor: v, motivo: mt }), '✓ Ajuste lançado para ' + nomeTimes(sel) + '.');
 }
 function histPontos() {
   var dia = $('ptsDia').value, turno = $('ptsTurno').value, T = R().TIMES;
   var doDia = (A.dados.lanc || []).filter(function (l) { return String(l.dia).slice(0, 10) === dia && l.turno === turno; });
   var estornados = {}; doDia.forEach(function (l) { var m = /^Estorno de (\S+)/.exec(l.motivo || ''); if (m) estornados[m[1]] = 1; });
-  $('ptsHist').innerHTML = doDia.length ? '<table class="cmpad-hist"><tr><th>Time</th><th>Categoria</th><th>Item</th><th>Pontos</th><th>Motivo</th><th></th></tr>' + doDia.map(function (l) {
-    var estorno = /^Estorno de /.test(l.motivo || '');
-    return '<tr><td>Time ' + esc((T[l.time] || {}).nome) + '</td><td>' + esc(l.categoria) + '</td><td>' + esc(l.item || '') + '</td><td class="' + (l.pontos < 0 ? 'neg' : '') + '">' + l.pontos + '</td><td>' + esc(l.motivo || '') + '</td><td>' +
-      (estorno || estornados[l.id] ? '<small>' + (estorno ? 'estorno' : 'estornado') + '</small>' : '<button class="btn-mini est" data-id="' + esc(l.id) + '" type="button">Estornar</button>') + '</td></tr>';
-  }).join('') + '</table>' : '<p style="font-size:12px;color:var(--text-muted);margin-top:10px">Nenhum lançamento neste dia e turno.</p>';
-  $('ptsHist').querySelectorAll('.est').forEach(function (b) { b.addEventListener('click', function () { estornar(b.dataset.id); }); });
+  [['vistoria', 'vistoria'], ['gincanas', 'desafio'], ['ajuste', 'ajuste']].forEach(function (par) {
+    var el = $('ptsHist-' + par[0]); if (!el) return;
+    var ls = doDia.filter(function (l) { return l.categoria === par[1]; });
+    el.innerHTML = ls.length ? '<div class="tbl-wrap"><table class="cmpad-hist"><tr><th>Hora</th><th>Time</th><th>Item</th><th>Pontos</th><th>Motivo</th><th>Por</th><th></th></tr>' + ls.map(function (l) {
+      var estorno = /^Estorno de /.test(l.motivo || ''), hr = l.criado_em ? new Date(l.criado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+      return '<tr><td>' + hr + '</td><td>' + esc((T[l.time] || {}).nome) + '</td><td>' + esc(l.item || '') + '</td><td class="' + (l.pontos < 0 ? 'neg' : '') + '" style="font-weight:700;text-align:right">' + (l.pontos > 0 ? '+' : '') + l.pontos + '</td><td>' + esc(l.motivo || '') + '</td><td>' + esc(String(l.registrado_email || '').replace(/@.*/, '')) + '</td><td>' +
+        (estorno || estornados[l.id] ? '<small>' + (estorno ? 'estorno' : 'estornado') + '</small>' : '<button class="btn-mini est" data-id="' + esc(l.id) + '" type="button">Estornar</button>') + '</td></tr>';
+    }).join('') + '</table></div>' : '';
+    el.querySelectorAll('.est').forEach(function (b) { b.addEventListener('click', function () { if (confirm('Estornar este lançamento?')) estornar(b.dataset.id); }); });
+  });
 }
 function linhaEstorno(l) {   // estorno = lançamento inverso (nunca edita nem apaga)
   return { dia: String(l.dia).slice(0, 10), turno: l.turno, time: l.time, categoria: l.categoria, item: 'Estorno: ' + (l.item || l.categoria), pontos: -l.pontos, motivo: 'Estorno de ' + l.id };
@@ -406,7 +442,7 @@ function linhaEstorno(l) {   // estorno = lançamento inverso (nunca edita nem a
 async function estornar(id) {
   var l = (A.dados.lanc || []).filter(function (x) { return x.id === id; })[0];
   if (!l) return;
-  try { await inserirPontos([linhaEstorno(l)]); msg('ptsOk', 'Lançamento estornado.', 'ok'); await recarregarTudo(); } catch (e) { msg('ptsMsg', erroAmigavel(e), 'erro'); }
+  try { await inserirPontos([linhaEstorno(l)]); await recarregarTudo(); } catch (e) { msg('ptsMsg', erroAmigavel(e), 'erro'); }
 }
 function extrair() {
   var d = A.dados, Cm = C(), pretos = R().DIAS.map(function (x) { return x[0]; }).filter(function (x) { return Cm.temAtividade(d, x); });
@@ -425,7 +461,7 @@ async function recarregarTudo() {
     A.dados = await global.Competicao.carregarDados(A.sb);
     A.linhas = pagLinhas(A.dados.cadastro);
     msg('cadMsg', '');
-    desenharTimes(); preencherDiasPontos(); histPontos();
+    desenharTimes(); preencherDiasPontos(); formPontos();
   } catch (e) { msg('cadMsg', erroAmigavel(e), 'erro'); }
 }
 function ligar(sb) {
@@ -435,11 +471,10 @@ function ligar(sb) {
   var st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
   A.raiz.innerHTML = esqueleto();
   ligarTimes();
-  $('ptsDia').addEventListener('change', function () { formPontos(); histPontos(); });
-  $('ptsTurno').addEventListener('change', function () { formPontos(); histPontos(); });
-  $('ptsCat').addEventListener('click', function (e) { var b = e.target.closest('[data-cat]'); if (!b) return; A.cat = b.dataset.cat; $('ptsCat').querySelectorAll('.seg-btn').forEach(function (x) { x.classList.toggle('ativo', x === b); }); formPontos(); });
+  $('ptsDia').addEventListener('change', formPontos);
+  $('ptsTurno').addEventListener('change', formPontos);
   $('ptsExtrair').addEventListener('click', function () { if (A.dados) extrair(); });
-  preencherDiasPontos(); formPontos();
+  preencherDiasPontos();
   recarregarTudo();
 }
 
