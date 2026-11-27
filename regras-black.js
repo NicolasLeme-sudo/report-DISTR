@@ -46,9 +46,10 @@ var CHECKLIST = [
 ].map(function (x) { return { grav: x[0], item: x[1], pts: GRAVIDADES[x[0]].pts }; });
 
 var DESAFIOS = {
-  '2026-11-27': ['Quiz relâmpago', 'Grito da equipe', 'Missão surpresa'],
-  '2026-11-28': ['Golden Ticket', 'Desafio relâmpago', 'Espírito de equipe'],
-  '2026-11-29': ['Quiz final', 'Desafio surpresa', 'Equipe mais engajada']
+  // Programação apresentada à operação (27/11): só o Grito de Guerra no 1º dia; 28 e 29 são as gincanas abaixo.
+  '2026-11-27': ['Grito de Guerra'],
+  '2026-11-28': [],
+  '2026-11-29': []
 };
 var PONTOS_DESAFIO = 100;
 var GINCANAS_DIA = {

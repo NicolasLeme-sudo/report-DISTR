@@ -344,7 +344,8 @@ function formPontos() {
     var lista = (Rg.DESAFIOS[dia] || []).concat(['Outro']);
     h = '<div class="cmpad-f">' + selTime + '<div><label>Desafio</label><select id="ptsItem">' + lista.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('') + '</select></div><div><label>Se outro, qual</label><input type="text" id="ptsOutro"></div><div><label>Pontos</label><input type="number" id="ptsValor" value="' + Rg.PONTOS_DESAFIO + '"></div></div>';
   } else if (cat === 'gincana') {
-    var gl = (Rg.GINCANAS_DIA[dia] || Rg.GINCANAS).concat(['Outra']);
+    var gl = (Rg.DESAFIOS[dia] || []).concat(Rg.GINCANAS_DIA[dia] || [], ['Outra']);   // só as do dia
+
     h = '<div class="cmpad-f"><div><label>Gincana</label><select id="ptsItem">' + gl.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('') + '</select></div><div><label>Se outra, qual</label><input type="text" id="ptsOutro"></div><div><label>Pontos para cada time marcado</label><input type="number" id="ptsValor" value="' + Rg.PONTOS_DESAFIO + '"></div></div>' +
       '<div class="cmpad-chk"><label style="font-weight:700">Quem ganha (desmarque os times que não pontuaram):</label>' + timesDoTurno(turno).map(function (n) { return '<label><input type="checkbox" class="ptsGin" data-n="' + n + '" checked> Time ' + esc(Rg.TIMES[n].nome) + '</label>'; }).join('') + '</div>';
   } else {
