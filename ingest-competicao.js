@@ -196,7 +196,7 @@ var CSS = [
   '.cmpad-prev .ok{color:var(--olive)}.cmpad-prev .ap{color:var(--amber)}.cmpad-prev .no{color:var(--red)}',
   '.cmpad-f{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin:10px 0;align-items:end}.cmpad-f label{display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}',
   '.cmpad-chk{border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin:8px 0;max-height:260px;overflow:auto;background:var(--bg-input)}',
-  '.cmpad-chk label{display:flex;gap:8px;font-size:12.5px;padding:2px 0;align-items:center}.cmpad-chk b{margin-left:auto;color:var(--red)}.ptsQtdBox{margin-left:auto;font-size:11px;color:var(--text-label);white-space:nowrap}.ptsQtdBox+b{margin-left:12px;min-width:34px;text-align:right}.ptsQtd{width:46px;padding:2px 4px;font-size:12px}',
+  '.cmpad-chk label{display:flex;gap:8px;font-size:12.5px;padding:2px 0;align-items:center}.cmpad-chk b{margin-left:auto;color:var(--red)}.ptsQtdBox{margin-left:auto;font-size:11px;color:var(--text-label);white-space:nowrap}.ptsQtdBox+b{margin-left:12px;min-width:34px;text-align:right}.cmpad-times{display:flex;gap:14px;flex-wrap:wrap;padding:4px 0}.cmpad-tm{display:flex;gap:6px;align-items:center;font-size:12.5px}.ptsQtd{width:46px;padding:2px 4px;font-size:12px}',
   '.cmpad-hist{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}.cmpad-hist th,.cmpad-hist td{border-bottom:1px solid var(--border);padding:5px 6px;text-align:left}.cmpad-hist .neg{color:var(--red)}'
 ].join('\n');
 
@@ -335,7 +335,7 @@ function timesDoTurno(turno) { return R().GRUPOS.filter(function (G) { return G.
 function opcoesTime(turno) { return timesDoTurno(turno).map(function (n) { return '<option value="' + n + '">Time ' + esc(R().TIMES[n].nome) + '</option>'; }).join(''); }
 function formPontos() {
   var dia = $('ptsDia').value, turno = $('ptsTurno').value, cat = A.cat, Rg = R(), h = '';
-  var selTime = '<div><label>Time</label><select id="ptsTime">' + opcoesTime(turno) + '</select></div>';
+  var selTime = '<div style="grid-column:1/-1"><label>Times (marque um ou mais)</label><div class="cmpad-times">' + timesDoTurno(turno).map(function (n, k) { return '<label class="cmpad-tm"><input type="checkbox" class="ptsTm" data-n="' + n + '"' + (k === 0 ? ' checked' : '') + '> Time ' + esc(Rg.TIMES[n].nome) + '</label>'; }).join('') + '</div></div>';
   if (cat === 'vistoria') {
     var ordem = ['leve', 'media', 'grave', 'gravissima'];
     h = '<div class="cmpad-f">' + selTime + '</div><div class="cmpad-chk"><label><input type="checkbox" id="ptsLimpa"> Sem apontamentos (vistoria limpa)<b style="color:var(--olive)">+' + Rg.P.vistoriaLimpa + '</b></label>' +
@@ -360,14 +360,15 @@ function formPontos() {
 }
 function montarLancamentos(cat, dia, turno, f) {   // f = valores do formulário; devolve linhas de competicao_pontos
   var Rg = R(), base = { dia: dia, turno: turno };
+  var tms = f.sel && f.sel.length ? f.sel : (f.time ? [f.time] : []);   // times marcados (vistoria, desafio e ajuste)
   if (cat === 'vistoria') {
-    if (f.limpa) return [Object.assign({}, base, { time: f.time, categoria: 'vistoria', item: 'Sem apontamentos', pontos: Rg.P.vistoriaLimpa, motivo: null })];
-    return (f.itens || []).map(function (i) { var c = Rg.CHECKLIST[i], q = Math.max(1, Math.min(99, parseInt((f.qtds || {})[i], 10) || 1)); return Object.assign({}, base, { time: f.time, categoria: 'vistoria', item: q > 1 ? c.item + ' (' + q + '×)' : c.item, pontos: c.pts * q, motivo: Rg.GRAVIDADES[c.grav].rot }); });
+    if (f.limpa) return tms.map(function (n) { return Object.assign({}, base, { time: n, categoria: 'vistoria', item: 'Sem apontamentos', pontos: Rg.P.vistoriaLimpa, motivo: null }); });
+    return [].concat.apply([], tms.map(function (n) { return (f.itens || []).map(function (i) { var c = Rg.CHECKLIST[i], q = Math.max(1, Math.min(99, parseInt((f.qtds || {})[i], 10) || 1)); return Object.assign({}, base, { time: n, categoria: 'vistoria', item: q > 1 ? c.item + ' (' + q + '×)' : c.item, pontos: c.pts * q, motivo: Rg.GRAVIDADES[c.grav].rot }); }); }));
   }
   var nome = /^Outr[oa]( gincana)?$/.test(f.item) ? (f.outro || '').trim() : f.item;
-  if (cat === 'desafio') return nome && f.valor ? [Object.assign({}, base, { time: f.time, categoria: 'desafio', item: nome, pontos: f.valor, motivo: null })] : [];
+  if (cat === 'desafio') return nome && f.valor ? tms.map(function (n) { return Object.assign({}, base, { time: n, categoria: 'desafio', item: nome, pontos: f.valor, motivo: null }); }) : [];
   if (cat === 'gincana') return nome && f.valor ? (f.times || timesDoTurno(turno)).map(function (n) { return Object.assign({}, base, { time: n, categoria: 'desafio', item: 'Gincana: ' + nome, pontos: f.valor, motivo: null }); }) : [];
-  return f.valor && (f.motivo || '').trim() ? [Object.assign({}, base, { time: f.time, categoria: 'ajuste', item: null, pontos: f.valor, motivo: f.motivo.trim() })] : [];
+  return f.valor && (f.motivo || '').trim() ? tms.map(function (n) { return Object.assign({}, base, { time: n, categoria: 'ajuste', item: null, pontos: f.valor, motivo: f.motivo.trim() }); }) : [];
 }
 async function inserirPontos(linhas) {
   var s = await A.sb.auth.getSession(), email = s.data && s.data.session && s.data.session.user.email || null;
@@ -376,7 +377,7 @@ async function inserirPontos(linhas) {
 }
 async function lancarPontos() {
   var dia = $('ptsDia').value, turno = $('ptsTurno').value, g = function (id) { var e = $(id); return e ? e.value : ''; };
-  var f = { time: +g('ptsTime') || null, item: g('ptsItem'), outro: g('ptsOutro'), valor: parseInt(g('ptsValor'), 10) || 0, motivo: g('ptsMotivo'),
+  var f = { sel: Array.prototype.map.call(A.raiz.querySelectorAll('.ptsTm:checked'), function (x) { return +x.dataset.n; }), item: g('ptsItem'), outro: g('ptsOutro'), valor: parseInt(g('ptsValor'), 10) || 0, motivo: g('ptsMotivo'),
     times: Array.prototype.map.call(A.raiz.querySelectorAll('.ptsGin:checked'), function (x) { return +x.dataset.n; }),
     qtds: (function () { var o = {}; Array.prototype.forEach.call(A.raiz.querySelectorAll('.ptsQtd'), function (x) { o[x.dataset.i] = x.value; }); return o; })(),
     limpa: !!($('ptsLimpa') && $('ptsLimpa').checked), itens: Array.prototype.map.call(A.raiz.querySelectorAll('.ptsItem:checked'), function (x) { return +x.dataset.i; }) };

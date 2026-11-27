@@ -92,6 +92,8 @@ const hoje = '2026-11-27';
 const vis = A.montarLancamentos('vistoria', hoje, '1º Turno', { time: 2, itens: [0, 5], limpa: false });
 assert.strictEqual(vis.length, 2); assert.strictEqual(vis[0].pontos, -20); assert.strictEqual(vis[1].pontos, -50); assert.ok(vis.every(l => l.categoria === 'vistoria' && l.time === 2));
 assert.strictEqual(A.montarLancamentos('vistoria', hoje, '1º Turno', { time: 2, limpa: true })[0].pontos, 100);
+const vm = A.montarLancamentos('vistoria', hoje, '1º Turno', { sel: [1, 2], itens: [5], qtds: { 5: '2' } });
+assert.deepStrictEqual(vm.map(l => l.time), [1, 2], 'um lançamento por time marcado'); assert.ok(vm.every(l => l.pontos === vis[1].pontos * 2));
 const vq = A.montarLancamentos('vistoria', hoje, '1º Turno', { time: 2, itens: [5], qtds: { 5: '3' } });
 assert.strictEqual(vq.length, 1); assert.strictEqual(vq[0].pontos, vis[1].pontos * 3, 'quantidade multiplica os pontos'); assert.ok(/\(3×\)$/.test(vq[0].item));
 const ginc = A.montarLancamentos('gincana', '2026-11-28', '2º Turno', { item: 'Torre Black', valor: 150 });
