@@ -196,7 +196,7 @@ var CSS = [
   '.cmpad-prev .ok{color:var(--olive)}.cmpad-prev .ap{color:var(--amber)}.cmpad-prev .no{color:var(--red)}',
   '.cmpad-f{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin:10px 0;align-items:end}.cmpad-f label{display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}',
   '.cmpad-chk{border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin:8px 0;max-height:260px;overflow:auto;background:var(--bg-input)}',
-  '.cmpad-chk label{display:flex;gap:8px;font-size:12.5px;padding:2px 0;align-items:center}.cmpad-chk b{margin-left:auto;color:var(--red)}',
+  '.cmpad-chk label{display:flex;gap:8px;font-size:12.5px;padding:2px 0;align-items:center}.cmpad-chk b{margin-left:auto;color:var(--red)}.ptsQtdBox{margin-left:auto;font-size:11px;color:var(--text-label);white-space:nowrap}.ptsQtdBox+b{margin-left:12px;min-width:34px;text-align:right}.ptsQtd{width:46px;padding:2px 4px;font-size:12px}',
   '.cmpad-hist{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}.cmpad-hist th,.cmpad-hist td{border-bottom:1px solid var(--border);padding:5px 6px;text-align:left}.cmpad-hist .neg{color:var(--red)}'
 ].join('\n');
 
@@ -339,7 +339,7 @@ function formPontos() {
   if (cat === 'vistoria') {
     var ordem = ['leve', 'media', 'grave', 'gravissima'];
     h = '<div class="cmpad-f">' + selTime + '</div><div class="cmpad-chk"><label><input type="checkbox" id="ptsLimpa"> Sem apontamentos (vistoria limpa)<b style="color:var(--olive)">+' + Rg.P.vistoriaLimpa + '</b></label>' +
-      Rg.CHECKLIST.map(function (c, i) { return '<label><input type="checkbox" class="ptsItem" data-i="' + i + '"> ' + esc(c.item) + ' <small>(' + Rg.GRAVIDADES[c.grav].rot + ')</small><b>' + c.pts + '</b></label>'; }).join('') + '</div>';
+      Rg.CHECKLIST.map(function (c, i) { return '<label><input type="checkbox" class="ptsItem" data-i="' + i + '"> ' + esc(c.item) + ' <small>(' + Rg.GRAVIDADES[c.grav].rot + ')</small><span class="ptsQtdBox">vezes <input type="number" class="ptsQtd" data-i="' + i + '" min="1" max="99" value="1"></span><b>' + c.pts + '</b></label>'; }).join('') + '</div>';
   } else if (cat === 'desafio') {
     var lista = (Rg.DESAFIOS[dia] || []).concat(['Outro']);
     h = '<div class="cmpad-f">' + selTime + '<div><label>Desafio</label><select id="ptsItem">' + lista.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('') + '</select></div><div><label>Se outro, qual</label><input type="text" id="ptsOutro"></div><div><label>Pontos</label><input type="number" id="ptsValor" value="' + Rg.PONTOS_DESAFIO + '"></div></div>';
@@ -353,12 +353,16 @@ function formPontos() {
   }
   $('ptsForm').innerHTML = h + '<button class="btn-mini" id="ptsLancar">Lançar</button>';
   $('ptsLancar').addEventListener('click', lancarPontos);
+  // Mexer na quantidade já marca a infração.
+  Array.prototype.forEach.call(A.raiz.querySelectorAll('.ptsQtd'), function (q) {
+    q.addEventListener('input', function () { var c = q.closest('label').querySelector('.ptsItem'); if (c && (parseInt(q.value, 10) || 0) > 0) c.checked = true; });
+  });
 }
 function montarLancamentos(cat, dia, turno, f) {   // f = valores do formulário; devolve linhas de competicao_pontos
   var Rg = R(), base = { dia: dia, turno: turno };
   if (cat === 'vistoria') {
     if (f.limpa) return [Object.assign({}, base, { time: f.time, categoria: 'vistoria', item: 'Sem apontamentos', pontos: Rg.P.vistoriaLimpa, motivo: null })];
-    return (f.itens || []).map(function (i) { var c = Rg.CHECKLIST[i]; return Object.assign({}, base, { time: f.time, categoria: 'vistoria', item: c.item, pontos: c.pts, motivo: Rg.GRAVIDADES[c.grav].rot }); });
+    return (f.itens || []).map(function (i) { var c = Rg.CHECKLIST[i], q = Math.max(1, Math.min(99, parseInt((f.qtds || {})[i], 10) || 1)); return Object.assign({}, base, { time: f.time, categoria: 'vistoria', item: q > 1 ? c.item + ' (' + q + '×)' : c.item, pontos: c.pts * q, motivo: Rg.GRAVIDADES[c.grav].rot }); });
   }
   var nome = /^Outr[oa]( gincana)?$/.test(f.item) ? (f.outro || '').trim() : f.item;
   if (cat === 'desafio') return nome && f.valor ? [Object.assign({}, base, { time: f.time, categoria: 'desafio', item: nome, pontos: f.valor, motivo: null })] : [];
@@ -374,6 +378,7 @@ async function lancarPontos() {
   var dia = $('ptsDia').value, turno = $('ptsTurno').value, g = function (id) { var e = $(id); return e ? e.value : ''; };
   var f = { time: +g('ptsTime') || null, item: g('ptsItem'), outro: g('ptsOutro'), valor: parseInt(g('ptsValor'), 10) || 0, motivo: g('ptsMotivo'),
     times: Array.prototype.map.call(A.raiz.querySelectorAll('.ptsGin:checked'), function (x) { return +x.dataset.n; }),
+    qtds: (function () { var o = {}; Array.prototype.forEach.call(A.raiz.querySelectorAll('.ptsQtd'), function (x) { o[x.dataset.i] = x.value; }); return o; })(),
     limpa: !!($('ptsLimpa') && $('ptsLimpa').checked), itens: Array.prototype.map.call(A.raiz.querySelectorAll('.ptsItem:checked'), function (x) { return +x.dataset.i; }) };
   var linhas = montarLancamentos(A.cat, dia, turno, f);
   if (!linhas.length) { msg('ptsMsg', 'Nada para lançar: marque um item, informe pontos' + (A.cat === 'ajuste' ? ' e o motivo.' : '.'), 'erro'); return; }
