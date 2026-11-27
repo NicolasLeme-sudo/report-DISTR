@@ -336,7 +336,7 @@ function timesDoTurno(turno) { return R().GRUPOS.filter(function (G) { return G.
 function opcoesTime(turno) { return timesDoTurno(turno).map(function (n) { return '<option value="' + n + '">Time ' + esc(R().TIMES[n].nome) + '</option>'; }).join(''); }
 function formPontos() {
   var turno = $('ptsTurno').value, Rg = R(), tms = timesDoTurno(turno);
-  var selTimes = function (k) { return '<div class="pb-campo" style="flex:1 1 100%"><span>Times (marque um ou mais)</span><div class="cmpad-times">' + tms.map(function (n, i) { return '<label class="cmpad-tm"><input type="checkbox" class="ptsTm" data-k="' + k + '" data-n="' + n + '"' + (i === 0 ? ' checked' : '') + '> Time ' + esc(Rg.TIMES[n].nome) + '</label>'; }).join('') + '</div></div>'; };
+  var selTimes = function (k, todos) { return '<div class="pb-campo" style="flex:1 1 100%"><span>Times (marque um ou mais)</span><div class="cmpad-times">' + tms.map(function (n, i) { return '<label class="cmpad-tm"><input type="checkbox" class="ptsTm" data-k="' + k + '" data-n="' + n + '"' + (i === 0 || todos ? ' checked' : '') + '> Time ' + esc(Rg.TIMES[n].nome) + '</label>'; }).join('') + '</div></div>'; };
   var campo = function (r, h) { return '<label class="pb-campo">' + r + h + '</label>'; };
   var linha = function (h) { return '<div class="comp-add">' + h + '</div>'; };
   var cartao = function (k, titulo, corpo) { return '<div class="cmpad-cart"><div class="cmpad-cart-h"><small>Missão Black</small><h4>' + titulo + '</h4></div>' + corpo + '<div id="ptsSt-' + k + '"></div><div id="ptsHist-' + k + '"></div></div>'; };
@@ -350,11 +350,11 @@ function formPontos() {
   var gl = Rg.GINCANAS.concat(['Outra gincana']);
   var membros = ((A.dados && A.dados.cadastro) || []).filter(function (r) { return tms.indexOf(r.time) !== -1 && r.usuario_wms && !/^NOVATO\./.test(r.usuario_wms); })
     .sort(function (a, b) { return String(a.nome || a.usuario_wms).localeCompare(String(b.nome || b.usuario_wms)); });
-  var selPara = '<select id="ptsPara"><option value="todos">Todos os times do turno</option><optgroup label="Time">' + tms.map(function (n) { return '<option value="t:' + n + '">Time ' + esc(Rg.TIMES[n].nome) + '</option>'; }).join('') + '</optgroup>' +
+  var selPara = '<select id="ptsPara"><option value="marcados">Times marcados acima</option>' +
     (membros.length ? '<optgroup label="Colaborador (pontos vão para o time dele)">' + membros.map(function (m) { return '<option value="u:' + esc(m.usuario_wms) + '">' + esc((m.nome || m.usuario_wms) + ' · ' + Rg.TIMES[m.time].nome) + '</option>'; }).join('') + '</optgroup>' : '') + '</select>';
-  var gincanas = cartao('gincanas', 'Gincanas', linha(campo('Gincana', '<select id="ptsGinSel">' + gl.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('') + '</select>') + campo('Pontos', '<input id="ptsGinPts" type="number" value="' + Rg.PONTOS_DESAFIO + '">')) +
+  var gincanas = cartao('gincanas', 'Gincanas', linha(selTimes('gincanas', true)) + linha(campo('Gincana', '<select id="ptsGinSel">' + gl.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('') + '</select>') + campo('Pontos', '<input id="ptsGinPts" type="number" value="' + Rg.PONTOS_DESAFIO + '">')) +
     '<div id="ptsGinOutraBox" hidden>' + linha(campo('Nome da gincana', '<input id="ptsGinOutra" placeholder="ex.: Dupla Conectada">')) + '</div>' +
-    linha(campo('Para', selPara)) + '<div><button class="btn-mini" id="ptsBtnGincana" type="button">Lançar</button></div>');
+    linha(campo('Ou, para um colaborador', selPara)) + '<div><button class="btn-mini" id="ptsBtnGincana" type="button">Lançar</button></div>');
   var ajuste = cartao('ajuste', 'Ajuste de pontuação', linha(selTimes('ajuste')) + linha(campo('Pontos (negativo desconta)', '<input id="ptsAjPts" type="number" placeholder="ex.: -30 ou 50">') + campo('Motivo (obrigatório)', '<input id="ptsAjMotivo">')) +
     '<div><button class="btn-mini" id="ptsBtnAjuste" type="button">Lançar ajuste</button></div>');
   $('ptsForm').innerHTML = '<div class="cmpad-cartoes">' + vistoria + gincanas + ajuste + '</div>';
@@ -403,9 +403,11 @@ function lancarGincana() {
   var dia = $('ptsDia').value, turno = $('ptsTurno').value, Rg = R(), nome = $('ptsGinSel').value, v = parseInt($('ptsGinPts').value, 10), para = $('ptsPara').value, times, motivo = null, alvo;
   if (nome === 'Outra gincana') { nome = $('ptsGinOutra').value.trim(); if (!nome) { msg('ptsSt-gincanas', 'Escreva o nome da gincana.', 'erro'); return; } }
   if (!v) { msg('ptsSt-gincanas', 'Informe os pontos.', 'erro'); return; }
-  if (para === 'todos') { times = timesDoTurno(turno); alvo = 'os ' + times.length + ' times do turno: ' + v + ' pontos cada'; }
-  else if (para.indexOf('t:') === 0) { times = [+para.slice(2)]; alvo = 'o time ' + Rg.TIMES[times[0]].nome + ': ' + v + ' pontos'; }
-  else {
+  if (para === 'marcados') {
+    times = marcados('gincanas');
+    if (!times.length) { msg('ptsSt-gincanas', 'Marque pelo menos um time (ou escolha um colaborador).', 'erro'); return; }
+    alvo = (times.length > 1 ? 'os times ' : 'o time ') + nomeTimes(times) + ': ' + v + ' pontos' + (times.length > 1 ? ' cada' : '');
+  } else {
     var m = ((A.dados && A.dados.cadastro) || []).filter(function (r) { return r.usuario_wms === para.slice(2); })[0];
     if (!m) { msg('ptsSt-gincanas', 'Colaborador não encontrado no turno.', 'erro'); return; }
     times = [m.time]; motivo = 'Colaborador: ' + (m.nome || m.usuario_wms); alvo = (m.nome || m.usuario_wms) + ' (time ' + Rg.TIMES[m.time].nome + '): ' + v + ' pontos';
